@@ -155,8 +155,8 @@ class PerceptionViewModel(
         telemetryRepository.updatePerceptionSummary(
             PerceptionSyncSummary(
                 personCount = state.personCount,
-                topAudioLabels = state.soundDetections
-                    .take(3)
+                activityLabels = state.soundDetections
+                    .take(YamnetPostProcessor.DEFAULT_TOP_K)
                     .map { it.label },
                 audioPresenceDetected = state.audioPresenceDetected,
                 audioPresenceScore = state.audioPresenceScore,

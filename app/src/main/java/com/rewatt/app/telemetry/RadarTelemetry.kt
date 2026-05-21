@@ -5,7 +5,8 @@ data class RadarTelemetry(
     val movingEnergy: Int,
     val stationaryEnergy: Int,
     val distanceCm: Int,
+    val temperatureC: Float?,
+    val humidityPercent: Float?,
     val capturedAtMillis: Long,
     val rawPacket: String,
 )
-

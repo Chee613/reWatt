@@ -52,8 +52,10 @@ class DashboardScreenTest {
                                 movingEnergy = 42,
                                 stationaryEnergy = 85,
                                 distanceCm = 120,
+                                temperatureC = 26.5f,
+                                humidityPercent = 58.2f,
                                 capturedAtMillis = 1_000L,
-                                rawPacket = "RADAR:PRES=1,MOV=42,STA=85,DIST=120",
+                                rawPacket = "LD2412:PRES=1,MOV=42,STA=85,DIST=120|SHT30:T=26.5,H=58.2",
                             ),
                             lastValidPacketAtMillis = 1_000L,
                             validPacketCount = 1,
@@ -71,6 +73,8 @@ class DashboardScreenTest {
 
         composeRule.onNodeWithText("Connected").assertIsDisplayed()
         composeRule.onNodeWithText("120 cm").assertIsDisplayed()
+        composeRule.onNodeWithText("26.5 C").assertIsDisplayed()
+        composeRule.onNodeWithText("58.2 %").assertIsDisplayed()
         composeRule.onNodeWithText("Detected").assertIsDisplayed()
         composeRule.onNodeWithText("Live telemetry is fresh.").assertIsDisplayed()
         composeRule.onNodeWithText("Firestore sync").assertIsDisplayed()

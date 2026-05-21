@@ -56,6 +56,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rewatt.app.R
+import com.rewatt.app.data.ActivityAnalysisStatus
 import com.rewatt.app.data.FirebaseSyncStatus
 import com.rewatt.app.data.SensorDashboardState
 import com.rewatt.app.perception.ObjectDetection
@@ -188,6 +189,18 @@ private fun TelemetrySection(telemetry: RadarTelemetry?) {
                 modifier = Modifier.weight(1f),
             )
         }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            MetricCard(
+                title = "Temperature",
+                value = telemetry?.temperatureC?.let { "%.1f C".format(it) } ?: "--",
+                modifier = Modifier.weight(1f),
+            )
+            MetricCard(
+                title = "Humidity",
+                value = telemetry?.humidityPercent?.let { "%.1f %%".format(it) } ?: "--",
+                modifier = Modifier.weight(1f),
+            )
+        }
         RadarEnergyCard(telemetry = telemetry)
     }
 }
@@ -202,7 +215,7 @@ private fun RadarEnergyCard(telemetry: RadarTelemetry?) {
                 tint = androidx.compose.material3.MaterialTheme.colorScheme.primary,
             )
             Spacer(Modifier.width(8.dp))
-            Text("LD2410B radar energy", fontWeight = FontWeight.SemiBold)
+            Text("LD2412 radar energy", fontWeight = FontWeight.SemiBold)
         }
         Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -290,6 +303,8 @@ private fun PacketHealthCard(
         }
         Spacer(Modifier.height(12.dp))
         FirebaseSyncStatusRow(sensorState = sensorState)
+        Spacer(Modifier.height(12.dp))
+        ActivityAnalysisStatusRow(sensorState = sensorState)
     }
 }
 
@@ -310,6 +325,37 @@ private fun FirebaseSyncStatusRow(sensorState: SensorDashboardState) {
             color = color,
             fontSize = 13.sp,
         )
+    }
+}
+
+@Composable
+private fun ActivityAnalysisStatusRow(sensorState: SensorDashboardState) {
+    val analysisState = sensorState.activityAnalysisState
+    val color = when (analysisState.status) {
+        ActivityAnalysisStatus.ConfigMissing -> androidx.compose.material3.MaterialTheme.colorScheme.tertiary
+        ActivityAnalysisStatus.Idle -> androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
+        ActivityAnalysisStatus.Pending -> androidx.compose.material3.MaterialTheme.colorScheme.secondary
+        ActivityAnalysisStatus.Complete -> androidx.compose.material3.MaterialTheme.colorScheme.primary
+        ActivityAnalysisStatus.Failed -> androidx.compose.material3.MaterialTheme.colorScheme.error
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("Gemini activity", fontWeight = FontWeight.SemiBold)
+        Text(
+            text = analysisState.message,
+            color = color,
+            fontSize = 13.sp,
+        )
+        analysisState.analysis?.let { analysis ->
+            Text(
+                text = "${analysis.activity} (${(analysis.confidence * 100).toInt()}%)",
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = analysis.reason,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 13.sp,
+            )
+        }
     }
 }
 

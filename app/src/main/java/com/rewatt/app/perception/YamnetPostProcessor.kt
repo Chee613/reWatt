@@ -1,10 +1,12 @@
 package com.rewatt.app.perception
 
 object YamnetPostProcessor {
+    const val DEFAULT_TOP_K = 3
+
     fun rank(
         scores: FloatArray,
         labels: List<String>,
-        topK: Int = 5,
+        topK: Int = DEFAULT_TOP_K,
         confidenceThreshold: Float = 0.05f,
     ): List<SoundDetection> =
         LectureHallPerceptionFilter.filterHumanActivitySounds(

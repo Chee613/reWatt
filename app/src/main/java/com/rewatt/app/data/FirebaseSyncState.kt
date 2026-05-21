@@ -9,8 +9,7 @@ enum class FirebaseSyncStatus {
 }
 
 data class FirebaseSyncState(
-    val status: FirebaseSyncStatus = FirebaseSyncStatus.ConfigMissing,
-    val message: String = "Firebase config missing. Add app/google-services.json to enable Firestore sync.",
+    val status: FirebaseSyncStatus = FirebaseSyncStatus.Idle,
+    val message: String = "Firestore sync is waiting for a perception capture.",
     val lastSyncedAtMillis: Long? = null,
 )
-

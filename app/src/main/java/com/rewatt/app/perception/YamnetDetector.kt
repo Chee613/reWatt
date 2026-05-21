@@ -12,6 +12,33 @@ class YamnetDetector private constructor(
     val inputSampleCount: Int,
 ) : Closeable {
     fun detect(samples: FloatArray): List<SoundDetection> {
+        if (samples.size > inputSampleCount) {
+            return detectWindow(samples)
+        }
+        return detectChunk(samples)
+    }
+
+    private fun detectWindow(samples: FloatArray): List<SoundDetection> {
+        val mergedDetections = linkedMapOf<String, SoundDetection>()
+        val chunkSize = inputSampleCount.coerceAtLeast(1)
+        var start = 0
+        while (start < samples.size) {
+            val end = minOf(start + chunkSize, samples.size)
+            val chunk = samples.copyOfRange(start, end)
+            detectChunk(chunk).forEach { detection ->
+                val current = mergedDetections[detection.label]
+                if (current == null || detection.confidence > current.confidence) {
+                    mergedDetections[detection.label] = detection
+                }
+            }
+            start += chunkSize
+        }
+        return mergedDetections.values
+            .sortedByDescending { it.confidence }
+            .take(YamnetPostProcessor.DEFAULT_TOP_K)
+    }
+
+    private fun detectChunk(samples: FloatArray): List<SoundDetection> {
         val preparedSamples = FloatArray(inputSampleCount)
         samples.copyInto(
             destination = preparedSamples,

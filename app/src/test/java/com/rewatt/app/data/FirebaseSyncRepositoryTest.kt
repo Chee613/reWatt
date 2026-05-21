@@ -1,43 +1,66 @@
 package com.rewatt.app.data
 
-import com.rewatt.app.telemetry.RadarTelemetry
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FirebaseSyncRepositoryTest {
     @Test
-    fun buildTelemetryPayload_includesRadarAndPerceptionState() {
-        val payload = buildTelemetryPayload(
-            telemetry = RadarTelemetry(
-                presence = true,
-                movingEnergy = 42,
-                stationaryEnergy = 85,
-                distanceCm = 120,
-                capturedAtMillis = 1_000L,
-                rawPacket = "RADAR:PRES=1,MOV=42,STA=85,DIST=120",
-            ),
+    fun buildPerceptionPayload_includesPeopleCountAndActivityOnly() {
+        val payload = buildPerceptionPayload(
             perceptionSummary = PerceptionSyncSummary(
                 personCount = 1,
-                topAudioLabels = listOf("Speech", "Typing"),
+                activityLabels = listOf("Speech", "Typing", "Clapping", "Wind"),
                 audioPresenceDetected = true,
                 audioPresenceScore = 0.82f,
+                temperatureC = 26.5f,
+                humidityPercent = 58.2f,
                 capturedAtMillis = 900L,
             ),
             roomId = "default-room",
             nodeId = "node-1",
+            updatedAtMillis = 1_000L,
         )
 
         assertEquals("default-room", payload["roomId"])
         assertEquals("node-1", payload["nodeId"])
-        assertEquals(true, payload["presence"])
-        assertEquals(42, payload["movingEnergy"])
-        assertEquals(85, payload["stationaryEnergy"])
-        assertEquals(120, payload["distanceCm"])
+        assertEquals(1_000L, payload["lastUpdatedAt"])
         assertEquals(1, payload["personCount"])
         assertEquals(900L, payload["perceptionCapturedAt"])
-        assertEquals(true, payload["audioPresenceDetected"])
-        assertEquals(0.82f, payload["audioPresenceScore"])
-        assertTrue((payload["topAudioLabels"] as List<*>).contains("Typing"))
+        assertEquals("Speech", payload["primaryActivity"])
+        assertEquals(26.5f, payload["temperatureC"])
+        assertEquals(58.2f, payload["humidityPercent"])
+        val activityLabels = payload["activityLabels"] as List<*>
+        assertEquals(3, activityLabels.size)
+        assertTrue(activityLabels.contains("Typing"))
+        assertTrue(activityLabels.contains("Clapping"))
+        assertFalse(activityLabels.contains("Wind"))
+        assertFalse(payload.containsKey("presence"))
+        assertFalse(payload.containsKey("movingEnergy"))
+        assertFalse(payload.containsKey("stationaryEnergy"))
+        assertFalse(payload.containsKey("distanceCm"))
+        assertFalse(payload.containsKey("rawPacket"))
+    }
+
+    @Test
+    fun buildActivityAnalysisPayload_usesGeminiModelId() {
+        val payload = buildActivityAnalysisPayload(
+            analysis = ActivityAnalysis(
+                activity = "Lecture session",
+                confidence = 0.82f,
+                reason = "Speech, clapping, and keyboard sounds suggest a lecture.",
+                occupancyHint = "occupied",
+            ),
+            status = "complete",
+            analyzedAtMillis = 1_234L,
+        )
+
+        assertEquals("Lecture session", payload["activity"])
+        assertEquals(0.82f, payload["confidence"])
+        assertEquals("occupied", payload["occupancyHint"])
+        assertEquals("complete", payload["status"])
+        assertEquals(GeminiActivityAnalyzer.MODEL_ID, payload["model"])
+        assertEquals(1_234L, payload["analyzedAt"])
     }
 }

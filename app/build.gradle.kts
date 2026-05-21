@@ -1,8 +1,20 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
 }
+
+val localProperties = Properties().apply {
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        localPropertiesFile.inputStream().use { load(it) }
+    }
+}
+
+fun String.asBuildConfigString(): String =
+    "\"" + replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
 if (file("google-services.json").exists()) {
     apply(plugin = "com.google.gms.google-services")
@@ -20,6 +32,12 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        val geminiApiKey = localProperties.getProperty("GEMINI_API_KEY")
+            ?: providers.gradleProperty("GEMINI_API_KEY").orNull
+            ?: System.getenv("GEMINI_API_KEY")
+            ?: ""
+        buildConfigField("String", "GEMINI_API_KEY", geminiApiKey.asBuildConfigString())
     }
 
     buildTypes {
@@ -33,6 +51,7 @@ android {
     }
 
     buildFeatures {
+        buildConfig = true
         compose = true
     }
 
@@ -96,6 +115,7 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)
+    testImplementation(libs.json)
 
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.espresso.core)

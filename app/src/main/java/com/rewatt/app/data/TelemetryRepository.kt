@@ -3,6 +3,11 @@ package com.rewatt.app.data
 import com.rewatt.app.telemetry.RadarTelemetry
 import com.rewatt.app.telemetry.UsbDataParser
 import com.rewatt.app.usb.UsbConnectionStatus
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -11,10 +16,13 @@ import kotlinx.coroutines.flow.update
 class TelemetryRepository(
     private val telemetryDao: TelemetryDao,
     private val firebaseSyncRepository: FirebaseSyncRepository,
+    private val geminiActivityAnalyzer: GeminiActivityAnalyzer,
 ) {
     private val mutableState = MutableStateFlow(SensorDashboardState())
     val dashboardState: StateFlow<SensorDashboardState> = mutableState.asStateFlow()
-    private val mutablePerceptionSummary = MutableStateFlow(PerceptionSyncSummary())
+    private val analysisScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var analysisJob: Job? = null
+    private var lastAnalysisKey: String? = null
 
     suspend fun acceptRawPacket(rawPacket: String, capturedAtMillis: Long = System.currentTimeMillis()) {
         val telemetry = UsbDataParser.parseTelemetry(rawPacket, capturedAtMillis)
@@ -37,11 +45,6 @@ class TelemetryRepository(
                 lastMalformedPacket = null,
             )
         }
-        firebaseSyncRepository.syncRadarTelemetry(
-            telemetry = telemetry,
-            perceptionSummary = mutablePerceptionSummary.value,
-            onState = ::setFirebaseSyncState,
-        )
     }
 
     fun setConnectionStatus(
@@ -57,12 +60,94 @@ class TelemetryRepository(
     }
 
     fun updatePerceptionSummary(perceptionSummary: PerceptionSyncSummary) {
-        mutablePerceptionSummary.value = perceptionSummary
+        val latestTelemetry = mutableState.value.latestTelemetry
+        val enrichedSummary = perceptionSummary.copy(
+            temperatureC = latestTelemetry?.temperatureC,
+            humidityPercent = latestTelemetry?.humidityPercent,
+        )
+        firebaseSyncRepository.syncPerceptionSummary(
+            perceptionSummary = enrichedSummary,
+            onState = ::setFirebaseSyncState,
+        )
+        analyzeActivity(enrichedSummary)
     }
 
     private fun setFirebaseSyncState(syncState: FirebaseSyncState) {
         mutableState.update { current ->
             current.copy(firebaseSyncState = syncState)
+        }
+    }
+
+    private fun analyzeActivity(summary: PerceptionSyncSummary) {
+        val capturedAtMillis = summary.capturedAtMillis ?: return
+        if (summary.activityLabels.isEmpty()) {
+            mutableState.update { current ->
+                current.copy(
+                    activityAnalysisState = ActivityAnalysisState(
+                        message = "Gemini activity analysis is waiting for top-3 YAMNet labels.",
+                    ),
+                )
+            }
+            return
+        }
+
+        val analysisKey = listOf(
+            capturedAtMillis,
+            summary.personCount,
+            summary.activityLabels.take(3).joinToString("|"),
+            summary.temperatureC,
+            summary.humidityPercent,
+        ).joinToString(separator = "::")
+        if (analysisKey == lastAnalysisKey) return
+        lastAnalysisKey = analysisKey
+
+        if (!geminiActivityAnalyzer.isConfigured()) {
+            mutableState.update { current ->
+                current.copy(
+                    activityAnalysisState = ActivityAnalysisState(
+                        status = ActivityAnalysisStatus.ConfigMissing,
+                        message = "Gemini API key missing. Add GEMINI_API_KEY to local.properties and rebuild.",
+                    ),
+                )
+            }
+            return
+        }
+
+        analysisJob?.cancel()
+        mutableState.update { current ->
+            current.copy(
+                activityAnalysisState = ActivityAnalysisState(
+                    status = ActivityAnalysisStatus.Pending,
+                    message = "Gemini is analyzing the top-3 YAMNet labels.",
+                ),
+            )
+        }
+
+        analysisJob = analysisScope.launch {
+            runCatching { geminiActivityAnalyzer.analyze(summary) }
+                .onSuccess { analysis ->
+                    mutableState.update { current ->
+                        current.copy(
+                            activityAnalysisState = ActivityAnalysisState(
+                                status = ActivityAnalysisStatus.Complete,
+                                message = "Gemini classified this as ${analysis.activity}.",
+                                analysis = analysis,
+                                lastAnalyzedAtMillis = System.currentTimeMillis(),
+                            ),
+                        )
+                    }
+                    firebaseSyncRepository.syncActivityAnalysis(summary, analysis)
+                }
+                .onFailure { error ->
+                    mutableState.update { current ->
+                        current.copy(
+                            activityAnalysisState = ActivityAnalysisState(
+                                status = ActivityAnalysisStatus.Failed,
+                                message = "Gemini analysis failed: ${error.message ?: error::class.java.simpleName}",
+                            ),
+                        )
+                    }
+                }
         }
     }
 
@@ -80,4 +165,5 @@ data class SensorDashboardState(
     val malformedPacketCount: Int = 0,
     val lastMalformedPacket: String? = null,
     val firebaseSyncState: FirebaseSyncState = FirebaseSyncState(),
+    val activityAnalysisState: ActivityAnalysisState = ActivityAnalysisState(),
 )

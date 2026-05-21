@@ -2,6 +2,7 @@ package com.rewatt.app.core
 
 import android.content.Context
 import com.rewatt.app.data.FirebaseSyncRepository
+import com.rewatt.app.data.GeminiActivityAnalyzer
 import com.rewatt.app.data.ReWattDatabase
 import com.rewatt.app.data.TelemetryRepository
 
@@ -16,10 +17,15 @@ class AppGraph(context: Context) {
         FirebaseSyncRepository(appContext)
     }
 
+    val geminiActivityAnalyzer: GeminiActivityAnalyzer by lazy {
+        GeminiActivityAnalyzer()
+    }
+
     val telemetryRepository: TelemetryRepository by lazy {
         TelemetryRepository(
             telemetryDao = database.telemetryDao(),
             firebaseSyncRepository = firebaseSyncRepository,
+            geminiActivityAnalyzer = geminiActivityAnalyzer,
         )
     }
 }

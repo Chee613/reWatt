@@ -99,7 +99,7 @@ class CameraCaptureController(
     }
 
     companion object {
-        private const val INFERENCE_INTERVAL_MILLIS = 5_000L
+        private const val INFERENCE_INTERVAL_MILLIS = 10 * 60 * 1_000L
     }
 }
 
