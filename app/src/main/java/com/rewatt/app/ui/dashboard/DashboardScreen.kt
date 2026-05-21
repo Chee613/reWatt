@@ -1,7 +1,12 @@
 package com.rewatt.app.ui.dashboard
 
+import android.graphics.Bitmap
+import androidx.camera.view.PreviewView
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -27,22 +32,36 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.rewatt.app.R
+import com.rewatt.app.data.FirebaseSyncStatus
 import com.rewatt.app.data.SensorDashboardState
+import com.rewatt.app.perception.ObjectDetection
+import com.rewatt.app.perception.PerceptionUiState
 import com.rewatt.app.telemetry.PacketFreshness
-import com.rewatt.app.telemetry.SensorTelemetry
+import com.rewatt.app.telemetry.RadarTelemetry
 import com.rewatt.app.usb.UsbConnectionStatus
 import kotlin.math.min
 
@@ -50,7 +69,10 @@ import kotlin.math.min
 @Composable
 fun DashboardScreen(
     uiState: DashboardUiState,
+    perceptionState: PerceptionUiState,
     onScanUsb: () -> Unit,
+    onStartPerception: (PreviewView) -> Unit,
+    onStopPerception: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Scaffold(
@@ -58,9 +80,17 @@ fun DashboardScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
-                        Text("REWATT", fontWeight = FontWeight.Bold)
-                        Text("Sensor hub", fontSize = 12.sp)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Image(
+                            painter = painterResource(R.drawable.rewatt_logo),
+                            contentDescription = "REWATT logo",
+                            modifier = Modifier.size(36.dp),
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Column {
+                            Text("REWATT", fontWeight = FontWeight.Bold)
+                            Text("Radar + perception hub", fontSize = 12.sp)
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -88,6 +118,12 @@ fun DashboardScreen(
                 sensorState = uiState.sensorState,
                 freshness = uiState.packetFreshness,
                 nowMillis = uiState.nowMillis,
+            )
+            PerceptionSection(
+                state = perceptionState,
+                nowMillis = uiState.nowMillis,
+                onStartPerception = onStartPerception,
+                onStopPerception = onStopPerception,
             )
         }
     }
@@ -134,41 +170,9 @@ private fun ConnectionCard(
 }
 
 @Composable
-private fun TelemetrySection(telemetry: SensorTelemetry?) {
+private fun TelemetrySection(telemetry: RadarTelemetry?) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            MetricCard(
-                title = "Temperature",
-                value = telemetry?.tempC?.let { "%.1f C".format(it) } ?: "--",
-                modifier = Modifier.weight(1f),
-            )
-            MetricCard(
-                title = "Humidity",
-                value = telemetry?.humidityPercent?.let { "%.1f %%".format(it) } ?: "--",
-                modifier = Modifier.weight(1f),
-            )
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            MetricCard(
-                title = "AQI",
-                value = telemetry?.aqi?.toString() ?: "--",
-                modifier = Modifier.weight(1f),
-                warning = telemetry?.aqi?.let { it >= 3 } == true,
-            )
-            MetricCard(
-                title = "eCO2",
-                value = telemetry?.eco2Ppm?.let { "$it ppm" } ?: "--",
-                modifier = Modifier.weight(1f),
-                warning = telemetry?.eco2Ppm?.let { it >= 1_000 } == true,
-            )
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            MetricCard(
-                title = "TVOC",
-                value = telemetry?.tvocPpb?.let { "$it ppb" } ?: "--",
-                modifier = Modifier.weight(1f),
-                warning = telemetry?.tvocPpb?.let { it >= 220 } == true,
-            )
             MetricCard(
                 title = "Presence",
                 value = when (telemetry?.presence) {
@@ -178,13 +182,18 @@ private fun TelemetrySection(telemetry: SensorTelemetry?) {
                 },
                 modifier = Modifier.weight(1f),
             )
+            MetricCard(
+                title = "Distance",
+                value = telemetry?.distanceCm?.let { "$it cm" } ?: "--",
+                modifier = Modifier.weight(1f),
+            )
         }
         RadarEnergyCard(telemetry = telemetry)
     }
 }
 
 @Composable
-private fun RadarEnergyCard(telemetry: SensorTelemetry?) {
+private fun RadarEnergyCard(telemetry: RadarTelemetry?) {
     InfoCard {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
@@ -193,7 +202,20 @@ private fun RadarEnergyCard(telemetry: SensorTelemetry?) {
                 tint = androidx.compose.material3.MaterialTheme.colorScheme.primary,
             )
             Spacer(Modifier.width(8.dp))
-            Text("LD2412 radar energy", fontWeight = FontWeight.SemiBold)
+            Text("LD2410B radar energy", fontWeight = FontWeight.SemiBold)
+        }
+        Spacer(Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            MetricCard(
+                title = "Moving",
+                value = telemetry?.movingEnergy?.toString() ?: "--",
+                modifier = Modifier.weight(1f),
+            )
+            MetricCard(
+                title = "Stationary",
+                value = telemetry?.stationaryEnergy?.toString() ?: "--",
+                modifier = Modifier.weight(1f),
+            )
         }
         Spacer(Modifier.height(12.dp))
         EnergyBar(label = "Moving", value = telemetry?.movingEnergy)
@@ -266,6 +288,335 @@ private fun PacketHealthCard(
                 fontSize = 13.sp,
             )
         }
+        Spacer(Modifier.height(12.dp))
+        FirebaseSyncStatusRow(sensorState = sensorState)
+    }
+}
+
+@Composable
+private fun FirebaseSyncStatusRow(sensorState: SensorDashboardState) {
+    val syncState = sensorState.firebaseSyncState
+    val color = when (syncState.status) {
+        FirebaseSyncStatus.ConfigMissing -> androidx.compose.material3.MaterialTheme.colorScheme.tertiary
+        FirebaseSyncStatus.Idle -> androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
+        FirebaseSyncStatus.Pending -> androidx.compose.material3.MaterialTheme.colorScheme.secondary
+        FirebaseSyncStatus.Synced -> androidx.compose.material3.MaterialTheme.colorScheme.primary
+        FirebaseSyncStatus.Failed -> androidx.compose.material3.MaterialTheme.colorScheme.error
+    }
+    Column {
+        Text("Firestore sync", fontWeight = FontWeight.SemiBold)
+        Text(
+            text = syncState.message,
+            color = color,
+            fontSize = 13.sp,
+        )
+    }
+}
+
+@Composable
+private fun PerceptionSection(
+    state: PerceptionUiState,
+    nowMillis: Long,
+    onStartPerception: (PreviewView) -> Unit,
+    onStopPerception: () -> Unit,
+) {
+    var previewView by remember { mutableStateOf<PreviewView?>(null) }
+
+    InfoCard {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column {
+                Text("Perception", fontWeight = FontWeight.SemiBold)
+                Text(
+                    text = state.statusMessage,
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 13.sp,
+                )
+            }
+            if (state.isRunning) {
+                OutlinedButton(onClick = onStopPerception) {
+                    Text("Stop")
+                }
+            } else {
+                Button(
+                    onClick = { previewView?.let(onStartPerception) },
+                    enabled = previewView != null,
+                ) {
+                    Text("Start")
+                }
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            MetricCard(
+                title = "Camera",
+                value = if (state.cameraPermissionGranted) "Allowed" else "Need access",
+                modifier = Modifier.weight(1f),
+                warning = !state.cameraPermissionGranted,
+            )
+            MetricCard(
+                title = "Mic",
+                value = if (state.microphonePermissionGranted) "Allowed" else "Need access",
+                modifier = Modifier.weight(1f),
+                warning = !state.microphonePermissionGranted,
+            )
+        }
+        Spacer(Modifier.height(12.dp))
+        AndroidView(
+            factory = { context ->
+                PreviewView(context).apply {
+                    scaleType = PreviewView.ScaleType.FILL_CENTER
+                    implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+                }.also { previewView = it }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(220.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant),
+        )
+        Spacer(Modifier.height(12.dp))
+        LatestFrameCard(
+            frame = state.latestFrame,
+            detections = state.yoloDetections,
+            contextDetections = state.contextObjectDetections,
+            message = state.yoloMessage,
+            personCount = state.personCount,
+            latestFrameAtMillis = state.latestFrameAtMillis,
+            nowMillis = nowMillis,
+        )
+        Spacer(Modifier.height(12.dp))
+        AudioCaptureCard(state = state, nowMillis = nowMillis)
+    }
+}
+
+@Composable
+private fun LatestFrameCard(
+    frame: Bitmap?,
+    detections: List<ObjectDetection>,
+    contextDetections: List<ObjectDetection>,
+    message: String,
+    personCount: Int,
+    latestFrameAtMillis: Long?,
+    nowMillis: Long,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column {
+                Text("People detected", fontWeight = FontWeight.SemiBold)
+                Text(
+                    text = latestFrameAtMillis.ageLabel(nowMillis),
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 13.sp,
+                )
+            }
+            Text(
+                text = "$personCount ${if (personCount == 1) "person" else "people"}",
+                color = if (personCount > 0) {
+                    androidx.compose.material3.MaterialTheme.colorScheme.primary
+                } else {
+                    androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        FramePreview(frame = frame, detections = detections)
+        Text(
+            text = message,
+            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 13.sp,
+        )
+        val peopleDetections = detections.filter { it.isPerson }
+        if (peopleDetections.isNotEmpty()) {
+            peopleDetections.take(5).forEach { detection ->
+                DetectionRow(
+                    label = detection.label,
+                    confidence = detection.confidence,
+                    highlight = detection.isPerson,
+                )
+            }
+        }
+        if (contextDetections.isNotEmpty()) {
+            Text("Context objects", fontWeight = FontWeight.SemiBold)
+            contextDetections.take(5).forEach { detection ->
+                DetectionRow(
+                    label = detection.label,
+                    confidence = detection.confidence,
+                    highlight = false,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FramePreview(
+    frame: Bitmap?,
+    detections: List<ObjectDetection>,
+) {
+    val aspectRatio = frame?.let { it.width.toFloat() / it.height.toFloat() } ?: (16f / 9f)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(aspectRatio)
+            .clip(RoundedCornerShape(8.dp))
+            .background(androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (frame == null) {
+            Text(
+                text = "No captured frame yet",
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            return@Box
+        }
+
+        Image(
+            bitmap = frame.asImageBitmap(),
+            contentDescription = "Latest analyzed camera frame",
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.FillBounds,
+        )
+        DetectionOverlay(detections = detections)
+    }
+}
+
+@Composable
+private fun DetectionOverlay(detections: List<ObjectDetection>) {
+    val strokeWidth = with(LocalDensity.current) { 2.dp.toPx() }
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        detections.forEach { detection ->
+            val box = detection.box
+            val color = if (detection.isPerson) Color(0xFF69D7BF) else Color(0xFFFFB782)
+            drawRect(
+                color = color,
+                topLeft = androidx.compose.ui.geometry.Offset(
+                    x = box.left * size.width,
+                    y = box.top * size.height,
+                ),
+                size = androidx.compose.ui.geometry.Size(
+                    width = (box.right - box.left) * size.width,
+                    height = (box.bottom - box.top) * size.height,
+                ),
+                style = Stroke(width = strokeWidth),
+            )
+        }
+    }
+}
+
+@Composable
+private fun AudioCaptureCard(
+    state: PerceptionUiState,
+    nowMillis: Long,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column {
+                Text("Human activity sounds", fontWeight = FontWeight.SemiBold)
+                Text(
+                    text = state.latestAudioAtMillis.ageLabel(nowMillis),
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 13.sp,
+                )
+            }
+            Text(
+                text = if (state.audioPresenceDetected) {
+                    "${(state.audioPresenceScore * 100).toInt()}%"
+                } else {
+                    "${(state.audioRms * 100).toInt()}% level"
+                },
+                color = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        WaveformBar(waveform = state.audioWaveform)
+        Text(
+            text = "${state.audioSampleCount} samples at 16 kHz",
+            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 13.sp,
+        )
+        Text(
+            text = state.yamnetMessage,
+            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 13.sp,
+        )
+        if (state.soundDetections.isNotEmpty()) {
+            state.soundDetections.forEach { detection ->
+                DetectionRow(
+                    label = if (detection.indicatesHumanPresence) {
+                        detection.label
+                    } else {
+                        "${detection.label} (support)"
+                    },
+                    confidence = detection.confidence,
+                    highlight = detection.indicatesHumanPresence,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun WaveformBar(waveform: List<Float>) {
+    val barColor = androidx.compose.material3.MaterialTheme.colorScheme.secondary
+    val emptyColor = androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant
+    Canvas(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(emptyColor),
+    ) {
+        if (waveform.isEmpty()) return@Canvas
+        val barWidth = size.width / waveform.size
+        waveform.forEachIndexed { index, level ->
+            val barHeight = (size.height * level).coerceAtLeast(2f)
+            drawRect(
+                color = barColor,
+                topLeft = androidx.compose.ui.geometry.Offset(
+                    x = index * barWidth,
+                    y = (size.height - barHeight) / 2f,
+                ),
+                size = androidx.compose.ui.geometry.Size(
+                    width = (barWidth * 0.72f).coerceAtLeast(1f),
+                    height = barHeight,
+                ),
+            )
+        }
+    }
+}
+
+@Composable
+private fun DetectionRow(
+    label: String,
+    confidence: Float,
+    highlight: Boolean,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            fontWeight = if (highlight) FontWeight.SemiBold else FontWeight.Normal,
+        )
+        Text(
+            text = "${(confidence * 100).toInt()}%",
+            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 13.sp,
+        )
     }
 }
 
@@ -365,3 +716,9 @@ private fun PacketFreshness.label(lastValidPacketAtMillis: Long?, nowMillis: Lon
             "Telemetry is stale. Last valid packet was ${ageSeconds}s ago."
         }
     }
+
+private fun Long?.ageLabel(nowMillis: Long): String =
+    this?.let { timestamp ->
+        val ageSeconds = ((nowMillis - timestamp) / 1_000L).coerceAtLeast(0L)
+        "Captured ${ageSeconds}s ago"
+    } ?: "Waiting for capture"

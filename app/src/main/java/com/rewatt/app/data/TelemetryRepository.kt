@@ -1,6 +1,6 @@
 package com.rewatt.app.data
 
-import com.rewatt.app.telemetry.SensorTelemetry
+import com.rewatt.app.telemetry.RadarTelemetry
 import com.rewatt.app.telemetry.UsbDataParser
 import com.rewatt.app.usb.UsbConnectionStatus
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -10,9 +10,11 @@ import kotlinx.coroutines.flow.update
 
 class TelemetryRepository(
     private val telemetryDao: TelemetryDao,
+    private val firebaseSyncRepository: FirebaseSyncRepository,
 ) {
     private val mutableState = MutableStateFlow(SensorDashboardState())
     val dashboardState: StateFlow<SensorDashboardState> = mutableState.asStateFlow()
+    private val mutablePerceptionSummary = MutableStateFlow(PerceptionSyncSummary())
 
     suspend fun acceptRawPacket(rawPacket: String, capturedAtMillis: Long = System.currentTimeMillis()) {
         val telemetry = UsbDataParser.parseTelemetry(rawPacket, capturedAtMillis)
@@ -35,6 +37,11 @@ class TelemetryRepository(
                 lastMalformedPacket = null,
             )
         }
+        firebaseSyncRepository.syncRadarTelemetry(
+            telemetry = telemetry,
+            perceptionSummary = mutablePerceptionSummary.value,
+            onState = ::setFirebaseSyncState,
+        )
     }
 
     fun setConnectionStatus(
@@ -49,6 +56,16 @@ class TelemetryRepository(
         }
     }
 
+    fun updatePerceptionSummary(perceptionSummary: PerceptionSyncSummary) {
+        mutablePerceptionSummary.value = perceptionSummary
+    }
+
+    private fun setFirebaseSyncState(syncState: FirebaseSyncState) {
+        mutableState.update { current ->
+            current.copy(firebaseSyncState = syncState)
+        }
+    }
+
     companion object {
         private const val MAX_MALFORMED_PACKET_PREVIEW = 160
     }
@@ -57,10 +74,10 @@ class TelemetryRepository(
 data class SensorDashboardState(
     val connectionStatus: UsbConnectionStatus = UsbConnectionStatus.Disconnected,
     val connectionMessage: String = "USB service has not scanned yet.",
-    val latestTelemetry: SensorTelemetry? = null,
+    val latestTelemetry: RadarTelemetry? = null,
     val lastValidPacketAtMillis: Long? = null,
     val validPacketCount: Int = 0,
     val malformedPacketCount: Int = 0,
     val lastMalformedPacket: String? = null,
+    val firebaseSyncState: FirebaseSyncState = FirebaseSyncState(),
 )
-

@@ -2,35 +2,26 @@ package com.rewatt.app.data
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
-import com.rewatt.app.telemetry.SensorTelemetry
+import com.rewatt.app.telemetry.RadarTelemetry
 
 @Entity(tableName = "telemetry_readings")
 data class TelemetryEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
     val capturedAtMillis: Long,
-    val tempC: Float,
-    val humidityPercent: Float,
-    val aqi: Int,
-    val tvocPpb: Int,
-    val eco2Ppm: Int,
+    val presence: Boolean,
     val movingEnergy: Int,
     val stationaryEnergy: Int,
-    val presence: Boolean,
+    val distanceCm: Int,
     val rawPacket: String,
 )
 
-fun SensorTelemetry.toEntity(): TelemetryEntity =
+fun RadarTelemetry.toEntity(): TelemetryEntity =
     TelemetryEntity(
         capturedAtMillis = capturedAtMillis,
-        tempC = tempC,
-        humidityPercent = humidityPercent,
-        aqi = aqi,
-        tvocPpb = tvocPpb,
-        eco2Ppm = eco2Ppm,
+        presence = presence,
         movingEnergy = movingEnergy,
         stationaryEnergy = stationaryEnergy,
-        presence = presence,
+        distanceCm = distanceCm,
         rawPacket = rawPacket,
     )
-
