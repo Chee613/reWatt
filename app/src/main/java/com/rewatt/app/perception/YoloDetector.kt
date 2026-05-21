@@ -18,7 +18,9 @@ class YoloDetector private constructor(
         val inputBuffer = bitmap.toYoloInputBuffer()
         val output = Array(1) { Array(300) { FloatArray(6) } }
         interpreter.run(inputBuffer, output)
-        return YoloPostProcessor.process(output[0], labels)
+        return LectureHallPerceptionFilter.filterYoloDetections(
+            YoloPostProcessor.process(output[0], labels),
+        )
     }
 
     override fun close() {
@@ -112,4 +114,3 @@ private val fallbackCocoLabels = listOf(
     "refrigerator", "book", "clock", "vase", "scissors", "teddy bear",
     "hair drier", "toothbrush",
 )
-

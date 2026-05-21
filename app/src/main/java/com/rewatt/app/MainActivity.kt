@@ -10,10 +10,13 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.camera.view.PreviewView
 import com.rewatt.app.ui.dashboard.DashboardScreen
 import com.rewatt.app.ui.dashboard.DashboardViewModel
 import com.rewatt.app.ui.dashboard.DashboardViewModelFactory
 import com.rewatt.app.ui.theme.ReWattTheme
+import com.rewatt.app.perception.PerceptionViewModel
+import com.rewatt.app.perception.PerceptionViewModelFactory
 import com.rewatt.app.usb.UsbSentinelService
 
 class MainActivity : ComponentActivity() {
@@ -21,22 +24,51 @@ class MainActivity : ComponentActivity() {
         registerForActivityResult(ActivityResultContracts.RequestPermission()) {
             startUsbService()
         }
+    private val perceptionPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
+            val cameraGranted = permissions[Manifest.permission.CAMERA] == true ||
+                hasPermission(Manifest.permission.CAMERA)
+            val microphoneGranted = permissions[Manifest.permission.RECORD_AUDIO] == true ||
+                hasPermission(Manifest.permission.RECORD_AUDIO)
+            perceptionViewModel.setPermissionState(cameraGranted, microphoneGranted)
+            pendingPreviewView?.let { previewView ->
+                if (cameraGranted && microphoneGranted) {
+                    perceptionViewModel.startPerception(this, previewView)
+                }
+            }
+            pendingPreviewView = null
+        }
+    private var pendingPreviewView: PreviewView? = null
 
     private val viewModel: DashboardViewModel by viewModels {
         DashboardViewModelFactory((application as ReWattApplication).appGraph.telemetryRepository)
+    }
+    private val perceptionViewModel: PerceptionViewModel by viewModels {
+        PerceptionViewModelFactory(
+            appContext = applicationContext,
+            telemetryRepository = (application as ReWattApplication).appGraph.telemetryRepository,
+        )
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         requestNotificationPermissionIfNeeded()
+        perceptionViewModel.setPermissionState(
+            cameraGranted = hasPermission(Manifest.permission.CAMERA),
+            microphoneGranted = hasPermission(Manifest.permission.RECORD_AUDIO),
+        )
 
         setContent {
             val uiState = viewModel.uiState.collectAsStateWithLifecycle()
+            val perceptionState = perceptionViewModel.uiState.collectAsStateWithLifecycle()
             ReWattTheme {
                 DashboardScreen(
                     uiState = uiState.value,
+                    perceptionState = perceptionState.value,
                     onScanUsb = ::startUsbService,
+                    onStartPerception = ::requestPerceptionPermissionsThenStart,
+                    onStopPerception = perceptionViewModel::stopPerception,
                 )
             }
         }
@@ -60,4 +92,27 @@ class MainActivity : ComponentActivity() {
             UsbSentinelService.createStartIntent(this),
         )
     }
+
+    private fun requestPerceptionPermissionsThenStart(previewView: PreviewView) {
+        pendingPreviewView = previewView
+        val cameraGranted = hasPermission(Manifest.permission.CAMERA)
+        val microphoneGranted = hasPermission(Manifest.permission.RECORD_AUDIO)
+        perceptionViewModel.setPermissionState(cameraGranted, microphoneGranted)
+
+        if (cameraGranted && microphoneGranted) {
+            pendingPreviewView = null
+            perceptionViewModel.startPerception(this, previewView)
+            return
+        }
+
+        perceptionPermissionLauncher.launch(
+            arrayOf(
+                Manifest.permission.CAMERA,
+                Manifest.permission.RECORD_AUDIO,
+            ),
+        )
+    }
+
+    private fun hasPermission(permission: String): Boolean =
+        ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
 }

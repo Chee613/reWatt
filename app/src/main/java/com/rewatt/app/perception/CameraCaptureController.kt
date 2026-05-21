@@ -81,12 +81,14 @@ class CameraCaptureController(
             }
 
             val detections = yoloDetector?.detect(bitmap).orEmpty()
+            val personCount = detections.count { it.isPerson }
+            val contextCount = detections.count { it.isLectureHallContext }
             val message = if (yoloDetector == null) {
                 "YOLO model is missing."
             } else if (detections.isEmpty()) {
-                "No objects above confidence threshold."
+                "No people or lecture-hall context objects above confidence threshold."
             } else {
-                "${detections.size} object(s), ${detections.count { it.isPerson }} person(s)."
+                "People detected: $personCount. Context objects: $contextCount."
             }
             onFrameAnalyzed(bitmap, detections, message)
         } catch (error: Throwable) {
@@ -133,4 +135,3 @@ private fun Bitmap.rotate(degrees: Int): Bitmap {
     val matrix = Matrix().apply { postRotate(degrees.toFloat()) }
     return Bitmap.createBitmap(this, 0, 0, width, height, matrix, true)
 }
-

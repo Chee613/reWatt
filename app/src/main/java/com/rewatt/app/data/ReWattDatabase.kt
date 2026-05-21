@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 
 @Database(
     entities = [TelemetryEntity::class],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 abstract class ReWattDatabase : RoomDatabase() {
@@ -19,7 +19,8 @@ abstract class ReWattDatabase : RoomDatabase() {
                 context.applicationContext,
                 ReWattDatabase::class.java,
                 "rewatt.db",
-            ).build()
+            )
+                .fallbackToDestructiveMigration(dropAllTables = true)
+                .build()
     }
 }
-

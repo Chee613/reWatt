@@ -7,16 +7,16 @@ object YamnetPostProcessor {
         topK: Int = 5,
         confidenceThreshold: Float = 0.05f,
     ): List<SoundDetection> =
-        scores.asSequence()
-            .mapIndexed { index, score ->
-                SoundDetection(
-                    label = labels.getOrNull(index) ?: "class $index",
-                    confidence = score,
-                )
-            }
-            .filter { it.confidence >= confidenceThreshold }
-            .sortedByDescending { it.confidence }
-            .take(topK)
-            .toList()
+        LectureHallPerceptionFilter.filterHumanActivitySounds(
+            scores.asSequence()
+                .mapIndexed { index, score ->
+                    SoundDetection(
+                        label = labels.getOrNull(index) ?: "class $index",
+                        confidence = score,
+                    )
+                }
+                .filter { it.confidence >= confidenceThreshold }
+                .sortedByDescending { it.confidence }
+                .toList(),
+        ).take(topK)
 }
-

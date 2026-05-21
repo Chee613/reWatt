@@ -158,6 +158,8 @@ class PerceptionViewModel(
                 topAudioLabels = state.soundDetections
                     .take(3)
                     .map { it.label },
+                audioPresenceDetected = state.audioPresenceDetected,
+                audioPresenceScore = state.audioPresenceScore,
                 capturedAtMillis = listOfNotNull(
                     state.latestFrameAtMillis,
                     state.latestAudioAtMillis,

@@ -91,8 +91,8 @@ class AudioCaptureController(
                             detections = detections,
                             message = when {
                                 yamnetDetector == null -> "Captured audio; yamnet.tflite is missing."
-                                detections.isEmpty() -> "Captured audio; no sound class above threshold."
-                                else -> "Captured audio; ${detections.size} sound class(es)."
+                                detections.isEmpty() -> "Captured audio; no human activity sound above threshold."
+                                else -> "Captured audio; ${detections.size} human activity sound(s)."
                             },
                         ),
                     )
