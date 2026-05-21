@@ -13,6 +13,8 @@ data class TelemetryEntity(
     val movingEnergy: Int,
     val stationaryEnergy: Int,
     val distanceCm: Int,
+    val temperatureC: Float?,
+    val humidityPercent: Float?,
     val rawPacket: String,
 )
 
@@ -23,5 +25,7 @@ fun RadarTelemetry.toEntity(): TelemetryEntity =
         movingEnergy = movingEnergy,
         stationaryEnergy = stationaryEnergy,
         distanceCm = distanceCm,
+        temperatureC = temperatureC,
+        humidityPercent = humidityPercent,
         rawPacket = rawPacket,
     )

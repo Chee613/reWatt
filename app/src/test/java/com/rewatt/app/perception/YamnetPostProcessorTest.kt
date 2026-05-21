@@ -46,6 +46,17 @@ class YamnetPostProcessorTest {
     }
 
     @Test
+    fun rank_defaultsToTopThreeHumanActivitySounds() {
+        val detections = YamnetPostProcessor.rank(
+            scores = floatArrayOf(0.95f, 0.90f, 0.85f, 0.80f, 0.99f),
+            labels = listOf("Speech", "Typing", "Clapping", "Computer keyboard", "Car"),
+        )
+
+        assertEquals(3, detections.size)
+        assertEquals(listOf("Speech", "Typing", "Clapping"), detections.map { it.label })
+    }
+
+    @Test
     fun classMap_parseLabels_handlesQuotedDisplayNames() {
         val labels = YamnetClassMap.parseLabels(
             """

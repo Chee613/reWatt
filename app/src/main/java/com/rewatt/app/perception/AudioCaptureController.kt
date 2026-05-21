@@ -37,7 +37,7 @@ class AudioCaptureController(
         }
 
         captureJob = scope.launch {
-            val sampleCount = yamnetDetector?.inputSampleCount ?: DEFAULT_SAMPLE_COUNT
+            val sampleCount = RECORDING_SAMPLE_COUNT
             val minBufferSize = AudioRecord.getMinBufferSize(
                 SAMPLE_RATE_HZ,
                 AudioFormat.CHANNEL_IN_MONO,
@@ -126,9 +126,11 @@ class AudioCaptureController(
 
     companion object {
         private const val SAMPLE_RATE_HZ = 16_000
-        private const val DEFAULT_SAMPLE_COUNT = 15_600
+        private const val RECORDING_WINDOW_MILLIS = 15_000L
+        private const val RECORDING_INTERVAL_MILLIS = 10 * 60 * 1_000L
+        private const val RECORDING_SAMPLE_COUNT = SAMPLE_RATE_HZ * 15
         private const val BYTES_PER_SAMPLE = 2
-        private const val CAPTURE_PAUSE_MILLIS = 500L
+        private const val CAPTURE_PAUSE_MILLIS = RECORDING_INTERVAL_MILLIS - RECORDING_WINDOW_MILLIS
     }
 }
 

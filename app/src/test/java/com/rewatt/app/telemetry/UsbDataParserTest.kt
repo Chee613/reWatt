@@ -10,7 +10,7 @@ class UsbDataParserTest {
     @Test
     fun parseTelemetry_acceptsRadarPayloadWithPresence() {
         val telemetry = UsbDataParser.parseTelemetry(
-            line = "RADAR:PRES=1,MOV=42,STA=85,DIST=120",
+            line = "LD2412:PRES=1,MOV=42,STA=85,DIST=120|SHT30:T=26.5,H=58.2",
             capturedAtMillis = 123L,
         )
 
@@ -19,18 +19,52 @@ class UsbDataParserTest {
         assertEquals(42, telemetry.movingEnergy)
         assertEquals(85, telemetry.stationaryEnergy)
         assertEquals(120, telemetry.distanceCm)
+        assertEquals(26.5f, telemetry.temperatureC)
+        assertEquals(58.2f, telemetry.humidityPercent)
         assertEquals(123L, telemetry.capturedAtMillis)
+    }
+
+    @Test
+    fun parseTelemetry_acceptsLegacyRadarPrefix() {
+        val telemetry = UsbDataParser.parseTelemetry(
+            line = "RADAR:PRES=1,MOV=42,STA=85,DIST=120",
+        )
+
+        requireNotNull(telemetry)
+        assertTrue(telemetry.presence)
     }
 
     @Test
     fun parseTelemetry_acceptsRadarPayloadWithoutPresence() {
         val telemetry = UsbDataParser.parseTelemetry(
-            line = "RADAR:PRES=0,MOV=0,STA=0,DIST=0",
+            line = "LD2412:PRES=0,MOV=0,STA=0,DIST=0",
         )
 
         requireNotNull(telemetry)
         assertFalse(telemetry.presence)
         assertEquals(0, telemetry.distanceCm)
+        assertNull(telemetry.temperatureC)
+        assertNull(telemetry.humidityPercent)
+    }
+
+    @Test
+    fun parseTelemetry_acceptsNegativeTemperature() {
+        val telemetry = UsbDataParser.parseTelemetry(
+            line = "LD2412:PRES=1,MOV=42,STA=85,DIST=120|SHT30:T=-2.5,H=58",
+        )
+
+        requireNotNull(telemetry)
+        assertEquals(-2.5f, telemetry.temperatureC)
+        assertEquals(58f, telemetry.humidityPercent)
+    }
+
+    @Test
+    fun parseTelemetry_rejectsMalformedSht30Payload() {
+        val telemetry = UsbDataParser.parseTelemetry(
+            line = "LD2412:PRES=1,MOV=42,STA=85,DIST=120|SHT30:T=warm,H=58.2",
+        )
+
+        assertNull(telemetry)
     }
 
     @Test
@@ -70,4 +104,3 @@ class UsbDataParserTest {
         assertNull(telemetry)
     }
 }
-
