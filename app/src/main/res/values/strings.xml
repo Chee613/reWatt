@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">REWATT</string>
+    <string name="usb_notification_channel">Sensor link</string>
+    <string name="usb_notification_title">REWATT sensor link active</string>
+    <string name="usb_notification_text">Listening for ESP32-C6 telemetry over USB.</string>
+</resources>
+
