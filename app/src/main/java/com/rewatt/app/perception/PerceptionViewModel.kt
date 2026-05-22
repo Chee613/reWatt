@@ -37,13 +37,21 @@ class PerceptionViewModel(
         }
     }
 
-    fun startPerception(lifecycleOwner: LifecycleOwner, previewView: PreviewView) {
+    fun startPerception(
+        lifecycleOwner: LifecycleOwner,
+        previewView: PreviewView,
+        source: CaptureStartSource = CaptureStartSource.Manual,
+    ) {
         stopPerception()
         val sessionId = ++perceptionSessionId
         mutableState.update {
             it.copy(
                 isRunning = true,
-                statusMessage = "Starting camera preview and microphone capture.",
+                captureStartSource = source,
+                statusMessage = when (source) {
+                    CaptureStartSource.Manual -> "Manual capture starting."
+                    CaptureStartSource.Auto -> "Auto capture triggered by LD2412 presence."
+                },
                 yoloMessage = "Loading YOLO in the background.",
                 yamnetMessage = "Loading YAMNet in the background.",
             )
@@ -110,6 +118,7 @@ class PerceptionViewModel(
         mutableState.update {
             it.copy(
                 isRunning = false,
+                captureStartSource = null,
                 statusMessage = "Perception is stopped.",
             )
         }
