@@ -1,10 +1,13 @@
 package com.rewatt.app.ui.dashboard
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performClick
 import com.rewatt.app.data.SensorDashboardState
+import com.rewatt.app.perception.CaptureStartSource
 import com.rewatt.app.perception.DetectionBox
 import com.rewatt.app.perception.ObjectDetection
 import com.rewatt.app.perception.PerceptionUiState
@@ -28,14 +31,17 @@ class DashboardScreenTest {
                     uiState = DashboardUiState(),
                     perceptionState = PerceptionUiState(),
                     onScanUsb = {},
-                    onStartPerception = {},
+                    onStartPerception = { _, _ -> },
                     onStopPerception = {},
                 )
             }
         }
 
         composeRule.onNodeWithText("Disconnected").assertIsDisplayed()
-        composeRule.onNodeWithText("Waiting for the first valid telemetry packet.").assertIsDisplayed()
+        composeRule.onNodeWithText("Waiting for first packet.").assertIsDisplayed()
+        composeRule.onNodeWithText("LIVE").assertIsDisplayed()
+        composeRule.onNodeWithText("Analytic").assertIsDisplayed()
+        composeRule.onNodeWithText("Capture").assertIsDisplayed()
     }
 
     @Test
@@ -65,7 +71,7 @@ class DashboardScreenTest {
                     ),
                     perceptionState = PerceptionUiState(),
                     onScanUsb = {},
-                    onStartPerception = {},
+                    onStartPerception = { _, _ -> },
                     onStopPerception = {},
                 )
             }
@@ -78,6 +84,7 @@ class DashboardScreenTest {
         composeRule.onNodeWithText("Detected").assertIsDisplayed()
         composeRule.onNodeWithText("Live telemetry is fresh.").assertIsDisplayed()
         composeRule.onNodeWithText("Firestore sync").assertIsDisplayed()
+        composeRule.onNodeWithText("Start Capture").assertIsDisplayed()
     }
 
     @Test
@@ -93,14 +100,57 @@ class DashboardScreenTest {
                     ),
                     perceptionState = PerceptionUiState(),
                     onScanUsb = {},
-                    onStartPerception = {},
+                    onStartPerception = { _, _ -> },
                     onStopPerception = {},
                 )
             }
         }
 
         composeRule.onNodeWithText("Malformed").assertIsDisplayed()
-        composeRule.onNodeWithText("Last rejected: not-sensor-data").assertIsDisplayed()
+        composeRule.onNodeWithText("Packet health").assertIsDisplayed()
+    }
+
+    @Test
+    fun pressingStartCaptureOpensCaptureTab() {
+        composeRule.setContent {
+            ReWattTheme {
+                DashboardScreen(
+                    uiState = DashboardUiState(),
+                    perceptionState = PerceptionUiState(),
+                    onScanUsb = {},
+                    onStartPerception = { _, _ -> },
+                    onStopPerception = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Start Capture").performClick()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText("Capture interface").assertIsDisplayed()
+        composeRule.onNodeWithText("Top 3 sounds heard").assertIsDisplayed()
+        composeRule.onNodeWithText("Human activity sounds").assertIsDisplayed()
+    }
+
+    @Test
+    fun analyticTabIsSecondAndShowsTimeFmPlaceholder() {
+        composeRule.setContent {
+            ReWattTheme {
+                DashboardScreen(
+                    uiState = DashboardUiState(),
+                    perceptionState = PerceptionUiState(),
+                    onScanUsb = {},
+                    onStartPerception = { _, _ -> },
+                    onStopPerception = {},
+                )
+            }
+        }
+
+        composeRule.onNodeWithText("Analytic").performClick()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText("TimeFM Analysis").assertIsDisplayed()
+        composeRule.onNodeWithText("Analytic tab ready for future TimeFM code.").assertIsDisplayed()
     }
 
     @Test
@@ -128,17 +178,21 @@ class DashboardScreenTest {
                             SoundDetection(label = "Speech", confidence = 0.84f),
                             SoundDetection(label = "Clicking", confidence = 0.76f),
                         ),
+                        captureStartSource = CaptureStartSource.Manual,
+                        isRunning = true,
                     ),
                     onScanUsb = {},
-                    onStartPerception = {},
+                    onStartPerception = { _, _ -> },
                     onStopPerception = {},
                 )
             }
         }
 
-        composeRule.onNodeWithText("People detected").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("Context objects").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("Human activity sounds").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithText("Clicking (support)").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Capture").performClick()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText("Top 3 sounds heard").assertIsDisplayed()
+        composeRule.onNodeWithText("Human activity sounds").assertIsDisplayed()
+        composeRule.onAllNodesWithText("Clicking (support)").assertCountEquals(2)
     }
 }

@@ -11,6 +11,7 @@ import androidx.activity.viewModels
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.camera.view.PreviewView
+import com.rewatt.app.perception.CaptureStartSource
 import com.rewatt.app.ui.dashboard.DashboardScreen
 import com.rewatt.app.ui.dashboard.DashboardViewModel
 import com.rewatt.app.ui.dashboard.DashboardViewModelFactory
@@ -33,12 +34,18 @@ class MainActivity : ComponentActivity() {
             perceptionViewModel.setPermissionState(cameraGranted, microphoneGranted)
             pendingPreviewView?.let { previewView ->
                 if (cameraGranted && microphoneGranted) {
-                    perceptionViewModel.startPerception(this, previewView)
+                    perceptionViewModel.startPerception(
+                        lifecycleOwner = this,
+                        previewView = previewView,
+                        source = pendingCaptureSource ?: CaptureStartSource.Manual,
+                    )
                 }
             }
             pendingPreviewView = null
+            pendingCaptureSource = null
         }
     private var pendingPreviewView: PreviewView? = null
+    private var pendingCaptureSource: CaptureStartSource? = null
 
     private val viewModel: DashboardViewModel by viewModels {
         DashboardViewModelFactory((application as ReWattApplication).appGraph.telemetryRepository)
@@ -93,15 +100,24 @@ class MainActivity : ComponentActivity() {
         )
     }
 
-    private fun requestPerceptionPermissionsThenStart(previewView: PreviewView) {
+    private fun requestPerceptionPermissionsThenStart(
+        previewView: PreviewView,
+        source: CaptureStartSource,
+    ) {
         pendingPreviewView = previewView
+        pendingCaptureSource = source
         val cameraGranted = hasPermission(Manifest.permission.CAMERA)
         val microphoneGranted = hasPermission(Manifest.permission.RECORD_AUDIO)
         perceptionViewModel.setPermissionState(cameraGranted, microphoneGranted)
 
         if (cameraGranted && microphoneGranted) {
             pendingPreviewView = null
-            perceptionViewModel.startPerception(this, previewView)
+            pendingCaptureSource = null
+            perceptionViewModel.startPerception(
+                lifecycleOwner = this,
+                previewView = previewView,
+                source = source,
+            )
             return
         }
 

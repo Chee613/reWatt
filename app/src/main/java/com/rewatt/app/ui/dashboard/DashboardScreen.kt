@@ -6,12 +6,13 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -32,15 +33,19 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,13 +57,15 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import com.rewatt.app.R
 import com.rewatt.app.data.ActivityAnalysisStatus
 import com.rewatt.app.data.FirebaseSyncStatus
 import com.rewatt.app.data.SensorDashboardState
+import com.rewatt.app.perception.CaptureStartSource
 import com.rewatt.app.perception.ObjectDetection
 import com.rewatt.app.perception.PerceptionUiState
 import com.rewatt.app.telemetry.PacketFreshness
@@ -66,27 +73,74 @@ import com.rewatt.app.telemetry.RadarTelemetry
 import com.rewatt.app.usb.UsbConnectionStatus
 import kotlin.math.min
 
+private enum class ReWattTab(val label: String) {
+    Live("LIVE"),
+    Analytic("Analytic"),
+    Capture("Capture"),
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(
     uiState: DashboardUiState,
     perceptionState: PerceptionUiState,
     onScanUsb: () -> Unit,
-    onStartPerception: (PreviewView) -> Unit,
+    onStartPerception: (PreviewView, CaptureStartSource) -> Unit,
     onStopPerception: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var selectedTab by rememberSaveable { mutableStateOf(ReWattTab.Live) }
+    var pendingCaptureSource by remember { mutableStateOf<CaptureStartSource?>(null) }
+    var lastAutoTriggerAtMillis by remember { mutableStateOf<Long?>(null) }
+    var autoSuppressedUntilClear by remember { mutableStateOf(false) }
+
+    val latestTelemetry = uiState.sensorState.latestTelemetry
+    val hasFreshPresence = uiState.packetFreshness == PacketFreshness.Fresh &&
+        latestTelemetry?.presence == true
+
+    LaunchedEffect(hasFreshPresence) {
+        if (!hasFreshPresence) autoSuppressedUntilClear = false
+    }
+
+    LaunchedEffect(
+        hasFreshPresence,
+        latestTelemetry?.capturedAtMillis,
+        perceptionState.isRunning,
+        autoSuppressedUntilClear,
+    ) {
+        val telemetryAtMillis = latestTelemetry?.capturedAtMillis
+        if (
+            shouldAutoTriggerCapture(
+                hasFreshPresence = hasFreshPresence,
+                isCaptureRunning = perceptionState.isRunning,
+                autoSuppressedUntilClear = autoSuppressedUntilClear,
+                latestTelemetryAtMillis = telemetryAtMillis,
+                lastAutoTriggerAtMillis = lastAutoTriggerAtMillis,
+            )
+        ) {
+            lastAutoTriggerAtMillis = telemetryAtMillis
+            selectedTab = ReWattTab.Capture
+            pendingCaptureSource = CaptureStartSource.Auto
+        }
+    }
+
+    fun requestCapture(source: CaptureStartSource) {
+        selectedTab = ReWattTab.Capture
+        pendingCaptureSource = source
+    }
+
+    fun stopCapture() {
+        if (hasFreshPresence) autoSuppressedUntilClear = true
+        onStopPerception()
+    }
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Image(
-                            painter = painterResource(R.drawable.rewatt_logo),
-                            contentDescription = "REWATT logo",
-                            modifier = Modifier.size(36.dp),
-                        )
+                        ReWattLogoBadge()
                         Spacer(Modifier.width(10.dp))
                         Column {
                             Text("REWATT", fontWeight = FontWeight.Bold)
@@ -99,33 +153,391 @@ fun DashboardScreen(
                 ),
             )
         },
+        bottomBar = {
+            NavigationBar {
+                ReWattTab.values().forEach { tab ->
+                    NavigationBarItem(
+                        selected = selectedTab == tab,
+                        onClick = { selectedTab = tab },
+                        icon = { Text(tab.label.first().toString(), fontWeight = FontWeight.Bold) },
+                        label = { Text(tab.label) },
+                    )
+                }
+            }
+        },
     ) { paddingValues ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(androidx.compose.material3.MaterialTheme.colorScheme.background)
-                .padding(paddingValues)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .padding(paddingValues),
         ) {
-            ConnectionCard(
-                state = uiState.sensorState,
-                freshness = uiState.packetFreshness,
-                onScanUsb = onScanUsb,
+            when (selectedTab) {
+                ReWattTab.Live -> LivePage(
+                    uiState = uiState,
+                    perceptionState = perceptionState,
+                    onScanUsb = onScanUsb,
+                    onStartCapture = { requestCapture(CaptureStartSource.Manual) },
+                )
+
+                ReWattTab.Analytic -> AnalyticPage(uiState = uiState, perceptionState = perceptionState)
+
+                ReWattTab.Capture -> CapturePage(
+                    state = perceptionState,
+                    nowMillis = uiState.nowMillis,
+                    pendingCaptureSource = pendingCaptureSource,
+                    onPendingCaptureConsumed = { pendingCaptureSource = null },
+                    onStartPerception = onStartPerception,
+                    onStopPerception = ::stopCapture,
+                )
+            }
+        }
+    }
+}
+
+internal fun shouldAutoTriggerCapture(
+    hasFreshPresence: Boolean,
+    isCaptureRunning: Boolean,
+    autoSuppressedUntilClear: Boolean,
+    latestTelemetryAtMillis: Long?,
+    lastAutoTriggerAtMillis: Long?,
+): Boolean =
+    hasFreshPresence &&
+        !isCaptureRunning &&
+        !autoSuppressedUntilClear &&
+        latestTelemetryAtMillis != null &&
+        latestTelemetryAtMillis != lastAutoTriggerAtMillis
+
+@Composable
+private fun ReWattLogoBadge(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .width(70.dp)
+            .height(44.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 2.dp, vertical = 5.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color(0x334DFFE9)),
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 6.dp, vertical = 8.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(Color(0x5536A3FF)),
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(3.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color.Black)
+                .padding(horizontal = 4.dp, vertical = 4.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Image(
+                painter = painterResource(R.drawable.rewatt_logo),
+                contentDescription = "REWATT logo",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit,
             )
-            TelemetrySection(telemetry = uiState.sensorState.latestTelemetry)
-            PacketHealthCard(
+        }
+    }
+}
+
+@Composable
+private fun LivePage(
+    uiState: DashboardUiState,
+    perceptionState: PerceptionUiState,
+    onScanUsb: () -> Unit,
+    onStartCapture: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        ConnectionCard(
+            state = uiState.sensorState,
+            freshness = uiState.packetFreshness,
+            onScanUsb = onScanUsb,
+        )
+        TelemetryMetricGrid(telemetry = uiState.sensorState.latestTelemetry)
+        LivePerceptionSummary(perceptionState = perceptionState)
+        Row(
+            modifier = Modifier.height(220.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            RadarEnergyCard(
+                telemetry = uiState.sensorState.latestTelemetry,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+            )
+            StatusSummaryCard(
                 sensorState = uiState.sensorState,
                 freshness = uiState.packetFreshness,
                 nowMillis = uiState.nowMillis,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
             )
-            PerceptionSection(
-                state = perceptionState,
-                nowMillis = uiState.nowMillis,
-                onStartPerception = onStartPerception,
-                onStopPerception = onStopPerception,
+        }
+        Button(
+            onClick = onStartCapture,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp),
+        ) {
+            Text(if (perceptionState.isRunning) "Open Capture" else "Start Capture")
+        }
+    }
+}
+
+@Composable
+private fun AnalyticPage(
+    uiState: DashboardUiState,
+    perceptionState: PerceptionUiState,
+) {
+    val telemetry = uiState.sensorState.latestTelemetry
+    val analysis = uiState.sensorState.activityAnalysisState.analysis
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text("TimeFM Analysis", fontWeight = FontWeight.Bold, fontSize = 24.sp)
+        InfoCard(modifier = Modifier.fillMaxWidth()) {
+            Text("Analytic tab ready for future TimeFM code.", fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "Live context is kept here so the TimeFM page has room state before forecasting is added.",
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
             )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            MetricCard(
+                title = "People",
+                value = perceptionState.personCount.toString(),
+                modifier = Modifier.weight(1f),
+            )
+            MetricCard(
+                title = "Activity",
+                value = analysis?.activity ?: "--",
+                modifier = Modifier.weight(1f),
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            MetricCard(
+                title = "Temp",
+                value = telemetry?.temperatureC?.let { "%.1f C".format(it) } ?: "--",
+                modifier = Modifier.weight(1f),
+            )
+            MetricCard(
+                title = "Humidity",
+                value = telemetry?.humidityPercent?.let { "%.1f %%".format(it) } ?: "--",
+                modifier = Modifier.weight(1f),
+            )
+        }
+        InfoCard(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+        ) {
+            Text("Latest Gemini activity", fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = analysis?.reason ?: uiState.sensorState.activityAnalysisState.message,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 8,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun CapturePage(
+    state: PerceptionUiState,
+    nowMillis: Long,
+    pendingCaptureSource: CaptureStartSource?,
+    onPendingCaptureConsumed: () -> Unit,
+    onStartPerception: (PreviewView, CaptureStartSource) -> Unit,
+    onStopPerception: () -> Unit,
+) {
+    var previewView by remember { mutableStateOf<PreviewView?>(null) }
+
+    LaunchedEffect(previewView, pendingCaptureSource, state.isRunning) {
+        val source = pendingCaptureSource
+        val preview = previewView
+        if (source == null) return@LaunchedEffect
+        if (state.isRunning) {
+            onPendingCaptureConsumed()
+            return@LaunchedEffect
+        }
+        if (preview != null) {
+            onStartPerception(preview, source)
+            onPendingCaptureConsumed()
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        CaptureHeader(
+            state = state,
+            previewView = previewView,
+            onStartPerception = onStartPerception,
+            onStopPerception = onStopPerception,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            MetricCard(
+                title = "Camera",
+                value = if (state.cameraPermissionGranted) "Allowed" else "Need access",
+                modifier = Modifier.weight(1f),
+                warning = !state.cameraPermissionGranted,
+            )
+            MetricCard(
+                title = "Mic",
+                value = if (state.microphonePermissionGranted) "Allowed" else "Need access",
+                modifier = Modifier.weight(1f),
+                warning = !state.microphonePermissionGranted,
+            )
+        }
+        CaptureDetectionSummary(state = state)
+        AndroidView(
+            factory = { context ->
+                PreviewView(context).apply {
+                    scaleType = PreviewView.ScaleType.FILL_CENTER
+                    implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+                }.also { previewView = it }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(150.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant),
+        )
+        LatestFrameCompactCard(
+            state = state,
+            nowMillis = nowMillis,
+            modifier = Modifier.height(320.dp),
+        )
+        AudioCompactCard(
+            state = state,
+            nowMillis = nowMillis,
+            modifier = Modifier.height(260.dp),
+        )
+        Spacer(Modifier.height(8.dp))
+    }
+}
+
+@Composable
+private fun LivePerceptionSummary(perceptionState: PerceptionUiState) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        MetricCard(
+            title = "People detected",
+            value = perceptionState.personCount.toString(),
+            modifier = Modifier.weight(1f),
+        )
+        MetricCard(
+            title = "Top sound",
+            value = perceptionState.soundDetections.firstOrNull()?.label ?: "--",
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
+private fun CaptureDetectionSummary(state: PerceptionUiState) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            MetricCard(
+                title = "People detected",
+                value = state.personCount.toString(),
+                modifier = Modifier.weight(1f),
+            )
+            MetricCard(
+                title = "Context objects",
+                value = state.contextObjectDetections.size.toString(),
+                modifier = Modifier.weight(1f),
+            )
+        }
+        InfoCard {
+        Text("Top 3 sounds heard", fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(6.dp))
+        val topSounds = state.soundDetections.take(3)
+        if (topSounds.isEmpty()) {
+            Text(
+                text = "Waiting for YAMNet audio capture.",
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.sp,
+            )
+        } else {
+            topSounds.forEach { detection ->
+                DetectionRow(
+                    label = if (detection.indicatesHumanPresence) {
+                        detection.label
+                    } else {
+                        "${detection.label} (support)"
+                    },
+                    confidence = detection.confidence,
+                    highlight = detection.indicatesHumanPresence,
+                )
+            }
+        }
+        }
+    }
+}
+
+@Composable
+private fun CaptureHeader(
+    state: PerceptionUiState,
+    previewView: PreviewView?,
+    onStartPerception: (PreviewView, CaptureStartSource) -> Unit,
+    onStopPerception: () -> Unit,
+) {
+    InfoCard {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Capture interface", fontWeight = FontWeight.SemiBold)
+                Text(
+                    text = state.captureStatusLabel(),
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 13.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (state.isRunning) {
+                OutlinedButton(onClick = onStopPerception) {
+                    Text("Stop")
+                }
+            } else {
+                Button(
+                    onClick = { previewView?.let { onStartPerception(it, CaptureStartSource.Manual) } },
+                    enabled = previewView != null,
+                ) {
+                    Text("Start")
+                }
+            }
         }
     }
 }
@@ -142,7 +554,10 @@ private fun ConnectionCard(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 StatusDot(color = state.connectionStatus.statusColor(freshness))
                 Spacer(Modifier.width(10.dp))
                 Column {
@@ -154,6 +569,8 @@ private fun ConnectionCard(
                         text = state.connectionMessage,
                         color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 13.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
@@ -171,9 +588,9 @@ private fun ConnectionCard(
 }
 
 @Composable
-private fun TelemetrySection(telemetry: RadarTelemetry?) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+private fun TelemetryMetricGrid(telemetry: RadarTelemetry?) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             MetricCard(
                 title = "Presence",
                 value = when (telemetry?.presence) {
@@ -189,9 +606,9 @@ private fun TelemetrySection(telemetry: RadarTelemetry?) {
                 modifier = Modifier.weight(1f),
             )
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             MetricCard(
-                title = "Temperature",
+                title = "Temp",
                 value = telemetry?.temperatureC?.let { "%.1f C".format(it) } ?: "--",
                 modifier = Modifier.weight(1f),
             )
@@ -201,13 +618,15 @@ private fun TelemetrySection(telemetry: RadarTelemetry?) {
                 modifier = Modifier.weight(1f),
             )
         }
-        RadarEnergyCard(telemetry = telemetry)
     }
 }
 
 @Composable
-private fun RadarEnergyCard(telemetry: RadarTelemetry?) {
-    InfoCard {
+private fun RadarEnergyCard(
+    telemetry: RadarTelemetry?,
+    modifier: Modifier = Modifier,
+) {
+    InfoCard(modifier = modifier) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 imageVector = Icons.Outlined.Usb,
@@ -215,95 +634,55 @@ private fun RadarEnergyCard(telemetry: RadarTelemetry?) {
                 tint = androidx.compose.material3.MaterialTheme.colorScheme.primary,
             )
             Spacer(Modifier.width(8.dp))
-            Text("LD2412 radar energy", fontWeight = FontWeight.SemiBold)
+            Text("LD2412", fontWeight = FontWeight.SemiBold)
         }
-        Spacer(Modifier.height(12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            MetricCard(
-                title = "Moving",
-                value = telemetry?.movingEnergy?.toString() ?: "--",
-                modifier = Modifier.weight(1f),
-            )
-            MetricCard(
-                title = "Stationary",
-                value = telemetry?.stationaryEnergy?.toString() ?: "--",
-                modifier = Modifier.weight(1f),
-            )
-        }
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(10.dp))
         EnergyBar(label = "Moving", value = telemetry?.movingEnergy)
         Spacer(Modifier.height(10.dp))
         EnergyBar(label = "Stationary", value = telemetry?.stationaryEnergy)
-    }
-}
-
-@Composable
-private fun EnergyBar(label: String, value: Int?) {
-    val progress = min((value ?: 0) / 100f, 1f)
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(label, modifier = Modifier.width(88.dp), fontSize = 13.sp)
-        LinearProgressIndicator(
-            progress = { progress },
-            modifier = Modifier
-                .weight(1f)
-                .height(8.dp)
-                .clip(RoundedCornerShape(8.dp)),
+        Spacer(Modifier.height(10.dp))
+        Text(
+            text = telemetry?.rawPacket ?: "Waiting for radar packet",
+            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 12.sp,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
         )
-        Spacer(Modifier.width(10.dp))
-        Text(value?.toString() ?: "--", modifier = Modifier.width(32.dp), fontSize = 13.sp)
     }
 }
 
 @Composable
-private fun PacketHealthCard(
+private fun StatusSummaryCard(
     sensorState: SensorDashboardState,
     freshness: PacketFreshness,
     nowMillis: Long,
+    modifier: Modifier = Modifier,
 ) {
-    InfoCard {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (freshness == PacketFreshness.Stale || sensorState.lastMalformedPacket != null) {
+    InfoCard(modifier = modifier) {
+        if (freshness == PacketFreshness.Stale || sensorState.lastMalformedPacket != null) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     imageVector = Icons.Outlined.Warning,
                     contentDescription = null,
                     tint = androidx.compose.material3.MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(18.dp),
                 )
-                Spacer(Modifier.width(8.dp))
-            }
-            Column {
+                Spacer(Modifier.width(6.dp))
                 Text("Packet health", fontWeight = FontWeight.SemiBold)
-                Text(
-                    text = freshness.label(sensorState.lastValidPacketAtMillis, nowMillis),
-                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 13.sp,
-                )
             }
+        } else {
+            Text("Packet health", fontWeight = FontWeight.SemiBold)
         }
-        Spacer(Modifier.height(12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            MetricCard(
-                title = "Valid",
-                value = sensorState.validPacketCount.toString(),
-                modifier = Modifier.weight(1f),
-            )
-            MetricCard(
-                title = "Malformed",
-                value = sensorState.malformedPacketCount.toString(),
-                modifier = Modifier.weight(1f),
-                warning = sensorState.malformedPacketCount > 0,
-            )
-        }
-        sensorState.lastMalformedPacket?.let { packet ->
-            Spacer(Modifier.height(12.dp))
-            Text(
-                text = "Last rejected: $packet",
-                color = androidx.compose.material3.MaterialTheme.colorScheme.error,
-                fontSize = 13.sp,
-            )
-        }
-        Spacer(Modifier.height(12.dp))
+        Text(
+            text = freshness.label(sensorState.lastValidPacketAtMillis, nowMillis),
+            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 12.sp,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.height(8.dp))
         FirebaseSyncStatusRow(sensorState = sensorState)
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(8.dp))
         ActivityAnalysisStatusRow(sensorState = sensorState)
     }
 }
@@ -319,11 +698,13 @@ private fun FirebaseSyncStatusRow(sensorState: SensorDashboardState) {
         FirebaseSyncStatus.Failed -> androidx.compose.material3.MaterialTheme.colorScheme.error
     }
     Column {
-        Text("Firestore sync", fontWeight = FontWeight.SemiBold)
+        Text("Firestore sync", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
         Text(
             text = syncState.message,
             color = color,
-            fontSize = 13.sp,
+            fontSize = 12.sp,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
@@ -338,166 +719,118 @@ private fun ActivityAnalysisStatusRow(sensorState: SensorDashboardState) {
         ActivityAnalysisStatus.Complete -> androidx.compose.material3.MaterialTheme.colorScheme.primary
         ActivityAnalysisStatus.Failed -> androidx.compose.material3.MaterialTheme.colorScheme.error
     }
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text("Gemini activity", fontWeight = FontWeight.SemiBold)
+    Column {
+        Text("Gemini activity", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
         Text(
-            text = analysisState.message,
+            text = analysisState.analysis?.let {
+                "${it.activity} (${(it.confidence * 100).toInt()}%)"
+            } ?: analysisState.message,
             color = color,
-            fontSize = 13.sp,
+            fontSize = 12.sp,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
         )
-        analysisState.analysis?.let { analysis ->
-            Text(
-                text = "${analysis.activity} (${(analysis.confidence * 100).toInt()}%)",
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                text = analysis.reason,
-                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 13.sp,
-            )
-        }
     }
 }
 
 @Composable
-private fun PerceptionSection(
+private fun LatestFrameCompactCard(
     state: PerceptionUiState,
     nowMillis: Long,
-    onStartPerception: (PreviewView) -> Unit,
-    onStopPerception: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    var previewView by remember { mutableStateOf<PreviewView?>(null) }
-
-    InfoCard {
+    InfoCard(modifier = modifier) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column {
-                Text("Perception", fontWeight = FontWeight.SemiBold)
+            Column(modifier = Modifier.weight(1f)) {
+                Text("People detected", fontWeight = FontWeight.SemiBold)
                 Text(
-                    text = state.statusMessage,
+                    text = state.latestFrameAtMillis.ageLabel(nowMillis),
                     color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 13.sp,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
-            if (state.isRunning) {
-                OutlinedButton(onClick = onStopPerception) {
-                    Text("Stop")
-                }
-            } else {
-                Button(
-                    onClick = { previewView?.let(onStartPerception) },
-                    enabled = previewView != null,
-                ) {
-                    Text("Start")
-                }
-            }
-        }
-        Spacer(Modifier.height(12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            MetricCard(
-                title = "Camera",
-                value = if (state.cameraPermissionGranted) "Allowed" else "Need access",
-                modifier = Modifier.weight(1f),
-                warning = !state.cameraPermissionGranted,
-            )
-            MetricCard(
-                title = "Mic",
-                value = if (state.microphonePermissionGranted) "Allowed" else "Need access",
-                modifier = Modifier.weight(1f),
-                warning = !state.microphonePermissionGranted,
+            Text(
+                text = state.personCount.toString(),
+                fontWeight = FontWeight.Bold,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                fontSize = 20.sp,
             )
         }
-        Spacer(Modifier.height(12.dp))
-        AndroidView(
-            factory = { context ->
-                PreviewView(context).apply {
-                    scaleType = PreviewView.ScaleType.FILL_CENTER
-                    implementationMode = PreviewView.ImplementationMode.COMPATIBLE
-                }.also { previewView = it }
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(220.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant),
-        )
-        Spacer(Modifier.height(12.dp))
-        LatestFrameCard(
+        Spacer(Modifier.height(6.dp))
+        FramePreview(
             frame = state.latestFrame,
             detections = state.yoloDetections,
-            contextDetections = state.contextObjectDetections,
-            message = state.yoloMessage,
-            personCount = state.personCount,
-            latestFrameAtMillis = state.latestFrameAtMillis,
-            nowMillis = nowMillis,
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
         )
-        Spacer(Modifier.height(12.dp))
-        AudioCaptureCard(state = state, nowMillis = nowMillis)
+        Text(
+            text = state.yoloMessage,
+            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 12.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
 @Composable
-private fun LatestFrameCard(
-    frame: Bitmap?,
-    detections: List<ObjectDetection>,
-    contextDetections: List<ObjectDetection>,
-    message: String,
-    personCount: Int,
-    latestFrameAtMillis: Long?,
+private fun AudioCompactCard(
+    state: PerceptionUiState,
     nowMillis: Long,
+    modifier: Modifier = Modifier,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    InfoCard(modifier = modifier) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column {
-                Text("People detected", fontWeight = FontWeight.SemiBold)
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Human activity sounds", fontWeight = FontWeight.SemiBold)
                 Text(
-                    text = latestFrameAtMillis.ageLabel(nowMillis),
+                    text = state.latestAudioAtMillis.ageLabel(nowMillis),
                     color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 13.sp,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
             Text(
-                text = "$personCount ${if (personCount == 1) "person" else "people"}",
-                color = if (personCount > 0) {
-                    androidx.compose.material3.MaterialTheme.colorScheme.primary
+                text = if (state.audioPresenceDetected) {
+                    "${(state.audioPresenceScore * 100).toInt()}%"
                 } else {
-                    androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
+                    "${(state.audioRms * 100).toInt()}%"
                 },
+                color = androidx.compose.material3.MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.SemiBold,
             )
         }
-        FramePreview(frame = frame, detections = detections)
+        Spacer(Modifier.height(6.dp))
+        WaveformBar(waveform = state.audioWaveform)
         Text(
-            text = message,
+            text = state.yamnetMessage,
             color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 13.sp,
+            fontSize = 12.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
-        val peopleDetections = detections.filter { it.isPerson }
-        if (peopleDetections.isNotEmpty()) {
-            peopleDetections.take(5).forEach { detection ->
-                DetectionRow(
-                    label = detection.label,
-                    confidence = detection.confidence,
-                    highlight = detection.isPerson,
-                )
-            }
-        }
-        if (contextDetections.isNotEmpty()) {
-            Text("Context objects", fontWeight = FontWeight.SemiBold)
-            contextDetections.take(5).forEach { detection ->
-                DetectionRow(
-                    label = detection.label,
-                    confidence = detection.confidence,
-                    highlight = false,
-                )
-            }
+        state.soundDetections.take(3).forEach { detection ->
+            DetectionRow(
+                label = if (detection.indicatesHumanPresence) {
+                    detection.label
+                } else {
+                    "${detection.label} (support)"
+                },
+                confidence = detection.confidence,
+                highlight = detection.indicatesHumanPresence,
+            )
         }
     }
 }
@@ -506,11 +839,11 @@ private fun LatestFrameCard(
 private fun FramePreview(
     frame: Bitmap?,
     detections: List<ObjectDetection>,
+    modifier: Modifier = Modifier,
 ) {
     val aspectRatio = frame?.let { it.width.toFloat() / it.height.toFloat() } ?: (16f / 9f)
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
+        modifier = modifier
             .aspectRatio(aspectRatio)
             .clip(RoundedCornerShape(8.dp))
             .background(androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant),
@@ -520,6 +853,7 @@ private fun FramePreview(
             Text(
                 text = "No captured frame yet",
                 color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.sp,
             )
             return@Box
         }
@@ -558,69 +892,13 @@ private fun DetectionOverlay(detections: List<ObjectDetection>) {
 }
 
 @Composable
-private fun AudioCaptureCard(
-    state: PerceptionUiState,
-    nowMillis: Long,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column {
-                Text("Human activity sounds", fontWeight = FontWeight.SemiBold)
-                Text(
-                    text = state.latestAudioAtMillis.ageLabel(nowMillis),
-                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 13.sp,
-                )
-            }
-            Text(
-                text = if (state.audioPresenceDetected) {
-                    "${(state.audioPresenceScore * 100).toInt()}%"
-                } else {
-                    "${(state.audioRms * 100).toInt()}% level"
-                },
-                color = androidx.compose.material3.MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.SemiBold,
-            )
-        }
-        WaveformBar(waveform = state.audioWaveform)
-        Text(
-            text = "${state.audioSampleCount} samples at 16 kHz",
-            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 13.sp,
-        )
-        Text(
-            text = state.yamnetMessage,
-            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 13.sp,
-        )
-        if (state.soundDetections.isNotEmpty()) {
-            state.soundDetections.forEach { detection ->
-                DetectionRow(
-                    label = if (detection.indicatesHumanPresence) {
-                        detection.label
-                    } else {
-                        "${detection.label} (support)"
-                    },
-                    confidence = detection.confidence,
-                    highlight = detection.indicatesHumanPresence,
-                )
-            }
-        }
-    }
-}
-
-@Composable
 private fun WaveformBar(waveform: List<Float>) {
     val barColor = androidx.compose.material3.MaterialTheme.colorScheme.secondary
     val emptyColor = androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant
     Canvas(
         modifier = Modifier
             .fillMaxWidth()
-            .height(56.dp)
+            .height(40.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(emptyColor),
     ) {
@@ -657,11 +935,36 @@ private fun DetectionRow(
         Text(
             text = label,
             fontWeight = if (highlight) FontWeight.SemiBold else FontWeight.Normal,
+            fontSize = 12.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
         )
         Text(
             text = "${(confidence * 100).toInt()}%",
             color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 13.sp,
+            fontSize = 12.sp,
+        )
+    }
+}
+
+@Composable
+private fun EnergyBar(label: String, value: Int?) {
+    val progress = min((value ?: 0) / 100f, 1f)
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(label, fontSize = 12.sp)
+            Text(value?.toString() ?: "--", fontSize = 12.sp)
+        }
+        LinearProgressIndicator(
+            progress = { progress },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(8.dp)
+                .clip(RoundedCornerShape(8.dp)),
         )
     }
 }
@@ -687,34 +990,41 @@ private fun MetricCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp),
+                .padding(12.dp),
         ) {
             Text(
                 text = title,
                 color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 12.sp,
+                fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(4.dp))
             Text(
                 text = value,
                 fontWeight = FontWeight.Bold,
-                fontSize = 21.sp,
+                fontSize = 18.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }
 }
 
 @Composable
-private fun InfoCard(content: @Composable ColumnScope.() -> Unit) {
+private fun InfoCard(
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(
             containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface,
         ),
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(12.dp),
             content = content,
         )
     }
@@ -729,6 +1039,17 @@ private fun StatusDot(color: Color) {
             .background(color),
     )
 }
+
+private fun PerceptionUiState.captureStatusLabel(): String =
+    when {
+        isRunning && captureStartSource == CaptureStartSource.Auto ->
+            "Auto capture triggered by LD2412 presence."
+
+        isRunning && captureStartSource == CaptureStartSource.Manual ->
+            "Manual capture running."
+
+        else -> statusMessage
+    }
 
 private fun UsbConnectionStatus.label(): String =
     when (this) {
@@ -746,20 +1067,23 @@ private fun UsbConnectionStatus.statusColor(freshness: PacketFreshness): Color =
     when {
         this == UsbConnectionStatus.Connected && freshness == PacketFreshness.Fresh ->
             androidx.compose.material3.MaterialTheme.colorScheme.primary
+
         this == UsbConnectionStatus.Connected && freshness == PacketFreshness.Stale ->
             androidx.compose.material3.MaterialTheme.colorScheme.tertiary
+
         this == UsbConnectionStatus.Error || this == UsbConnectionStatus.PermissionDenied ->
             androidx.compose.material3.MaterialTheme.colorScheme.error
+
         else -> androidx.compose.material3.MaterialTheme.colorScheme.outline
     }
 
 private fun PacketFreshness.label(lastValidPacketAtMillis: Long?, nowMillis: Long): String =
     when (this) {
-        PacketFreshness.WaitingForFirstPacket -> "Waiting for the first valid telemetry packet."
+        PacketFreshness.WaitingForFirstPacket -> "Waiting for first packet."
         PacketFreshness.Fresh -> "Live telemetry is fresh."
         PacketFreshness.Stale -> {
             val ageSeconds = lastValidPacketAtMillis?.let { (nowMillis - it) / 1_000L } ?: 0L
-            "Telemetry is stale. Last valid packet was ${ageSeconds}s ago."
+            "Stale: last packet ${ageSeconds}s ago."
         }
     }
 

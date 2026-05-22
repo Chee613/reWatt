@@ -33,6 +33,11 @@ enum class AudioPresenceLevel {
     Strong,
 }
 
+enum class CaptureStartSource {
+    Manual,
+    Auto,
+}
+
 data class SoundDetection(
     val label: String,
     val confidence: Float,
@@ -45,6 +50,7 @@ data class SoundDetection(
 
 data class PerceptionUiState(
     val isRunning: Boolean = false,
+    val captureStartSource: CaptureStartSource? = null,
     val cameraPermissionGranted: Boolean = false,
     val microphonePermissionGranted: Boolean = false,
     val statusMessage: String = "Perception is stopped.",
