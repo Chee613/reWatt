@@ -25,9 +25,27 @@ Setup steps:
 5. Enable Cloud Firestore. Use test mode only for prototype hardware testing.
 6. Build with `.\gradlew.bat --no-daemon assembleDebug`.
 
+Temporary prototype rules:
+
+```js
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /rooms/{roomId}/{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
+```
+
+Do not use these open rules for production. Add Firebase Auth and App Check before sharing the APK widely.
+
 ## Gemini Activity Analysis
 
 For the prototype, Gemini is called directly from the Android app using the REST API and the stable model id `gemini-3.5-flash`. This avoids the Firebase Functions / Blaze requirement, but the API key can be extracted from the installed APK. Use this path only for testing and rotate the key before wider sharing.
+
+Firebase AI Logic is not required for this direct REST setup.
 
 Setup steps:
 

@@ -2,9 +2,10 @@ package com.rewatt.app.data
 
 import android.content.Context
 import android.provider.Settings
-import com.google.android.gms.tasks.Tasks
+import com.google.android.gms.tasks.Task
 import com.google.firebase.FirebaseApp
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.SetOptions
 
 class FirebaseSyncRepository(
@@ -49,6 +50,9 @@ class FirebaseSyncRepository(
             ),
         )
 
+        val nodePath = "rooms/$roomId/nodes/$nodeId"
+        val historyPath = "rooms/$roomId/telemetry/$historyId"
+
         val nodeTask = firestore.collection("rooms")
             .document(roomId)
             .collection("nodes")
@@ -59,26 +63,15 @@ class FirebaseSyncRepository(
             .document(roomId)
             .collection("telemetry")
             .document(historyId)
-            .set(payload + mapOf("historyId" to historyId))
+            .set(payload + mapOf("historyId" to historyId), SetOptions.merge())
 
-        Tasks.whenAll(nodeTask, historyTask)
-            .addOnSuccessListener {
-                onState(
-                    FirebaseSyncState(
-                        status = FirebaseSyncStatus.Synced,
-                        message = "Firestore sync complete.",
-                        lastSyncedAtMillis = System.currentTimeMillis(),
-                    ),
-                )
-            }
-            .addOnFailureListener { error ->
-                onState(
-                    FirebaseSyncState(
-                        status = FirebaseSyncStatus.Failed,
-                        message = "Firestore sync failed: ${error.message ?: error::class.java.simpleName}",
-                    ),
-                )
-            }
+        observeWriteResults(
+            writes = listOf(
+                FirestoreWrite(path = nodePath, task = nodeTask),
+                FirestoreWrite(path = historyPath, task = historyTask),
+            ),
+            onState = onState,
+        )
     }
 
     fun syncActivityAnalysis(
@@ -122,6 +115,60 @@ class FirebaseSyncRepository(
         return runCatching { FirebaseApp.initializeApp(appContext) != null }
             .getOrDefault(false)
     }
+}
+
+private data class FirestoreWrite(
+    val path: String,
+    val task: Task<Void>,
+)
+
+private fun observeWriteResults(
+    writes: List<FirestoreWrite>,
+    onState: (FirebaseSyncState) -> Unit,
+) {
+    val lock = Any()
+    val failures = linkedMapOf<String, String>()
+    var remainingWrites = writes.size
+
+    writes.forEach { write ->
+        write.task.addOnCompleteListener { task ->
+            val finalState = synchronized(lock) {
+                if (!task.isSuccessful) {
+                    failures[write.path] = task.exception.toFirestoreFailureMessage()
+                }
+                remainingWrites -= 1
+                if (remainingWrites == 0) {
+                    if (failures.isEmpty()) {
+                        FirebaseSyncState(
+                            status = FirebaseSyncStatus.Synced,
+                            message = "Firestore sync complete.",
+                            lastSyncedAtMillis = System.currentTimeMillis(),
+                        )
+                    } else {
+                        FirebaseSyncState(
+                            status = FirebaseSyncStatus.Failed,
+                            message = buildFirestoreWriteFailureMessage(failures),
+                        )
+                    }
+                } else {
+                    null
+                }
+            }
+            finalState?.let(onState)
+        }
+    }
+}
+
+fun buildFirestoreWriteFailureMessage(failures: Map<String, String>): String =
+    "Firestore sync failed: " + failures.entries.joinToString(separator = " | ") { (path, error) ->
+        "$path: $error"
+    }
+
+private fun Throwable?.toFirestoreFailureMessage(): String {
+    if (this == null) return "Unknown Firestore error."
+    val code = (this as? FirebaseFirestoreException)?.code?.name
+    val detail = message ?: javaClass.simpleName
+    return if (code.isNullOrBlank()) detail else "$code - $detail"
 }
 
 fun buildPerceptionPayload(

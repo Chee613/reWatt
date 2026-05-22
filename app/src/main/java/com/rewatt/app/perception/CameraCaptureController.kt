@@ -17,7 +17,7 @@ import java.util.concurrent.Executors
 
 class CameraCaptureController(
     private val context: Context,
-    private val yoloDetector: YoloDetector?,
+    private val yoloDetectorProvider: () -> YoloDetector?,
     private val onFrameAnalyzed: (Bitmap?, List<ObjectDetection>, String) -> Unit,
     private val onError: (String) -> Unit,
 ) : Closeable {
@@ -80,11 +80,12 @@ class CameraCaptureController(
                 return
             }
 
+            val yoloDetector = yoloDetectorProvider()
             val detections = yoloDetector?.detect(bitmap).orEmpty()
             val personCount = detections.count { it.isPerson }
             val contextCount = detections.count { it.isLectureHallContext }
             val message = if (yoloDetector == null) {
-                "YOLO model is missing."
+                "Captured frame; YOLO is still loading."
             } else if (detections.isEmpty()) {
                 "No people or lecture-hall context objects above confidence threshold."
             } else {
