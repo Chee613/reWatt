@@ -26,6 +26,7 @@ class PerceptionViewModel(
     private var yamnetDetector: YamnetDetector? = null
     private var cameraController: CameraCaptureController? = null
     private var audioController: AudioCaptureController? = null
+    private var perceptionSessionId: Long = 0L
 
     fun setPermissionState(cameraGranted: Boolean, microphoneGranted: Boolean) {
         mutableState.update {
@@ -38,42 +39,66 @@ class PerceptionViewModel(
 
     fun startPerception(lifecycleOwner: LifecycleOwner, previewView: PreviewView) {
         stopPerception()
+        val sessionId = ++perceptionSessionId
         mutableState.update {
             it.copy(
                 isRunning = true,
-                statusMessage = "Starting camera and microphone capture.",
-                yoloMessage = "Loading YOLO.",
-                yamnetMessage = "Loading YAMNet.",
+                statusMessage = "Starting camera preview and microphone capture.",
+                yoloMessage = "Loading YOLO in the background.",
+                yamnetMessage = "Loading YAMNet in the background.",
             )
         }
 
+        startControllers(lifecycleOwner, previewView)
+        loadYoloDetector(sessionId)
+        loadYamnetDetector(sessionId)
+    }
+
+    private fun loadYoloDetector(sessionId: Long) {
         viewModelScope.launch(Dispatchers.Default) {
-            val yolo = runCatching { YoloDetector.create(appContext) }
+            val loadedYolo = runCatching { YoloDetector.create(appContext) }
                 .onFailure { error ->
                     updateYoloMessage("YOLO model failed to load: ${error.message ?: error::class.java.simpleName}")
                 }
                 .getOrNull()
-            val yamnet = if (AssetModelLoader.assetExists(appContext, YamnetDetector.MODEL_ASSET)) {
-                runCatching { YamnetDetector.create(appContext) }
-                    .onFailure { error ->
-                        updateYamnetMessage("YAMNet model failed to load: ${error.message ?: error::class.java.simpleName}")
-                    }
-                    .getOrNull()
+
+            if (perceptionSessionId == sessionId && mutableState.value.isRunning) {
+                yoloDetector = loadedYolo
+                if (loadedYolo != null) {
+                    updateYoloMessage("YOLO loaded; analyzing one frame every 10 minutes.")
+                }
             } else {
+                loadedYolo?.close()
+            }
+        }
+    }
+
+    private fun loadYamnetDetector(sessionId: Long) {
+        viewModelScope.launch(Dispatchers.Default) {
+            if (!AssetModelLoader.assetExists(appContext, YamnetDetector.MODEL_ASSET)) {
                 updateYamnetMessage("Captured audio will be shown, but yamnet.tflite is missing.")
-                null
+                return@launch
             }
 
-            yoloDetector = yolo
-            yamnetDetector = yamnet
+            val loadedYamnet = runCatching { YamnetDetector.create(appContext) }
+                .onFailure { error ->
+                    updateYamnetMessage("YAMNet model failed to load: ${error.message ?: error::class.java.simpleName}")
+                }
+                .getOrNull()
 
-            viewModelScope.launch(Dispatchers.Main) {
-                startControllers(lifecycleOwner, previewView)
+            if (perceptionSessionId == sessionId && mutableState.value.isRunning) {
+                yamnetDetector = loadedYamnet
+                if (loadedYamnet != null) {
+                    updateYamnetMessage("YAMNet loaded; recording a 15-second window every 10 minutes.")
+                }
+            } else {
+                loadedYamnet?.close()
             }
         }
     }
 
     fun stopPerception() {
+        perceptionSessionId++
         cameraController?.close()
         cameraController = null
         audioController?.close()
@@ -96,12 +121,9 @@ class PerceptionViewModel(
     }
 
     private fun startControllers(lifecycleOwner: LifecycleOwner, previewView: PreviewView) {
-        val yolo = yoloDetector
-        val yamnet = yamnetDetector
-
         cameraController = CameraCaptureController(
             context = appContext,
-            yoloDetector = yolo,
+            yoloDetectorProvider = { yoloDetector },
             onFrameAnalyzed = { bitmap, detections, message ->
                 mutableState.update {
                     it.copy(
@@ -122,7 +144,15 @@ class PerceptionViewModel(
         audioController = AudioCaptureController(
             context = appContext,
             scope = viewModelScope,
-            yamnetDetector = yamnet,
+            yamnetDetectorProvider = { yamnetDetector },
+            onStatus = { message ->
+                mutableState.update {
+                    it.copy(
+                        yamnetMessage = message,
+                        statusMessage = "Perception is running.",
+                    )
+                }
+            },
             onAudioCaptured = { result ->
                 mutableState.update {
                     it.copy(

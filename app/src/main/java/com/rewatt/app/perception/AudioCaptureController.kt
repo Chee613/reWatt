@@ -11,6 +11,7 @@ import androidx.core.content.ContextCompat
 import java.io.Closeable
 import kotlin.math.sqrt
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -19,7 +20,8 @@ import kotlinx.coroutines.launch
 class AudioCaptureController(
     private val context: Context,
     private val scope: CoroutineScope,
-    private val yamnetDetector: YamnetDetector?,
+    private val yamnetDetectorProvider: () -> YamnetDetector?,
+    private val onStatus: (String) -> Unit,
     private val onAudioCaptured: (AudioCaptureResult) -> Unit,
     private val onError: (String) -> Unit,
 ) : Closeable {
@@ -36,7 +38,7 @@ class AudioCaptureController(
             return
         }
 
-        captureJob = scope.launch {
+        captureJob = scope.launch(Dispatchers.IO) {
             val sampleCount = RECORDING_SAMPLE_COUNT
             val minBufferSize = AudioRecord.getMinBufferSize(
                 SAMPLE_RATE_HZ,
@@ -65,6 +67,7 @@ class AudioCaptureController(
                 record.startRecording()
                 val shortBuffer = ShortArray(sampleCount)
                 while (isActive) {
+                    onStatus("Recording audio for 15 seconds.")
                     val readCount = record.readFully(shortBuffer, sampleCount)
                     if (readCount <= 0) {
                         onError("Microphone read failed.")
@@ -75,6 +78,7 @@ class AudioCaptureController(
                     val samples = FloatArray(readCount) { index ->
                         shortBuffer[index] / Short.MAX_VALUE.toFloat()
                     }
+                    val yamnetDetector = yamnetDetectorProvider()
                     val detections = runCatching {
                         yamnetDetector?.detect(samples).orEmpty()
                     }.getOrElse { error ->
@@ -90,7 +94,7 @@ class AudioCaptureController(
                             waveform = samples.toWaveformBuckets(),
                             detections = detections,
                             message = when {
-                                yamnetDetector == null -> "Captured audio; yamnet.tflite is missing."
+                                yamnetDetector == null -> "Captured audio; YAMNet is still loading or unavailable."
                                 detections.isEmpty() -> "Captured audio; no human activity sound above threshold."
                                 else -> "Captured audio; ${detections.size} human activity sound(s)."
                             },

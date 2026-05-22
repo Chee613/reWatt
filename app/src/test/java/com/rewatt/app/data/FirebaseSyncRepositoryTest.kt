@@ -63,4 +63,19 @@ class FirebaseSyncRepositoryTest {
         assertEquals(GeminiActivityAnalyzer.MODEL_ID, payload["model"])
         assertEquals(1_234L, payload["analyzedAt"])
     }
+
+    @Test
+    fun buildFirestoreWriteFailureMessage_includesEachFailedPath() {
+        val message = buildFirestoreWriteFailureMessage(
+            linkedMapOf(
+                "rooms/default-room/nodes/node-1" to "PERMISSION_DENIED - Missing or insufficient permissions.",
+                "rooms/default-room/telemetry/900-node-1" to "UNAVAILABLE - Network unavailable.",
+            ),
+        )
+
+        assertTrue(message.contains("rooms/default-room/nodes/node-1"))
+        assertTrue(message.contains("PERMISSION_DENIED"))
+        assertTrue(message.contains("rooms/default-room/telemetry/900-node-1"))
+        assertTrue(message.contains("UNAVAILABLE"))
+    }
 }
