@@ -18,3 +18,13 @@ app/google-services.json
 functions/node_modules/
 functions/.env
 functions/.secret.local
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+history.png
+forecast_day.png
+forecast_week.png

@@ -52,6 +52,7 @@ tensorflow-lite = { module = "org.tensorflow:tensorflow-lite", version.ref = "tf
 tensorflow-lite-support = { module = "org.tensorflow:tensorflow-lite-support", version.ref = "tfliteSupport" }
 firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebaseBom" }
 firebase-firestore = { module = "com.google.firebase:firebase-firestore" }
+firebase-auth = { module = "com.google.firebase:firebase-auth" }
 json = { module = "org.json:json", version.ref = "json" }
 usb-serial-android = { module = "com.github.mik3y:usb-serial-for-android", version.ref = "usbSerial" }
 
