@@ -5,6 +5,7 @@ import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,9 +25,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.BarChart
+import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Sensors
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Usb
 import androidx.compose.material.icons.outlined.Warning
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -71,12 +77,25 @@ import com.rewatt.app.perception.PerceptionUiState
 import com.rewatt.app.telemetry.PacketFreshness
 import com.rewatt.app.telemetry.RadarTelemetry
 import com.rewatt.app.usb.UsbConnectionStatus
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import java.util.Calendar
 import kotlin.math.min
 
-private enum class ReWattTab(val label: String) {
-    Live("LIVE"),
-    Analytic("Analytic"),
-    Capture("Capture"),
+private enum class ReWattTab(val label: String, val icon: ImageVector) {
+    Live("LIVE",      Icons.Outlined.Sensors),
+    Analytic("Analytic", Icons.Outlined.BarChart),
+    Capture("Capture",  Icons.Outlined.CameraAlt),
+    Setting("Setting",  Icons.Outlined.Settings),
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -87,9 +106,13 @@ fun DashboardScreen(
     onScanUsb: () -> Unit,
     onStartPerception: (PreviewView, CaptureStartSource) -> Unit,
     onStopPerception: () -> Unit,
+    userEmail: String,
+    userDisplayName: String?,
+    onSignOut: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var selectedTab by rememberSaveable { mutableStateOf(ReWattTab.Live) }
+    var selectedHall by rememberSaveable { mutableStateOf(Hall.Hall1) }
     var pendingCaptureSource by remember { mutableStateOf<CaptureStartSource?>(null) }
     var lastAutoTriggerAtMillis by remember { mutableStateOf<Long?>(null) }
     var autoSuppressedUntilClear by remember { mutableStateOf(false) }
@@ -159,7 +182,7 @@ fun DashboardScreen(
                     NavigationBarItem(
                         selected = selectedTab == tab,
                         onClick = { selectedTab = tab },
-                        icon = { Text(tab.label.first().toString(), fontWeight = FontWeight.Bold) },
+                        icon = { Icon(imageVector = tab.icon, contentDescription = tab.label) },
                         label = { Text(tab.label) },
                     )
                 }
@@ -176,11 +199,17 @@ fun DashboardScreen(
                 ReWattTab.Live -> LivePage(
                     uiState = uiState,
                     perceptionState = perceptionState,
-                    onScanUsb = onScanUsb,
+                    selectedHall = selectedHall,
+                    onHallChange = { selectedHall = it },
                     onStartCapture = { requestCapture(CaptureStartSource.Manual) },
                 )
 
-                ReWattTab.Analytic -> AnalyticPage(uiState = uiState, perceptionState = perceptionState)
+                ReWattTab.Analytic -> AnalyticPage(
+                    uiState = uiState,
+                    perceptionState = perceptionState,
+                    selectedHall = selectedHall,
+                    onHallChange = { selectedHall = it },
+                )
 
                 ReWattTab.Capture -> CapturePage(
                     state = perceptionState,
@@ -189,6 +218,14 @@ fun DashboardScreen(
                     onPendingCaptureConsumed = { pendingCaptureSource = null },
                     onStartPerception = onStartPerception,
                     onStopPerception = ::stopCapture,
+                )
+
+                ReWattTab.Setting -> SettingPage(
+                    uiState = uiState,
+                    onScanUsb = onScanUsb,
+                    userEmail = userEmail,
+                    userDisplayName = userDisplayName,
+                    onSignOut = onSignOut,
                 )
             }
         }
@@ -209,7 +246,7 @@ internal fun shouldAutoTriggerCapture(
         latestTelemetryAtMillis != lastAutoTriggerAtMillis
 
 @Composable
-private fun ReWattLogoBadge(modifier: Modifier = Modifier) {
+internal fun ReWattLogoBadge(modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .width(70.dp)
@@ -253,9 +290,24 @@ private fun ReWattLogoBadge(modifier: Modifier = Modifier) {
 private fun LivePage(
     uiState: DashboardUiState,
     perceptionState: PerceptionUiState,
-    onScanUsb: () -> Unit,
+    selectedHall: Hall,
+    onHallChange: (Hall) -> Unit,
     onStartCapture: () -> Unit,
 ) {
+    val telemetry = uiState.sensorState.latestTelemetry
+    val analysis = uiState.sensorState.activityAnalysisState.analysis
+
+    val nowAction = remember(uiState.nowMillis, perceptionState.personCount, telemetry?.temperatureC, analysis?.occupancyHint, selectedHall) {
+        deriveNowAction(
+            nowMillis = uiState.nowMillis,
+            personCount = perceptionState.personCount,
+            temperatureC = telemetry?.temperatureC,
+            occupancyHint = analysis?.occupancyHint,
+            hall = selectedHall,
+        )
+    }
+    val sessionEndTime = remember(uiState.nowMillis, selectedHall) { deriveSessionEndTime(uiState.nowMillis, selectedHall) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -263,83 +315,30 @@ private fun LivePage(
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        ConnectionCard(
-            state = uiState.sensorState,
-            freshness = uiState.packetFreshness,
-            onScanUsb = onScanUsb,
-        )
-        TelemetryMetricGrid(telemetry = uiState.sensorState.latestTelemetry)
-        LivePerceptionSummary(perceptionState = perceptionState)
-        Row(
-            modifier = Modifier.height(220.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            RadarEnergyCard(
-                telemetry = uiState.sensorState.latestTelemetry,
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight(),
-            )
-            StatusSummaryCard(
-                sensorState = uiState.sensorState,
-                freshness = uiState.packetFreshness,
-                nowMillis = uiState.nowMillis,
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight(),
-            )
-        }
-        Button(
-            onClick = onStartCapture,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(52.dp),
-        ) {
-            Text(if (perceptionState.isRunning) "Open Capture" else "Start Capture")
-        }
-    }
-}
+        HallDropdown(selectedHall = selectedHall, onHallChange = onHallChange)
 
-@Composable
-private fun AnalyticPage(
-    uiState: DashboardUiState,
-    perceptionState: PerceptionUiState,
-) {
-    val telemetry = uiState.sensorState.latestTelemetry
-    val analysis = uiState.sensorState.activityAnalysisState.analysis
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Text("TimeFM Analysis", fontWeight = FontWeight.Bold, fontSize = 24.sp)
-        InfoCard(modifier = Modifier.fillMaxWidth()) {
-            Text("Analytic tab ready for future TimeFM code.", fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = "Live context is kept here so the TimeFM page has room state before forecasting is added.",
-                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        // ── 6-card grid ──────────────────────────────────────────────────────
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             MetricCard(
-                title = "People",
-                value = perceptionState.personCount.toString(),
+                title = "Occupancy",
+                value = when {
+                    perceptionState.personCount > 0 -> "${perceptionState.personCount} ppl"
+                    telemetry?.presence == true -> "Detected"
+                    telemetry != null -> "Empty"
+                    else -> "--"
+                },
                 modifier = Modifier.weight(1f),
             )
             MetricCard(
-                title = "Activity",
-                value = analysis?.activity ?: "--",
+                title = "AC & Lights",
+                value = acLightStateLabel(nowAction.first),
                 modifier = Modifier.weight(1f),
             )
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             MetricCard(
-                title = "Temp",
-                value = telemetry?.temperatureC?.let { "%.1f C".format(it) } ?: "--",
+                title = "Temperature",
+                value = telemetry?.temperatureC?.let { "%.1f °C".format(it) } ?: "--",
                 modifier = Modifier.weight(1f),
             )
             MetricCard(
@@ -348,19 +347,758 @@ private fun AnalyticPage(
                 modifier = Modifier.weight(1f),
             )
         }
-        InfoCard(
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            MetricCard(
+                title = "Session ends",
+                value = sessionEndTime,
+                modifier = Modifier.weight(1f),
+            )
+            MetricCard(
+                title = "Top sound",
+                value = perceptionState.soundDetections.firstOrNull()?.label ?: "--",
+                modifier = Modifier.weight(1f),
+            )
+        }
+
+        // ── Activity section ─────────────────────────────────────────────────
+        Spacer(Modifier.height(4.dp))
+        Text("ACTIVITY", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        InfoCard {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(androidx.compose.material3.MaterialTheme.colorScheme.primary)
+                            .padding(horizontal = 8.dp, vertical = 2.dp),
+                    ) {
+                        Text(
+                            "NOW",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.sp,
+                            color = androidx.compose.material3.MaterialTheme.colorScheme.onPrimary,
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(nowAction.first, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    Text(
+                        nowAction.second,
+                        fontSize = 13.sp,
+                        color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (analysis != null) {
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            text = "Gemini: ${analysis.activity} (${(analysis.confidence * 100).toInt()}%)",
+                            fontSize = 12.sp,
+                            color = androidx.compose.material3.MaterialTheme.colorScheme.secondary,
+                        )
+                    }
+                }
+                Button(
+                    onClick = onStartCapture,
+                    modifier = Modifier.padding(start = 12.dp),
+                ) {
+                    Text(if (perceptionState.isRunning) "Open" else "Capture")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AnalyticPage(
+    uiState: DashboardUiState,
+    perceptionState: PerceptionUiState,
+    selectedHall: Hall,
+    onHallChange: (Hall) -> Unit,
+) {
+    var isAction by rememberSaveable { mutableStateOf(true) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+    ) {
+        Text("Analysis", fontWeight = FontWeight.Bold, fontSize = 24.sp)
+        Spacer(Modifier.height(12.dp))
+        ActionDataToggle(
+            isAction = isAction,
+            onAction = { isAction = true },
+            onData = { isAction = false },
+        )
+        Spacer(Modifier.height(12.dp))
+        if (isAction) {
+            ActionPage(
+                uiState = uiState,
+                perceptionState = perceptionState,
+                hall = selectedHall,
+                modifier = Modifier.weight(1f),
+            )
+        } else {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                HallDropdown(selectedHall = selectedHall, onHallChange = onHallChange)
+                WeeklyOccupancyCard(hall = selectedHall)
+            }
+        }
+    }
+}
+
+// ── Action / Data toggle ──────────────────────────────────────────────────────
+
+@Composable
+private fun ActionDataToggle(
+    isAction: Boolean,
+    onAction: () -> Unit,
+    onData: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(50))
+            .background(androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant)
+            .padding(3.dp),
+    ) {
+        SegmentButton("Action", isAction,  onAction, Modifier.weight(1f))
+        SegmentButton("Data",   !isAction, onData,   Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun SegmentButton(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(50))
+            .background(
+                if (selected) androidx.compose.material3.MaterialTheme.colorScheme.primary
+                else Color.Transparent,
+            )
+            .clickable(onClick = onClick)
+            .padding(vertical = 10.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            color = if (selected) {
+                androidx.compose.material3.MaterialTheme.colorScheme.onPrimary
+            } else {
+                androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
+            },
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            fontSize = 14.sp,
+        )
+    }
+}
+
+// ── Timetable primitives (shared by heatmap + action engine) ─────────────────
+
+private enum class Hall(val label: String) {
+    Hall1("Hall 1"),
+    Hall2("Hall 2"),
+    Hall3("Hall 3"),
+    Hall4("Hall 4"),
+}
+
+private data class TR(val sh: Int, val sm: Int, val eh: Int, val em: Int)
+
+private fun inRange(h: Int, m: Int, r: TR): Boolean {
+    val cur = h * 60 + m
+    val start = r.sh * 60 + r.sm
+    val end = r.eh * 60 + r.em
+    return if (start < end) cur in start until end
+    else cur >= start || cur < end  // overnight wrap
+}
+
+private val timetableOvernight = TR(18, 30, 7, 30)
+
+// Per-hall break intervals. 18:30–07:30 overnight zero applies to all halls.
+// Hall 2–4 breaks are all >45 min each, 2–3 per weekday.
+private val hallDayBreaks: Map<Hall, Map<Int, List<TR>>> = mapOf(
+    Hall.Hall1 to mapOf(
+        0 to listOf(TR(10, 15, 11, 45), TR(15, 15, 16, 45)),  // Mon  90+90 min
+        1 to listOf(TR(11, 15, 12, 45)),                        // Tue  90 min
+        2 to listOf(TR(11, 15, 12, 45), TR(15, 15, 16, 45)),  // Wed  90+90 min
+        3 to listOf(TR(8, 0, 8, 45),    TR(12, 15, 15, 45)),  // Thu  45+210 min
+        4 to listOf(TR(12, 15, 15, 45)),                        // Fri  210 min
+    ),
+    Hall.Hall2 to mapOf(
+        0 to listOf(TR(9, 0, 10, 0),   TR(14, 0, 15, 30)),   // Mon  60+90 min
+        1 to listOf(TR(10, 0, 11, 0),  TR(15, 30, 17, 0)),   // Tue  60+90 min
+        2 to listOf(TR(9, 30, 11, 0),  TR(13, 0, 14, 0)),    // Wed  90+60 min
+        3 to listOf(TR(11, 0, 12, 30), TR(15, 0, 16, 0)),    // Thu  90+60 min
+        4 to listOf(TR(10, 30, 12, 0), TR(14, 30, 16, 0)),   // Fri  90+90 min
+    ),
+    Hall.Hall3 to mapOf(
+        0 to listOf(TR(9, 0, 10, 30),  TR(13, 0, 14, 30)),   // Mon  90+90 min
+        1 to listOf(TR(11, 0, 12, 0),  TR(15, 0, 16, 30)),   // Tue  60+90 min
+        2 to listOf(TR(10, 0, 11, 30), TR(14, 30, 16, 0)),   // Wed  90+90 min
+        3 to listOf(TR(8, 30, 10, 0),  TR(12, 0, 13, 0)),    // Thu  90+60 min
+        4 to listOf(TR(11, 0, 12, 30), TR(15, 0, 16, 30)),   // Fri  90+90 min
+    ),
+    Hall.Hall4 to mapOf(
+        0 to listOf(TR(9, 0, 10, 30),  TR(13, 0, 14, 0),  TR(16, 0, 17, 30)), // Mon  90+60+90 min
+        1 to listOf(TR(10, 30, 12, 0), TR(14, 0, 15, 0)),                      // Tue  90+60 min
+        2 to listOf(TR(9, 0, 10, 0),   TR(13, 30, 15, 0)),                     // Wed  60+90 min
+        3 to listOf(TR(11, 30, 13, 0), TR(15, 30, 17, 0)),                     // Thu  90+90 min
+        4 to listOf(TR(10, 0, 11, 30), TR(13, 0, 14, 30), TR(16, 0, 17, 30)), // Fri  90+90+90 min
+    ),
+)
+
+private data class TimetableNotification(
+    val id: String,
+    val timeLabel: String,
+    val title: String,
+    val reason: String,
+)
+
+// ── Weekly occupancy heatmap ──────────────────────────────────────────────────
+
+// 0 = empty, 1 = low (1-40), 2 = medium (41-80), 3 = high (81-120)
+private fun buildWeeklySchedule(hall: Hall): Array<IntArray> {
+    val breaks = hallDayBreaks[hall] ?: emptyMap()
+    val schedule = Array(7) { IntArray(24) { 0 } }
+    for (day in 0..4) {
+        val dayBreaks = breaks[day] ?: emptyList()
+        for (hour in 0..23) {
+            var emptySlots = 0
+            for (q in 0..3) {
+                val m = q * 15
+                if (inRange(hour, m, timetableOvernight) || dayBreaks.any { inRange(hour, m, it) })
+                    emptySlots++
+            }
+            if (emptySlots >= 2) continue
+            schedule[day][hour] = when {
+                hour in 8..9 -> 2
+                hour >= 17   -> 1
+                else         -> 3
+            }
+        }
+    }
+    return schedule
+}
+
+@Composable
+private fun WeeklyOccupancyCard(hall: Hall) {
+    val schedule = remember(hall) { buildWeeklySchedule(hall) }
+    val dayBreaks = hallDayBreaks[hall] ?: emptyMap()
+    var selectedDay by remember { mutableStateOf<Int?>(null) }
+
+    InfoCard(modifier = Modifier.fillMaxWidth()) {
+        Text("Weekly occupancy pattern", fontWeight = FontWeight.SemiBold)
+        Spacer(Modifier.height(6.dp))
+        OccupancyHeatmapLegend()
+        Spacer(Modifier.height(10.dp))
+        WeeklyHeatmapGrid(
+            schedule = schedule,
+            selectedDay = selectedDay,
+            onDayClick = { day -> selectedDay = if (selectedDay == day) null else day },
+        )
+        Spacer(Modifier.height(4.dp))
+        HourAxisRow()
+        AnimatedVisibility(
+            visible = selectedDay != null,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut(),
+        ) {
+            val day = selectedDay ?: 0
+            Column {
+                Spacer(Modifier.height(12.dp))
+                DailyOccupancyChart(dayIndex = day, schedule = schedule, dayBreaks = dayBreaks, hall = hall)
+            }
+        }
+    }
+}
+
+@Composable
+private fun OccupancyHeatmapLegend() {
+    val emptyColor = androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        HeatmapLegendItem(emptyColor,        "Empty")
+        HeatmapLegendItem(Color(0xFF90B4D8), "1-40")
+        HeatmapLegendItem(Color(0xFF4A90D9), "41-80")
+        HeatmapLegendItem(Color(0xFF1565C0), "81+")
+    }
+}
+
+@Composable
+private fun HeatmapLegendItem(color: Color, label: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .size(10.dp)
+                .clip(CircleShape)
+                .background(color),
+        )
+        Spacer(Modifier.width(3.dp))
+        Text(
+            text = label,
+            fontSize = 10.sp,
+            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun WeeklyHeatmapGrid(
+    schedule: Array<IntArray>,
+    selectedDay: Int?,
+    onDayClick: (Int) -> Unit,
+) {
+    val dayLabels = listOf("M", "T", "W", "T", "F", "S", "S")
+    val primaryColor = androidx.compose.material3.MaterialTheme.colorScheme.primary
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        dayLabels.forEachIndexed { day, label ->
+            val isSelected = selectedDay == day
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(
+                        if (isSelected) primaryColor.copy(alpha = 0.10f)
+                        else Color.Transparent,
+                    )
+                    .clickable { onDayClick(day) }
+                    .padding(vertical = 3.dp, horizontal = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                HeatmapRow(
+                    hourLevels = schedule[day],
+                    modifier = Modifier.weight(1f),
+                )
+                Text(
+                    text = label,
+                    fontSize = 11.sp,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                    color = if (isSelected) primaryColor
+                    else androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.width(14.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun HeatmapRow(hourLevels: IntArray, modifier: Modifier = Modifier) {
+    val emptyColor = androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant
+    Canvas(
+        modifier = modifier
+            .height(26.dp)
+            .clip(RoundedCornerShape(13.dp))
+            .background(emptyColor),
+    ) {
+        val cellW = size.width / 24f
+        val gap = 1.5f
+        hourLevels.forEachIndexed { hour, level ->
+            val color = when (level) {
+                1 -> Color(0xFF90B4D8)
+                2 -> Color(0xFF4A90D9)
+                3 -> Color(0xFF1565C0)
+                else -> return@forEachIndexed
+            }
+            drawRoundRect(
+                color = color,
+                topLeft = androidx.compose.ui.geometry.Offset(hour * cellW + gap / 2f, gap / 2f),
+                size = androidx.compose.ui.geometry.Size(cellW - gap, size.height - gap),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(3f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun HourAxisRow() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(end = 20.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        listOf("0", "6", "12", "18", "24").forEach { label ->
+            Text(
+                text = label,
+                fontSize = 9.sp,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun DailyOccupancyChart(
+    dayIndex: Int,
+    schedule: Array<IntArray>,
+    dayBreaks: Map<Int, List<TR>>,
+    hall: Hall,
+) {
+    val fullDayNames = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+    val emptyColor = androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant
+    val refLineColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f)
+    val breaks = dayBreaks[dayIndex] ?: emptyList()
+    val occupancy = remember(hall, dayIndex) { buildHourlyOccupancy(schedule[dayIndex], hall, dayIndex) }
+    val peak = occupancy.max()
+
+    val breakLabel = if (breaks.isEmpty()) {
+        if (dayIndex >= 5) "No classes — weekend" else "No breaks scheduled"
+    } else {
+        breaks.joinToString("  •  ") { br ->
+            "Break %02d:%02d–%02d:%02d".format(br.sh, br.sm, br.eh, br.em)
+        }
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "${fullDayNames[dayIndex]} — daily pattern",
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 13.sp,
+            )
+            Text(
+                text = "Peak: $peak ppl",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            // Y-axis labels
+            Column(
+                modifier = Modifier
+                    .height(90.dp)
+                    .width(26.dp),
+                verticalArrangement = Arrangement.SpaceBetween,
+            ) {
+                listOf("120", "80", "40", "0").forEach { label ->
+                    Text(
+                        text = label,
+                        fontSize = 8.sp,
+                        color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            Canvas(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(90.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(emptyColor),
+            ) {
+                val maxCount = 120f
+                val barW = size.width / 24f
+                val gap = 1.5f
+
+                // Reference lines at 40 and 80
+                listOf(40f, 80f).forEach { count ->
+                    val y = size.height * (1f - count / maxCount)
+                    drawLine(
+                        color = refLineColor,
+                        start = androidx.compose.ui.geometry.Offset(0f, y),
+                        end = androidx.compose.ui.geometry.Offset(size.width, y),
+                        strokeWidth = 1f,
+                    )
+                }
+
+                occupancy.forEachIndexed { hour, count ->
+                    if (count == 0) return@forEachIndexed
+                    val barHeight = size.height * (count / maxCount)
+                    val color = when {
+                        count > 80 -> Color(0xFF1565C0)
+                        count > 40 -> Color(0xFF4A90D9)
+                        else       -> Color(0xFF90B4D8)
+                    }
+                    drawRoundRect(
+                        color = color,
+                        topLeft = androidx.compose.ui.geometry.Offset(
+                            x = hour * barW + gap,
+                            y = size.height - barHeight,
+                        ),
+                        size = androidx.compose.ui.geometry.Size(
+                            width = barW - gap * 2,
+                            height = barHeight,
+                        ),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(4f),
+                    )
+                }
+            }
+        }
+        HourAxisRow()
+        Text(
+            text = breakLabel,
+            fontSize = 11.sp,
+            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+// ── Action page composables ───────────────────────────────────────────────────
+
+@Composable
+private fun ActionPage(
+    uiState: DashboardUiState,
+    perceptionState: PerceptionUiState,
+    hall: Hall,
+    modifier: Modifier = Modifier,
+) {
+    val telemetry = uiState.sensorState.latestTelemetry
+    val analysis = uiState.sensorState.activityAnalysisState.analysis
+
+    var previewDayOffset by rememberSaveable { mutableStateOf(0) }
+
+    val previewMillis = remember(previewDayOffset, uiState.nowMillis) {
+        Calendar.getInstance().apply {
+            timeInMillis = uiState.nowMillis
+            add(Calendar.DAY_OF_YEAR, previewDayOffset)
+        }.timeInMillis
+    }
+
+    val isToday = previewDayOffset == 0
+    val nowAction = remember(previewMillis, isToday, perceptionState.personCount, telemetry?.temperatureC, analysis?.occupancyHint, hall) {
+        deriveNowAction(
+            nowMillis = previewMillis,
+            personCount = if (isToday) perceptionState.personCount else 0,
+            temperatureC = if (isToday) telemetry?.temperatureC else null,
+            occupancyHint = if (isToday) analysis?.occupancyHint else null,
+            hall = hall,
+        )
+    }
+
+    val dayNotifications = remember(previewDayOffset, uiState.nowMillis, hall) {
+        buildDayNotifications(previewDayOffset, uiState.nowMillis, hall)
+    }
+    var dismissedIds by rememberSaveable { mutableStateOf(setOf<String>()) }
+    var nowDismissed by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(nowAction.first) { nowDismissed = false }
+    LaunchedEffect(previewDayOffset) { dismissedIds = emptySet() }
+
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        AnimatedVisibility(
+            visible = !nowDismissed,
+            exit = slideOutHorizontally(targetOffsetX = { it }),
+        ) {
+            NowCard(
+                title = nowAction.first,
+                reason = nowAction.second,
+                onDone = { nowDismissed = true },
+            )
+        }
+        TimePreviewControl(
+            dayOffset = previewDayOffset,
+            nowMillis = uiState.nowMillis,
+            onDayChange = { previewDayOffset = it },
+        )
+        Text(
+            text = if (isToday) "Today's schedule" else "Full day schedule",
+            fontWeight = FontWeight.Bold,
+            fontSize = 18.sp,
+        )
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            items(dayNotifications, key = { it.id }) { notification ->
+                AnimatedVisibility(
+                    visible = notification.id !in dismissedIds,
+                    exit = slideOutHorizontally(targetOffsetX = { it }),
+                ) {
+                    NotificationBlock(
+                        notification = notification,
+                        onDone = { dismissedIds = dismissedIds + notification.id },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NowCard(title: String, reason: String, onDone: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = androidx.compose.material3.MaterialTheme.colorScheme.primaryContainer,
+        ),
+    ) {
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f),
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("Latest Gemini activity", fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(8.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(androidx.compose.material3.MaterialTheme.colorScheme.primary)
+                        .padding(horizontal = 8.dp, vertical = 2.dp),
+                ) {
+                    Text(
+                        text = "NOW",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp,
+                        color = androidx.compose.material3.MaterialTheme.colorScheme.onPrimary,
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = title,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 20.sp,
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+                Text(
+                    text = reason,
+                    fontSize = 13.sp,
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+            }
+            OutlinedButton(
+                onClick = onDone,
+                modifier = Modifier.padding(start = 12.dp),
+            ) {
+                Text("Done")
+            }
+        }
+    }
+}
+
+@Composable
+private fun TimePreviewControl(dayOffset: Int, nowMillis: Long, onDayChange: (Int) -> Unit) {
+    val dayOptions = remember(nowMillis) {
+        listOf(-1 to "Yesterday", 0 to "Today", 1 to "Tomorrow", 2 to "+2 Days").map { (offset, label) ->
+            val cal = Calendar.getInstance().apply {
+                timeInMillis = nowMillis
+                add(Calendar.DAY_OF_YEAR, offset)
+            }
+            val dayNames = listOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
+            val dayName = dayNames[cal.get(Calendar.DAY_OF_WEEK) - 1]
+            val date = "%d/%d".format(cal.get(Calendar.DAY_OF_MONTH), cal.get(Calendar.MONTH) + 1)
+            Triple(offset, label, if (offset == 0) "Today" else "$dayName $date")
+        }
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (dayOffset != 0) {
+            val selected = dayOptions.find { it.first == dayOffset }
             Text(
-                text = analysis?.reason ?: uiState.sensorState.activityAnalysisState.message,
-                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 8,
-                overflow = TextOverflow.Ellipsis,
+                text = "Showing: ${selected?.third ?: ""}",
+                fontSize = 11.sp,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.tertiary,
+                fontWeight = FontWeight.SemiBold,
             )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            dayOptions.forEach { (offset, label, _) ->
+                val isSelected = dayOffset == offset
+                if (isSelected) {
+                    Button(onClick = {}, enabled = false, modifier = Modifier.height(32.dp)) {
+                        Text(label, fontSize = 11.sp)
+                    }
+                } else {
+                    OutlinedButton(
+                        onClick = { onDayChange(offset) },
+                        modifier = Modifier.height(32.dp),
+                    ) {
+                        Text(label, fontSize = 11.sp)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NotificationBlock(
+    notification: TimetableNotification,
+    onDone: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surface,
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+    ) {
+        Row(modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
+            Box(
+                modifier = Modifier
+                    .width(4.dp)
+                    .fillMaxHeight()
+                    .background(
+                        androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                        RoundedCornerShape(topStart = 12.dp, bottomStart = 12.dp),
+                    ),
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(androidx.compose.material3.MaterialTheme.colorScheme.primaryContainer)
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                    ) {
+                        Text(
+                            text = notification.timeLabel,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp,
+                            color = androidx.compose.material3.MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Column {
+                        Text(notification.title, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                        Text(
+                            text = notification.reason,
+                            fontSize = 12.sp,
+                            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+                OutlinedButton(
+                    onClick = onDone,
+                    modifier = Modifier.padding(start = 8.dp),
+                ) {
+                    Text("Done", fontSize = 12.sp)
+                }
+            }
         }
     }
 }
@@ -537,6 +1275,139 @@ private fun CaptureHeader(
                 ) {
                     Text("Start")
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingPage(
+    uiState: DashboardUiState,
+    onScanUsb: () -> Unit,
+    userEmail: String,
+    userDisplayName: String?,
+    onSignOut: () -> Unit,
+) {
+    val displayName = userDisplayName?.takeIf { it.isNotBlank() } ?: userEmail
+    val avatarLetter = displayName.firstOrNull()?.uppercaseChar()?.toString() ?: "R"
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text("Settings", fontWeight = FontWeight.Bold, fontSize = 24.sp)
+
+        // Profile section
+        Text("Profile", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+        InfoCard {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(56.dp)
+                            .clip(CircleShape)
+                            .background(androidx.compose.material3.MaterialTheme.colorScheme.primaryContainer),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = avatarLetter,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 24.sp,
+                            color = androidx.compose.material3.MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(displayName, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                        if (userDisplayName != null) {
+                            Text(
+                                text = userEmail,
+                                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 13.sp,
+                            )
+                        }
+                    }
+                }
+                OutlinedButton(
+                    onClick = onSignOut,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Sign Out")
+                }
+            }
+        }
+
+        // Connection section
+        Text("Connection", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+        ConnectionCard(
+            state = uiState.sensorState,
+            freshness = uiState.packetFreshness,
+            onScanUsb = onScanUsb,
+        )
+
+        // Radar section
+        Text("Radar", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+        RadarEnergyCard(
+            telemetry = uiState.sensorState.latestTelemetry,
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        // Status section
+        Text("System status", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+        StatusSummaryCard(
+            sensorState = uiState.sensorState,
+            freshness = uiState.packetFreshness,
+            nowMillis = uiState.nowMillis,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+@Composable
+private fun HallDropdown(
+    selectedHall: Hall,
+    onHallChange: (Hall) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box(modifier = modifier) {
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .background(androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant)
+                .clickable { expanded = true }
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                text = selectedHall.label,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 14.sp,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = "▾",
+                fontSize = 14.sp,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            Hall.values().forEach { hall ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            hall.label,
+                            fontWeight = if (hall == selectedHall) FontWeight.Bold else FontWeight.Normal,
+                        )
+                    },
+                    onClick = { onHallChange(hall); expanded = false },
+                )
             }
         }
     }
@@ -1092,3 +1963,158 @@ private fun Long?.ageLabel(nowMillis: Long): String =
         val ageSeconds = ((nowMillis - timestamp) / 1_000L).coerceAtLeast(0L)
         "Captured ${ageSeconds}s ago"
     } ?: "Waiting for capture"
+
+private fun deriveNowAction(
+    nowMillis: Long,
+    personCount: Int,
+    temperatureC: Float?,
+    occupancyHint: String?,
+    hall: Hall = Hall.Hall1,
+): Pair<String, String> {
+    val cal = Calendar.getInstance().apply { timeInMillis = nowMillis }
+    val dow = (cal.get(Calendar.DAY_OF_WEEK) - Calendar.MONDAY + 7) % 7
+    val h = cal.get(Calendar.HOUR_OF_DAY)
+    val m = cal.get(Calendar.MINUTE)
+    val dayBreaks = hallDayBreaks[hall] ?: emptyMap()
+
+    if (dow >= 5) return "Turn off all systems" to "Weekend — no classes scheduled"
+    if (inRange(h, m, timetableOvernight)) return "Turn off all systems" to "Overnight — no classes until 07:30"
+
+    for (br in dayBreaks[dow] ?: emptyList()) {
+        if (inRange(h, m, br))
+            return "Turn off AC & lights" to "Break period until %02d:%02d".format(br.eh, br.em)
+    }
+
+    if ((occupancyHint == "likely_empty" || occupancyHint == "unclear") && personCount > 2)
+        return "Keep AC on" to "Unexpected occupancy ($personCount people detected)"
+    if (temperatureC != null && temperatureC > 27f && personCount > 0)
+        return "Increase AC cooling" to "Temperature is %.1f°C".format(temperatureC)
+    if (temperatureC != null && temperatureC < 22f && personCount > 0)
+        return "Reduce AC cooling" to "Temperature is %.1f°C — too cold".format(temperatureC)
+
+    return if (personCount > 0)
+        "Maintain current settings" to "Normal class session in progress"
+    else
+        "No immediate action needed" to "Room appears empty"
+}
+
+// Maps level array → realistic per-hour occupancy counts (0-120).
+// Deterministic variation is seeded by hall + day + hour so each hall looks unique.
+private fun buildHourlyOccupancy(levels: IntArray, hall: Hall, dayIndex: Int): IntArray =
+    IntArray(24) { hour ->
+        val v = ((hour + 1) * (hall.ordinal + 2) * (dayIndex + 3)) % 19  // 0-18
+        when (levels[hour]) {
+            0    -> 0
+            1    -> 12 + v          // 12-30  (ramp / wind-down)
+            2    -> 44 + v          // 44-62  (moderate)
+            3    -> 82 + v          // 82-100 (peak class)
+            else -> 0
+        }
+    }
+
+private fun acLightStateLabel(action: String): String = when {
+    action.contains("Turn off", ignoreCase = true) -> "OFF"
+    action.contains("Increase", ignoreCase = true) -> "COOL +"
+    action.contains("Reduce", ignoreCase = true) -> "COOL -"
+    else -> "ON"
+}
+
+private fun deriveSessionEndTime(nowMillis: Long, hall: Hall = Hall.Hall1): String {
+    val cal = Calendar.getInstance().apply { timeInMillis = nowMillis }
+    val dow = (cal.get(Calendar.DAY_OF_WEEK) - Calendar.MONDAY + 7) % 7
+    val h = cal.get(Calendar.HOUR_OF_DAY)
+    val m = cal.get(Calendar.MINUTE)
+    if (dow >= 5) return "No class"
+    if (inRange(h, m, timetableOvernight)) return "07:30"
+    val breaks = (hallDayBreaks[hall] ?: emptyMap())[dow] ?: emptyList()
+    for (br in breaks) {
+        if (inRange(h, m, br)) return "%02d:%02d".format(br.eh, br.em)
+    }
+    val cur = h * 60 + m
+    val next = breaks.filter { it.sh * 60 + it.sm > cur }.minByOrNull { it.sh * 60 + it.sm }
+    return if (next != null) "%02d:%02d".format(next.sh, next.sm) else "18:30"
+}
+
+private fun buildDayNotifications(dayOffset: Int, nowMillis: Long, hall: Hall = Hall.Hall1): List<TimetableNotification> {
+    val cal = Calendar.getInstance().apply {
+        timeInMillis = nowMillis
+        add(Calendar.DAY_OF_YEAR, dayOffset)
+    }
+    val dow = (cal.get(Calendar.DAY_OF_WEEK) - Calendar.MONDAY + 7) % 7
+    if (dow >= 5) return listOf(
+        TimetableNotification("weekend-off", "--", "No classes today", "Weekend — all systems off"),
+    )
+    val dayNames = listOf("Mon", "Tue", "Wed", "Thu", "Fri")
+    val dayName = dayNames[dow]
+    val result = mutableListOf<TimetableNotification>()
+    val dayBreaks = (hallDayBreaks[hall] ?: emptyMap())[dow] ?: emptyList()
+
+    fun add(h: Int, m: Int, id: String, title: String, reason: String) {
+        result.add(TimetableNotification(
+            id = "$dayName-$id",
+            timeLabel = "%02d:%02d".format(h, m),
+            title = title,
+            reason = reason,
+        ))
+    }
+
+    add(7, 30, "startup", "System startup check", "First class approaching ($dayName)")
+    dayBreaks.forEachIndexed { i, br ->
+        add(br.sh, br.sm, "break$i-off", "Turn off AC & lights",
+            "Break starts at %02d:%02d ($dayName)".format(br.sh, br.sm))
+        val preMin = (br.eh * 60 + br.em) - 30
+        if (preMin > br.sh * 60 + br.sm) {
+            add(preMin / 60, preMin % 60, "break$i-precool", "Pre-cool room to 23°C",
+                "Class resumes at %02d:%02d ($dayName)".format(br.eh, br.em))
+        }
+    }
+    add(18, 30, "overnight", "Turn off all systems", "No classes until tomorrow 07:30")
+    return result.sortedBy { it.timeLabel }
+}
+
+private fun buildUpcomingNotifications(nowMillis: Long, hall: Hall = Hall.Hall1): List<TimetableNotification> {
+    val cal = Calendar.getInstance().apply { timeInMillis = nowMillis }
+    val nowDow = (cal.get(Calendar.DAY_OF_WEEK) - Calendar.MONDAY + 7) % 7
+    val nowTotalMin = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
+    val hallBreaks = hallDayBreaks[hall] ?: emptyMap()
+
+    data class Candidate(val offset: Int, val n: TimetableNotification)
+
+    val candidates = mutableListOf<Candidate>()
+    val dayNames = listOf("Mon", "Tue", "Wed", "Thu", "Fri")
+
+    for (dayOffset in 0..1) {
+        val dow = (nowDow + dayOffset) % 7
+        if (dow >= 5) continue
+        val dayName = dayNames[dow]
+        val suffix = if (dayOffset == 1) " (tmr)" else ""
+
+        fun add(h: Int, m: Int, id: String, title: String, reason: String) {
+            val evtMin = h * 60 + m
+            val diff = if (dayOffset == 0) evtMin - nowTotalMin else evtMin + (24 * 60 - nowTotalMin)
+            if (diff > 0) candidates.add(Candidate(diff, TimetableNotification(
+                id = "$dayName-$id",
+                timeLabel = "%02d:%02d$suffix".format(h, m),
+                title = title,
+                reason = reason,
+            )))
+        }
+
+        add(7, 30, "startup", "System startup check", "First class approaching ($dayName)")
+
+        (hallBreaks[dow] ?: emptyList()).forEachIndexed { i, br ->
+            add(br.sh, br.sm, "break$i-off", "Turn off AC & lights",
+                "Break starts at %02d:%02d ($dayName)".format(br.sh, br.sm))
+            val preMin = (br.eh * 60 + br.em) - 30
+            if (preMin > br.sh * 60 + br.sm) {
+                add(preMin / 60, preMin % 60, "break$i-precool", "Pre-cool room to 23°C",
+                    "Class resumes at %02d:%02d ($dayName)".format(br.eh, br.em))
+            }
+        }
+
+        val nextInfo = if (dow == 4) "Monday" else "tomorrow"
+        add(18, 30, "overnight", "Turn off all systems", "No classes until $nextInfo 07:30")
+    }
+
+    return candidates.sortedBy { it.offset }.map { it.n }
+}

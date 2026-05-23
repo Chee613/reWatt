@@ -11,7 +11,17 @@ import androidx.activity.viewModels
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.camera.view.PreviewView
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import com.rewatt.app.BuildConfig
 import com.rewatt.app.perception.CaptureStartSource
+import com.rewatt.app.ui.auth.AuthState
+import com.rewatt.app.ui.auth.AuthViewModel
+import com.rewatt.app.ui.auth.AuthViewModelFactory
+import com.rewatt.app.ui.auth.LoginScreen
+import com.rewatt.app.ui.auth.SignUpScreen
 import com.rewatt.app.ui.dashboard.DashboardScreen
 import com.rewatt.app.ui.dashboard.DashboardViewModel
 import com.rewatt.app.ui.dashboard.DashboardViewModelFactory
@@ -47,6 +57,9 @@ class MainActivity : ComponentActivity() {
     private var pendingPreviewView: PreviewView? = null
     private var pendingCaptureSource: CaptureStartSource? = null
 
+    private val authViewModel: AuthViewModel by viewModels {
+        AuthViewModelFactory((application as ReWattApplication).appGraph.authRepository)
+    }
     private val viewModel: DashboardViewModel by viewModels {
         DashboardViewModelFactory((application as ReWattApplication).appGraph.telemetryRepository)
     }
@@ -67,16 +80,55 @@ class MainActivity : ComponentActivity() {
         )
 
         setContent {
-            val uiState = viewModel.uiState.collectAsStateWithLifecycle()
-            val perceptionState = perceptionViewModel.uiState.collectAsStateWithLifecycle()
             ReWattTheme {
-                DashboardScreen(
-                    uiState = uiState.value,
-                    perceptionState = perceptionState.value,
-                    onScanUsb = ::startUsbService,
-                    onStartPerception = ::requestPerceptionPermissionsThenStart,
-                    onStopPerception = perceptionViewModel::stopPerception,
-                )
+                val authState by authViewModel.authState.collectAsStateWithLifecycle()
+                var showSignUp by rememberSaveable { mutableStateOf(false) }
+                var devBypass by rememberSaveable { mutableStateOf(false) }
+
+                val showDashboard = devBypass || authState is AuthState.Authenticated
+
+                if (showDashboard) {
+                    val uiState = viewModel.uiState.collectAsStateWithLifecycle()
+                    val perceptionState = perceptionViewModel.uiState.collectAsStateWithLifecycle()
+                    val authedUser = (authState as? AuthState.Authenticated)?.user
+                    DashboardScreen(
+                        uiState = uiState.value,
+                        perceptionState = perceptionState.value,
+                        onScanUsb = ::startUsbService,
+                        onStartPerception = ::requestPerceptionPermissionsThenStart,
+                        onStopPerception = perceptionViewModel::stopPerception,
+                        userEmail = authedUser?.email ?: "dev@rewatt.app",
+                        userDisplayName = authedUser?.displayName ?: if (devBypass) "Dev Mode" else null,
+                        onSignOut = {
+                            devBypass = false
+                            authViewModel.signOut()
+                        },
+                    )
+                } else {
+                    when (authState) {
+                        is AuthState.Loading -> {
+                            // blank while Firebase resolves the auth state (< 1 s)
+                        }
+                        else -> {
+                            if (showSignUp) {
+                                SignUpScreen(
+                                    viewModel = authViewModel,
+                                    onNavigateToLogin = { showSignUp = false },
+                                )
+                            } else {
+                                LoginScreen(
+                                    viewModel = authViewModel,
+                                    onNavigateToSignUp = { showSignUp = true },
+                                    onDevBypass = if (BuildConfig.DEBUG) {
+                                        { devBypass = true }
+                                    } else {
+                                        null
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }
