@@ -1,6 +1,11 @@
 package com.rewatt.app.perception
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.ImageDecoder
+import android.net.Uri
+import android.os.Build
+import android.provider.MediaStore
 import androidx.camera.view.PreviewView
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ViewModel
@@ -14,6 +19,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 
 class PerceptionViewModel(
     private val appContext: Context,
@@ -62,6 +69,45 @@ class PerceptionViewModel(
         loadYamnetDetector(sessionId)
     }
 
+    fun analyzeUploadedYoloImage(uri: Uri) {
+        mutableState.update {
+            it.copy(
+                yoloMessage = "Loading uploaded image for YOLO.",
+                exposureEv = null,
+                exposureIso = null,
+                exposureTimeSeconds = null,
+                exposureAperture = ExposureValueCalculator.FIXED_APERTURE,
+                lightsOn = null,
+                exposureMessage = "Exposure is unavailable for uploaded debug images.",
+            )
+        }
+
+        viewModelScope.launch(Dispatchers.Default) {
+            val bitmap = runCatching {
+                withContext(Dispatchers.IO) { decodeUploadedBitmap(uri).limitLongestSide() }
+            }.onFailure { error ->
+                updateYoloMessage("Uploaded image failed to load: ${error.message ?: error::class.java.simpleName}")
+            }.getOrNull() ?: return@launch
+
+            val detector = yoloDetector ?: loadYoloDetectorForUpload() ?: return@launch
+            val detections = runCatching { detector.detect(bitmap) }
+                .onFailure { error ->
+                    updateUploadedYoloResult(
+                        bitmap = bitmap,
+                        detections = emptyList(),
+                        message = "Uploaded image YOLO failed: ${error.message ?: error::class.java.simpleName}",
+                    )
+                }
+                .getOrNull() ?: return@launch
+
+            updateUploadedYoloResult(
+                bitmap = bitmap,
+                detections = detections,
+                message = "Uploaded image analyzed. People detected: ${detections.count { it.isPerson }}.",
+            )
+        }
+    }
+
     private fun loadYoloDetector(sessionId: Long) {
         viewModelScope.launch(Dispatchers.Default) {
             val loadedYolo = runCatching { YoloDetector.create(appContext) }
@@ -71,14 +117,37 @@ class PerceptionViewModel(
                 .getOrNull()
 
             if (perceptionSessionId == sessionId && mutableState.value.isRunning) {
-                yoloDetector = loadedYolo
                 if (loadedYolo != null) {
+                    installYoloDetectorIfAbsent(loadedYolo)
                     updateYoloMessage("YOLO loaded; analyzing one frame every 10 minutes.")
                 }
             } else {
                 loadedYolo?.close()
             }
         }
+    }
+
+    private fun loadYoloDetectorForUpload(): YoloDetector? {
+        val loadedYolo = runCatching { YoloDetector.create(appContext) }
+            .onFailure { error ->
+                updateYoloMessage("YOLO model failed to load: ${error.message ?: error::class.java.simpleName}")
+            }
+            .getOrNull()
+            ?: return null
+
+        return installYoloDetectorIfAbsent(loadedYolo)
+            .also { updateYoloMessage("YOLO loaded; analyzing uploaded image.") }
+    }
+
+    @Synchronized
+    private fun installYoloDetectorIfAbsent(loadedYolo: YoloDetector): YoloDetector {
+        val currentYolo = yoloDetector
+        if (currentYolo != null) {
+            loadedYolo.close()
+            return currentYolo
+        }
+        yoloDetector = loadedYolo
+        return loadedYolo
     }
 
     private fun loadYamnetDetector(sessionId: Long) {
@@ -194,6 +263,54 @@ class PerceptionViewModel(
 
     private fun updateYamnetMessage(message: String) {
         mutableState.update { it.copy(yamnetMessage = message) }
+    }
+
+    private fun updateUploadedYoloResult(
+        bitmap: Bitmap,
+        detections: List<ObjectDetection>,
+        message: String,
+    ) {
+        mutableState.update {
+            it.copy(
+                latestFrame = bitmap,
+                latestFrameAtMillis = System.currentTimeMillis(),
+                yoloDetections = detections,
+                yoloMessage = message,
+                exposureEv = null,
+                exposureIso = null,
+                exposureTimeSeconds = null,
+                exposureAperture = ExposureValueCalculator.FIXED_APERTURE,
+                lightsOn = null,
+                exposureMessage = "Exposure is unavailable for uploaded debug images.",
+                statusMessage = if (it.isRunning) {
+                    "Perception is running."
+                } else {
+                    "Uploaded image analyzed for YOLO."
+                },
+            )
+                .also(::publishPerceptionSummary)
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun decodeUploadedBitmap(uri: Uri): Bitmap =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val source = ImageDecoder.createSource(appContext.contentResolver, uri)
+            ImageDecoder.decodeBitmap(source) { decoder, _, _ ->
+                decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
+            }
+        } else {
+            MediaStore.Images.Media.getBitmap(appContext.contentResolver, uri)
+        }
+
+    private fun Bitmap.limitLongestSide(maxSide: Int = 1600): Bitmap {
+        val longestSide = maxOf(width, height)
+        if (longestSide <= maxSide) return this
+
+        val scale = maxSide.toFloat() / longestSide
+        val scaledWidth = (width * scale).roundToInt().coerceAtLeast(1)
+        val scaledHeight = (height * scale).roundToInt().coerceAtLeast(1)
+        return Bitmap.createScaledBitmap(this, scaledWidth, scaledHeight, true)
     }
 
     private fun publishPerceptionSummary(state: PerceptionUiState) {

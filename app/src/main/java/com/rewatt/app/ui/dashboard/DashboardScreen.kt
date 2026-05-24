@@ -73,6 +73,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.rewatt.app.BuildConfig
 import com.rewatt.app.R
 import com.rewatt.app.data.ActivityAnalysisStatus
 import com.rewatt.app.data.FirebaseSyncStatus
@@ -120,6 +121,7 @@ fun DashboardScreen(
     onScanUsb: () -> Unit,
     onStartPerception: (PreviewView, CaptureStartSource) -> Unit,
     onStopPerception: () -> Unit,
+    onUploadYoloImage: () -> Unit,
     userEmail: String,
     userDisplayName: String?,
     onSignOut: () -> Unit,
@@ -129,6 +131,7 @@ fun DashboardScreen(
     onClearDeleteError: () -> Unit = {},
     currentUserRole: UserRole? = null,
     onModeSelected: (UserRole) -> Unit = {},
+    showYoloUpload: Boolean = BuildConfig.DEBUG,
     modifier: Modifier = Modifier,
 ) {
     var selectedTab by rememberSaveable { mutableStateOf(ReWattTab.Live) }
@@ -244,6 +247,8 @@ fun DashboardScreen(
                     onPendingCaptureConsumed = { pendingCaptureSource = null },
                     onStartPerception = onStartPerception,
                     onStopPerception = ::stopCapture,
+                    onUploadYoloImage = onUploadYoloImage,
+                    showYoloUpload = showYoloUpload,
                     telemetry = uiState.sensorState.latestTelemetry,
                 )
 
@@ -1342,6 +1347,8 @@ private fun CapturePage(
     onPendingCaptureConsumed: () -> Unit,
     onStartPerception: (PreviewView, CaptureStartSource) -> Unit,
     onStopPerception: () -> Unit,
+    onUploadYoloImage: () -> Unit,
+    showYoloUpload: Boolean,
     telemetry: RadarTelemetry? = null,
 ) {
     var previewView by remember { mutableStateOf<PreviewView?>(null) }
@@ -1372,6 +1379,8 @@ private fun CapturePage(
             previewView = previewView,
             onStartPerception = onStartPerception,
             onStopPerception = onStopPerception,
+            onUploadYoloImage = onUploadYoloImage,
+            showYoloUpload = showYoloUpload,
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             MetricCard(
@@ -1492,6 +1501,8 @@ private fun CaptureHeader(
     previewView: PreviewView?,
     onStartPerception: (PreviewView, CaptureStartSource) -> Unit,
     onStopPerception: () -> Unit,
+    onUploadYoloImage: () -> Unit,
+    showYoloUpload: Boolean,
 ) {
     InfoCard {
         Row(
@@ -1509,16 +1520,23 @@ private fun CaptureHeader(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            if (state.isRunning) {
-                OutlinedButton(onClick = onStopPerception) {
-                    Text("Stop")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (showYoloUpload) {
+                    OutlinedButton(onClick = onUploadYoloImage) {
+                        Text("Upload")
+                    }
                 }
-            } else {
-                Button(
-                    onClick = { previewView?.let { onStartPerception(it, CaptureStartSource.Manual) } },
-                    enabled = previewView != null,
-                ) {
-                    Text("Start")
+                if (state.isRunning) {
+                    OutlinedButton(onClick = onStopPerception) {
+                        Text("Stop")
+                    }
+                } else {
+                    Button(
+                        onClick = { previewView?.let { onStartPerception(it, CaptureStartSource.Manual) } },
+                        enabled = previewView != null,
+                    ) {
+                        Text("Start")
+                    }
                 }
             }
         }

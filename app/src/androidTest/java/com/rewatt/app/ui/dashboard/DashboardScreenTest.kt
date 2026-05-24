@@ -158,6 +158,16 @@ class DashboardScreenTest {
         composeRule.onNodeWithText("EV 2.1").assertIsDisplayed()
     }
 
+    @Test
+    fun captureTabShowsYoloUploadButton() {
+        setDashboardContent()
+
+        composeRule.onNodeWithText("Capture").performClick()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText("Upload").assertIsDisplayed()
+    }
+
     private fun setDashboardContent(
         uiState: DashboardUiState = DashboardUiState(),
         perceptionState: PerceptionUiState = PerceptionUiState(),
@@ -170,6 +180,7 @@ class DashboardScreenTest {
                     onScanUsb = {},
                     onStartPerception = { _, _ -> },
                     onStopPerception = {},
+                    onUploadYoloImage = {},
                     userEmail = "test@example.com",
                     userDisplayName = "Test User",
                     onSignOut = {},
