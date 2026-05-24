@@ -18,6 +18,8 @@ app/google-services.json
 functions/node_modules/
 functions/.env
 functions/.secret.local
+scripts/node_modules/
+gradle/gradle-daemon-jvm.properties
 
 # Python
 .venv/

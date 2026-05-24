@@ -28,7 +28,7 @@ class YoloDetector private constructor(
     }
 
     companion object {
-        const val MODEL_ASSET = "yolo26n_int8.tflite"
+        const val MODEL_ASSET = "custom_human_detector_fp16.tflite"
 
         fun create(context: Context): YoloDetector {
             val modelBytes = AssetModelLoader.loadBytes(context, MODEL_ASSET)

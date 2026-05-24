@@ -23,6 +23,19 @@ class YoloPostProcessorTest {
     }
 
     @Test
+    fun process_interpretsCustomHumanDetectorClassZeroAsPerson() {
+        val detections = YoloPostProcessor.process(
+            rows = arrayOf(floatArrayOf(0.1f, 0.2f, 0.6f, 0.9f, 0.95f, 0f)),
+            labels = listOf("person"),
+        )
+
+        val detection = detections.single()
+        assertEquals(0, detection.classId)
+        assertEquals("person", detection.label)
+        assertTrue(detection.isPerson)
+    }
+
+    @Test
     fun process_normalizesPixelBoxes() {
         val detections = YoloPostProcessor.process(
             rows = arrayOf(floatArrayOf(64f, 128f, 320f, 512f, 0.80f, 1f)),

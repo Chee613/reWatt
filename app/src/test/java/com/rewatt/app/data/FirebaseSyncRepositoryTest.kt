@@ -16,6 +16,11 @@ class FirebaseSyncRepositoryTest {
                 audioPresenceScore = 0.82f,
                 temperatureC = 26.5f,
                 humidityPercent = 58.2f,
+                lightsOn = true,
+                exposureEv = 4.5,
+                exposureIso = 200,
+                exposureTimeSeconds = 0.05,
+                exposureAperture = 1.8,
                 capturedAtMillis = 900L,
             ),
             roomId = "default-room",
@@ -31,6 +36,11 @@ class FirebaseSyncRepositoryTest {
         assertEquals("Speech", payload["primaryActivity"])
         assertEquals(26.5f, payload["temperatureC"])
         assertEquals(58.2f, payload["humidityPercent"])
+        assertEquals(true, payload["lightsOn"])
+        assertEquals(4.5, payload["exposureEv"])
+        assertEquals(200, payload["exposureIso"])
+        assertEquals(0.05, payload["exposureTimeSeconds"])
+        assertEquals(1.8, payload["exposureAperture"])
         val activityLabels = payload["activityLabels"] as List<*>
         assertEquals(3, activityLabels.size)
         assertTrue(activityLabels.contains("Typing"))

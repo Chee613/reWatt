@@ -133,13 +133,19 @@ class PerceptionViewModel(
         cameraController = CameraCaptureController(
             context = appContext,
             yoloDetectorProvider = { yoloDetector },
-            onFrameAnalyzed = { bitmap, detections, message ->
+            onFrameAnalyzed = { bitmap, detections, yoloMessage, exposureReading, exposureMessage ->
                 mutableState.update {
                     it.copy(
                         latestFrame = bitmap ?: it.latestFrame,
                         latestFrameAtMillis = if (bitmap != null) System.currentTimeMillis() else it.latestFrameAtMillis,
                         yoloDetections = detections,
-                        yoloMessage = message,
+                        yoloMessage = yoloMessage,
+                        exposureEv = exposureReading?.ev,
+                        exposureIso = exposureReading?.iso,
+                        exposureTimeSeconds = exposureReading?.exposureTimeSeconds,
+                        exposureAperture = exposureReading?.aperture ?: ExposureValueCalculator.FIXED_APERTURE,
+                        lightsOn = exposureReading?.lightsOn,
+                        exposureMessage = exposureMessage,
                         statusMessage = "Perception is running.",
                     )
                         .also(::publishPerceptionSummary)
@@ -199,6 +205,11 @@ class PerceptionViewModel(
                     .map { it.label },
                 audioPresenceDetected = state.audioPresenceDetected,
                 audioPresenceScore = state.audioPresenceScore,
+                lightsOn = state.lightsOn,
+                exposureEv = state.exposureEv,
+                exposureIso = state.exposureIso,
+                exposureTimeSeconds = state.exposureTimeSeconds,
+                exposureAperture = state.exposureAperture,
                 capturedAtMillis = listOfNotNull(
                     state.latestFrameAtMillis,
                     state.latestAudioAtMillis,

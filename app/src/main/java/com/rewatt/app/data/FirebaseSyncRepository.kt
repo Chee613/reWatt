@@ -187,6 +187,11 @@ fun buildPerceptionPayload(
         "activityLabels" to perceptionSummary.activityLabels.take(MAX_ACTIVITY_LABELS),
         "temperatureC" to perceptionSummary.temperatureC,
         "humidityPercent" to perceptionSummary.humidityPercent,
+        "lightsOn" to perceptionSummary.lightsOn,
+        "exposureEv" to perceptionSummary.exposureEv,
+        "exposureIso" to perceptionSummary.exposureIso,
+        "exposureTimeSeconds" to perceptionSummary.exposureTimeSeconds,
+        "exposureAperture" to perceptionSummary.exposureAperture,
     )
 
 private const val MAX_ACTIVITY_LABELS = 3
