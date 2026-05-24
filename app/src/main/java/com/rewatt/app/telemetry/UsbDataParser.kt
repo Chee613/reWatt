@@ -28,14 +28,17 @@ object UsbDataParser {
             val hum  = root.optDouble("hum",  Double.NaN).takeIf { !it.isNaN() }?.toFloat()
 
             RadarTelemetry(
-                presence          = state > 0,
-                movingEnergy      = movE,
-                stationaryEnergy  = statE,
-                distanceCm        = distanceCm,
-                temperatureC      = temp,
-                humidityPercent   = hum,
-                capturedAtMillis  = capturedAtMillis,
-                rawPacket         = line.trim(),
+                presence              = state > 0,
+                movingEnergy          = movE,
+                stationaryEnergy      = statE,
+                distanceCm            = distanceCm,
+                temperatureC          = temp,
+                humidityPercent       = hum,
+                capturedAtMillis      = capturedAtMillis,
+                rawPacket             = line.trim(),
+                radarState            = state,
+                movingDistanceCm      = movD,
+                stationaryDistanceCm  = statD,
             )
         } catch (_: JSONException) {
             null

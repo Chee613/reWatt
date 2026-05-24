@@ -98,9 +98,10 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.ui.input.pointer.pointerInput
 import com.rewatt.app.data.UserRole
+import com.rewatt.app.telemetry.OccupancyThreshold
+import com.rewatt.app.telemetry.toOccupancyDecision
 import com.rewatt.app.ui.ModeSelectionDialog
 import com.rewatt.app.ui.SetupGuideDialog
-import org.json.JSONObject
 import java.util.Calendar
 import kotlin.math.min
 
@@ -186,7 +187,13 @@ fun DashboardScreen(
                         Spacer(Modifier.width(10.dp))
                         Column {
                             Text("REWATT", fontWeight = FontWeight.Bold)
-                            Text("Radar + perception hub", fontSize = 12.sp)
+                            Text(
+                                text = userDisplayName?.takeIf { it.isNotBlank() } ?: userEmail,
+                                fontSize = 12.sp,
+                                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            )
                         }
                     }
                 },
@@ -2176,21 +2183,9 @@ private fun DetectionRow(
 
 @Composable
 private fun SensorLiveDataCard(telemetry: RadarTelemetry?) {
-    // Parse state, mov_d, stat_d from rawPacket; mov_e and stat_e come from the typed fields
-    data class RawRadar(val state: Int, val movD: Int, val statD: Int)
-    val raw = remember(telemetry?.rawPacket) {
-        telemetry?.rawPacket?.let { packet ->
-            runCatching {
-                val radar = JSONObject(packet).getJSONObject("radar")
-                RawRadar(
-                    state = radar.optInt("state", 0),
-                    movD  = radar.optInt("mov_d", 0),
-                    statD = radar.optInt("stat_d", 0),
-                )
-            }.getOrNull()
-        }
-    }
-    val stateLabel = when (raw?.state) {
+    val decision = remember(telemetry) { telemetry?.toOccupancyDecision() }
+
+    val stateLabel = when (telemetry?.radarState) {
         0    -> "No Target"
         1    -> "Moving"
         2    -> "Stationary"
@@ -2199,6 +2194,7 @@ private fun SensorLiveDataCard(telemetry: RadarTelemetry?) {
     }
 
     InfoCard {
+        // ── Header ───────────────────────────────────────────────────────────
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -2213,7 +2209,11 @@ private fun SensorLiveDataCard(telemetry: RadarTelemetry?) {
         }
         Spacer(Modifier.height(12.dp))
 
-        // 1 & 2 — Environmental
+        // ── Occupancy verdict banner ──────────────────────────────────────────
+        OccupancyVerdictBanner(decision = decision)
+        Spacer(Modifier.height(16.dp))
+
+        // ── 1 & 2: Environmental (SHT30) ─────────────────────────────────────
         Text(
             "Environmental (SHT30)",
             fontSize = 12.sp,
@@ -2235,7 +2235,7 @@ private fun SensorLiveDataCard(telemetry: RadarTelemetry?) {
         }
         Spacer(Modifier.height(12.dp))
 
-        // 3, 4, 5, 6, 7 — Radar
+        // ── 3-7: Radar (LD2412) ───────────────────────────────────────────────
         Text(
             "Radar (LD2412)",
             fontSize = 12.sp,
@@ -2244,18 +2244,22 @@ private fun SensorLiveDataCard(telemetry: RadarTelemetry?) {
         )
         Spacer(Modifier.height(6.dp))
 
-        // 3 — State
+        // 3 — Radar State
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             MetricCard(
                 title = "Radar State",
                 value = stateLabel,
                 modifier = Modifier.weight(1f),
             )
-            Spacer(Modifier.weight(1f))
+            MetricCard(
+                title = "Distance",
+                value = telemetry?.distanceCm?.let { "$it cm" } ?: "--",
+                modifier = Modifier.weight(1f),
+            )
         }
         Spacer(Modifier.height(8.dp))
 
-        // 4 & 5 — Moving target
+        // 4 & 5 — Moving target (mov_d + mov_e)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -2263,18 +2267,21 @@ private fun SensorLiveDataCard(telemetry: RadarTelemetry?) {
         ) {
             Text("Moving Target", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             Text(
-                text = raw?.movD?.let { "$it cm" } ?: "--",
+                text = telemetry?.movingDistanceCm?.let { "$it cm" } ?: "--",
                 fontWeight = FontWeight.Bold,
                 fontSize = 13.sp,
                 color = androidx.compose.material3.MaterialTheme.colorScheme.primary,
             )
         }
         Spacer(Modifier.height(4.dp))
-        EnergyBar(label = "Moving Energy", value = telemetry?.movingEnergy)
-
+        EnergyBar(
+            label = "Moving Energy (≥${OccupancyThreshold.MOVING_ENERGY_MIN} = person)",
+            value = telemetry?.movingEnergy,
+            threshold = OccupancyThreshold.MOVING_ENERGY_MIN,
+        )
         Spacer(Modifier.height(12.dp))
 
-        // 6 & 7 — Stationary target
+        // 6 & 7 — Stationary target (stat_d + stat_e)
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -2282,14 +2289,18 @@ private fun SensorLiveDataCard(telemetry: RadarTelemetry?) {
         ) {
             Text("Stationary Target", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             Text(
-                text = raw?.statD?.let { "$it cm" } ?: "--",
+                text = telemetry?.stationaryDistanceCm?.let { "$it cm" } ?: "--",
                 fontWeight = FontWeight.Bold,
                 fontSize = 13.sp,
                 color = androidx.compose.material3.MaterialTheme.colorScheme.primary,
             )
         }
         Spacer(Modifier.height(4.dp))
-        EnergyBar(label = "Stationary Energy", value = telemetry?.stationaryEnergy)
+        EnergyBar(
+            label = "Stationary Energy (≥${OccupancyThreshold.STATIONARY_ENERGY_MIN} = person)",
+            value = telemetry?.stationaryEnergy,
+            threshold = OccupancyThreshold.STATIONARY_ENERGY_MIN,
+        )
 
         if (telemetry == null) {
             Spacer(Modifier.height(8.dp))
@@ -2303,15 +2314,88 @@ private fun SensorLiveDataCard(telemetry: RadarTelemetry?) {
 }
 
 @Composable
-private fun EnergyBar(label: String, value: Int?) {
+private fun OccupancyVerdictBanner(decision: com.rewatt.app.telemetry.OccupancyDecision?) {
+    val occupied = decision?.occupied
+    val containerColor = when (occupied) {
+        true  -> Color(0xFF1B5E20)   // deep green
+        false -> androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant
+        null  -> androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant
+    }
+    val labelColor = when (occupied) {
+        true  -> Color(0xFF69F0AE)   // bright green
+        false -> androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
+        null  -> androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(containerColor)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+    ) {
+        Column {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(14.dp)
+                        .clip(CircleShape)
+                        .background(
+                            when (occupied) {
+                                true  -> Color(0xFF69F0AE)
+                                false -> androidx.compose.material3.MaterialTheme.colorScheme.outline
+                                null  -> androidx.compose.material3.MaterialTheme.colorScheme.outline
+                            },
+                        ),
+                )
+                Text(
+                    text = when (occupied) {
+                        true  -> "OCCUPIED — someone is in the room"
+                        false -> "EMPTY — no one detected"
+                        null  -> "WAITING — no sensor data"
+                    },
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp,
+                    color = labelColor,
+                )
+            }
+            if (decision != null) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = decision.reason,
+                    fontSize = 12.sp,
+                    color = labelColor.copy(alpha = 0.80f),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun EnergyBar(label: String, value: Int?, threshold: Int? = null) {
     val progress = min((value ?: 0) / 100f, 1f)
+    val aboveThreshold = threshold != null && (value ?: 0) >= threshold
+    val barColor = if (aboveThreshold) {
+        androidx.compose.material3.MaterialTheme.colorScheme.primary
+    } else {
+        androidx.compose.material3.MaterialTheme.colorScheme.outline
+    }
     Column {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text(label, fontSize = 12.sp)
-            Text(value?.toString() ?: "--", fontSize = 12.sp)
+            Text(label, fontSize = 12.sp, modifier = Modifier.weight(1f))
+            Text(
+                text = value?.toString() ?: "--",
+                fontSize = 12.sp,
+                fontWeight = if (aboveThreshold) FontWeight.Bold else FontWeight.Normal,
+                color = if (aboveThreshold) androidx.compose.material3.MaterialTheme.colorScheme.primary
+                        else androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
         LinearProgressIndicator(
             progress = { progress },
@@ -2319,6 +2403,7 @@ private fun EnergyBar(label: String, value: Int?) {
                 .fillMaxWidth()
                 .height(8.dp)
                 .clip(RoundedCornerShape(8.dp)),
+            color = barColor,
         )
     }
 }
