@@ -100,6 +100,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import com.rewatt.app.data.UserRole
 import com.rewatt.app.ui.ModeSelectionDialog
 import com.rewatt.app.ui.SetupGuideDialog
+import org.json.JSONObject
 import java.util.Calendar
 import kotlin.math.min
 
@@ -236,6 +237,7 @@ fun DashboardScreen(
                     onPendingCaptureConsumed = { pendingCaptureSource = null },
                     onStartPerception = onStartPerception,
                     onStopPerception = ::stopCapture,
+                    telemetry = uiState.sensorState.latestTelemetry,
                 )
 
                 ReWattTab.Setting -> SettingPage(
@@ -1333,6 +1335,7 @@ private fun CapturePage(
     onPendingCaptureConsumed: () -> Unit,
     onStartPerception: (PreviewView, CaptureStartSource) -> Unit,
     onStopPerception: () -> Unit,
+    telemetry: RadarTelemetry? = null,
 ) {
     var previewView by remember { mutableStateOf<PreviewView?>(null) }
 
@@ -1401,6 +1404,7 @@ private fun CapturePage(
             nowMillis = nowMillis,
             modifier = Modifier.height(260.dp),
         )
+        SensorLiveDataCard(telemetry = telemetry)
         Spacer(Modifier.height(8.dp))
     }
 }
@@ -1706,13 +1710,6 @@ private fun SettingPage(
             state = uiState.sensorState,
             freshness = uiState.packetFreshness,
             onScanUsb = onScanUsb,
-        )
-
-        // Radar section
-        Text("Radar", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-        RadarEnergyCard(
-            telemetry = uiState.sensorState.latestTelemetry,
-            modifier = Modifier.fillMaxWidth(),
         )
 
         // Status section
@@ -2174,6 +2171,134 @@ private fun DetectionRow(
             color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 12.sp,
         )
+    }
+}
+
+@Composable
+private fun SensorLiveDataCard(telemetry: RadarTelemetry?) {
+    // Parse state, mov_d, stat_d from rawPacket; mov_e and stat_e come from the typed fields
+    data class RawRadar(val state: Int, val movD: Int, val statD: Int)
+    val raw = remember(telemetry?.rawPacket) {
+        telemetry?.rawPacket?.let { packet ->
+            runCatching {
+                val radar = JSONObject(packet).getJSONObject("radar")
+                RawRadar(
+                    state = radar.optInt("state", 0),
+                    movD  = radar.optInt("mov_d", 0),
+                    statD = radar.optInt("stat_d", 0),
+                )
+            }.getOrNull()
+        }
+    }
+    val stateLabel = when (raw?.state) {
+        0    -> "No Target"
+        1    -> "Moving"
+        2    -> "Stationary"
+        3    -> "Both"
+        else -> "--"
+    }
+
+    InfoCard {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Usb,
+                contentDescription = null,
+                tint = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp),
+            )
+            Text("Live Sensor Data", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+        }
+        Spacer(Modifier.height(12.dp))
+
+        // 1 & 2 — Environmental
+        Text(
+            "Environmental (SHT30)",
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(6.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            MetricCard(
+                title = "Temperature",
+                value = telemetry?.temperatureC?.let { "%.1f °C".format(it) } ?: "--",
+                modifier = Modifier.weight(1f),
+            )
+            MetricCard(
+                title = "Humidity",
+                value = telemetry?.humidityPercent?.let { "%.1f %%".format(it) } ?: "--",
+                modifier = Modifier.weight(1f),
+            )
+        }
+        Spacer(Modifier.height(12.dp))
+
+        // 3, 4, 5, 6, 7 — Radar
+        Text(
+            "Radar (LD2412)",
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(6.dp))
+
+        // 3 — State
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            MetricCard(
+                title = "Radar State",
+                value = stateLabel,
+                modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.weight(1f))
+        }
+        Spacer(Modifier.height(8.dp))
+
+        // 4 & 5 — Moving target
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Moving Target", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            Text(
+                text = raw?.movD?.let { "$it cm" } ?: "--",
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+            )
+        }
+        Spacer(Modifier.height(4.dp))
+        EnergyBar(label = "Moving Energy", value = telemetry?.movingEnergy)
+
+        Spacer(Modifier.height(12.dp))
+
+        // 6 & 7 — Stationary target
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Stationary Target", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            Text(
+                text = raw?.statD?.let { "$it cm" } ?: "--",
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+            )
+        }
+        Spacer(Modifier.height(4.dp))
+        EnergyBar(label = "Stationary Energy", value = telemetry?.stationaryEnergy)
+
+        if (telemetry == null) {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "Connect sensor via OTG cable to see live data",
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.sp,
+            )
+        }
     }
 }
 

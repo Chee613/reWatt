@@ -1,27 +1,44 @@
 package com.rewatt.app.telemetry
 
-object UsbDataParser {
-    private val telemetryRegex = Regex(
-        pattern = """^\s*(?:RADAR|LD2412):PRES=([01]),MOV=(\d+),STA=(\d+),DIST=(\d+)(?:\|SHT30:T=(-?\d+(?:\.\d+)?),H=(\d+(?:\.\d+)?))?\s*$""",
-        option = RegexOption.IGNORE_CASE,
-    )
+import org.json.JSONException
+import org.json.JSONObject
 
+object UsbDataParser {
     fun parseTelemetry(
         line: String,
         capturedAtMillis: Long = System.currentTimeMillis(),
     ): RadarTelemetry? {
-        val match = telemetryRegex.find(line) ?: return null
-        val values = match.groupValues
+        return try {
+            val root = JSONObject(line.trim())
+            val radar = root.getJSONObject("radar")
 
-        return RadarTelemetry(
-            presence = values[1] == "1",
-            movingEnergy = values[2].toIntOrNull() ?: return null,
-            stationaryEnergy = values[3].toIntOrNull() ?: return null,
-            distanceCm = values[4].toIntOrNull() ?: return null,
-            temperatureC = values.getOrNull(5)?.takeIf { it.isNotBlank() }?.toFloatOrNull(),
-            humidityPercent = values.getOrNull(6)?.takeIf { it.isNotBlank() }?.toFloatOrNull(),
-            capturedAtMillis = capturedAtMillis,
-            rawPacket = line.trim(),
-        )
+            val state = radar.getInt("state")
+            val movD  = radar.optInt("mov_d", 0)
+            val movE  = radar.optInt("mov_e", 0)
+            val statD = radar.optInt("stat_d", 0)
+            val statE = radar.optInt("stat_e", 0)
+
+            val distanceCm = when (state) {
+                1, 3 -> movD
+                2    -> statD
+                else -> 0
+            }
+
+            val temp = root.optDouble("temp", Double.NaN).takeIf { !it.isNaN() }?.toFloat()
+            val hum  = root.optDouble("hum",  Double.NaN).takeIf { !it.isNaN() }?.toFloat()
+
+            RadarTelemetry(
+                presence          = state > 0,
+                movingEnergy      = movE,
+                stationaryEnergy  = statE,
+                distanceCm        = distanceCm,
+                temperatureC      = temp,
+                humidityPercent   = hum,
+                capturedAtMillis  = capturedAtMillis,
+                rawPacket         = line.trim(),
+            )
+        } catch (_: JSONException) {
+            null
+        }
     }
 }
