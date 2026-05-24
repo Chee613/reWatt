@@ -11,15 +11,19 @@ import androidx.activity.viewModels
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.camera.view.PreviewView
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import com.rewatt.app.BuildConfig
 import com.rewatt.app.perception.CaptureStartSource
+import com.rewatt.app.ui.ModeSelectionDialog
+import com.rewatt.app.ui.SetupGuideDialog
 import com.rewatt.app.ui.auth.AuthState
 import com.rewatt.app.ui.auth.AuthViewModel
 import com.rewatt.app.ui.auth.AuthViewModelFactory
+import com.rewatt.app.ui.auth.DeleteAccountState
 import com.rewatt.app.ui.auth.LoginScreen
 import com.rewatt.app.ui.auth.SignUpScreen
 import com.rewatt.app.ui.dashboard.DashboardScreen
@@ -82,8 +86,35 @@ class MainActivity : ComponentActivity() {
         setContent {
             ReWattTheme {
                 val authState by authViewModel.authState.collectAsStateWithLifecycle()
+                val sensorGuideEvent by authViewModel.sensorGuideEvent.collectAsStateWithLifecycle()
+                val showModeSelectionEvent by authViewModel.showModeSelection.collectAsStateWithLifecycle()
+                val currentUserRole by authViewModel.currentUserRole.collectAsStateWithLifecycle()
+                val deleteAccountState by authViewModel.deleteAccountState.collectAsStateWithLifecycle()
                 var showSignUp by rememberSaveable { mutableStateOf(false) }
                 var devBypass by rememberSaveable { mutableStateOf(false) }
+                var showSetupGuide by rememberSaveable { mutableStateOf(false) }
+                var showModeDialog by rememberSaveable { mutableStateOf(false) }
+
+                // Load role whenever the user becomes authenticated
+                LaunchedEffect(authState) {
+                    if (authState is AuthState.Authenticated) authViewModel.loadUserRole()
+                }
+
+                // Show mode selection dialog after signup
+                LaunchedEffect(showModeSelectionEvent) {
+                    if (showModeSelectionEvent) {
+                        showModeDialog = true
+                        authViewModel.consumeModeSelection()
+                    }
+                }
+
+                // Show setup guide when Sensor mode is chosen
+                LaunchedEffect(sensorGuideEvent) {
+                    if (sensorGuideEvent) {
+                        showSetupGuide = true
+                        authViewModel.consumeSensorGuide()
+                    }
+                }
 
                 val showDashboard = devBypass || authState is AuthState.Authenticated
 
@@ -102,6 +133,14 @@ class MainActivity : ComponentActivity() {
                         onSignOut = {
                             devBypass = false
                             authViewModel.signOut()
+                        },
+                        isDeletingAccount = deleteAccountState is DeleteAccountState.Loading,
+                        deleteAccountError = (deleteAccountState as? DeleteAccountState.Error)?.message,
+                        onDeleteAccount = authViewModel::deleteAccount,
+                        onClearDeleteError = authViewModel::resetDeleteAccountState,
+                        currentUserRole = currentUserRole,
+                        onModeSelected = { role ->
+                            authViewModel.setMode(role)
                         },
                     )
                 } else {
@@ -128,6 +167,21 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
+                }
+
+                if (showModeDialog) {
+                    ModeSelectionDialog(
+                        currentRole = currentUserRole,
+                        canDismiss = false,
+                        onSelect = { role ->
+                            showModeDialog = false
+                            authViewModel.setMode(role)
+                        },
+                    )
+                }
+
+                if (showSetupGuide) {
+                    SetupGuideDialog(onDismiss = { showSetupGuide = false })
                 }
             }
         }
