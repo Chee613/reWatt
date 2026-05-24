@@ -12,9 +12,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -31,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.Image
@@ -50,6 +56,8 @@ fun SignUpScreen(
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
+    var passwordVisible by remember { mutableStateOf(false) }
+    var confirmPasswordVisible by remember { mutableStateOf(false) }
     val isLoading = signUpState is SignUpState.Loading
     val passwordMismatch = password.isNotEmpty() && confirmPassword.isNotEmpty() && password != confirmPassword
 
@@ -102,18 +110,26 @@ fun SignUpScreen(
             value = password,
             onValueChange = { password = it },
             label = { Text("Password") },
-            visualTransformation = PasswordVisualTransformation(),
+            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
             enabled = !isLoading,
+            trailingIcon = {
+                IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                    Icon(
+                        imageVector = if (passwordVisible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                        contentDescription = if (passwordVisible) "Hide password" else "Show password",
+                    )
+                }
+            },
         )
         Spacer(Modifier.height(12.dp))
         OutlinedTextField(
             value = confirmPassword,
             onValueChange = { confirmPassword = it },
             label = { Text("Confirm Password") },
-            visualTransformation = PasswordVisualTransformation(),
+            visualTransformation = if (confirmPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
@@ -123,6 +139,14 @@ fun SignUpScreen(
                 { Text("Passwords do not match") }
             } else {
                 null
+            },
+            trailingIcon = {
+                IconButton(onClick = { confirmPasswordVisible = !confirmPasswordVisible }) {
+                    Icon(
+                        imageVector = if (confirmPasswordVisible) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                        contentDescription = if (confirmPasswordVisible) "Hide password" else "Show password",
+                    )
+                }
             },
         )
 

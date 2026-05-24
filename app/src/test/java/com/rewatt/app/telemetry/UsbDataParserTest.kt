@@ -22,6 +22,9 @@ class UsbDataParserTest {
         assertEquals(44, telemetry.movingEnergy)
         assertEquals(100, telemetry.stationaryEnergy)
         assertEquals(227, telemetry.distanceCm)   // state 3 → mov_d
+        assertEquals(3, telemetry.radarState)
+        assertEquals(227, telemetry.movingDistanceCm)
+        assertEquals(153, telemetry.stationaryDistanceCm)
         assertEquals(29.06f, telemetry.temperatureC)
         assertEquals(60.45f, telemetry.humidityPercent)
         assertEquals(1000L, telemetry.capturedAtMillis)
@@ -39,6 +42,9 @@ class UsbDataParserTest {
         assertEquals(0, telemetry.movingEnergy)
         assertEquals(100, telemetry.stationaryEnergy)
         assertEquals(153, telemetry.distanceCm)   // state 2 → stat_d
+        assertEquals(2, telemetry.radarState)
+        assertEquals(0, telemetry.movingDistanceCm)
+        assertEquals(153, telemetry.stationaryDistanceCm)
         assertEquals(29.06f, telemetry.temperatureC)
         assertEquals(60.35f, telemetry.humidityPercent)
     }
@@ -54,6 +60,9 @@ class UsbDataParserTest {
         assertEquals(60, telemetry.movingEnergy)
         assertEquals(0, telemetry.stationaryEnergy)
         assertEquals(80, telemetry.distanceCm)    // state 1 → mov_d
+        assertEquals(1, telemetry.radarState)
+        assertEquals(80, telemetry.movingDistanceCm)
+        assertEquals(0, telemetry.stationaryDistanceCm)
     }
 
     @Test
