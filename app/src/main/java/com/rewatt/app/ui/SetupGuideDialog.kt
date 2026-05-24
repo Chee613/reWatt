@@ -34,6 +34,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -54,14 +55,15 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 
-private const val TOTAL_STEPS = 5
+private const val TOTAL_STEPS = 6
 
 @Composable
-fun SetupGuideDialog(onDismiss: () -> Unit) {
+fun SetupGuideDialog(onDismiss: (spaceName: String?) -> Unit) {
     var step by remember { mutableStateOf(0) }
+    var spaceName by remember { mutableStateOf("") }
 
     Dialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { onDismiss(null) },
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
             dismissOnBackPress = true,
@@ -85,7 +87,7 @@ fun SetupGuideDialog(onDismiss: () -> Unit) {
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text("Sensor Setup Guide", fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                    TextButton(onClick = onDismiss) { Text("Skip") }
+                    TextButton(onClick = { onDismiss(null) }) { Text("Skip") }
                 }
 
                 Spacer(Modifier.height(16.dp))
@@ -128,7 +130,11 @@ fun SetupGuideDialog(onDismiss: () -> Unit) {
                         1 -> BatteryStep()
                         2 -> MountStep()
                         3 -> VerifyViewStep()
-                        4 -> DoneStep()
+                        4 -> NameYourSpaceStep(
+                            spaceName = spaceName,
+                            onSpaceNameChange = { spaceName = it },
+                        )
+                        5 -> DoneStep()
                     }
                 }
 
@@ -148,8 +154,9 @@ fun SetupGuideDialog(onDismiss: () -> Unit) {
                         Spacer(Modifier.weight(1f))
                     }
                     Button(
-                        onClick = { if (step < TOTAL_STEPS - 1) step++ else onDismiss() },
+                        onClick = { if (step < TOTAL_STEPS - 1) step++ else onDismiss(spaceName.ifBlank { null }) },
                         modifier = Modifier.weight(1f),
+                        enabled = !(step == 4 && spaceName.isBlank()),
                     ) { Text(if (step == TOTAL_STEPS - 1) "Done" else "Next") }
                 }
             }
@@ -348,9 +355,29 @@ private fun VerifyViewStep() {
 }
 
 @Composable
+private fun NameYourSpaceStep(
+    spaceName: String,
+    onSpaceNameChange: (String) -> Unit,
+) {
+    StepHeader(
+        title = "5. Name Your Space",
+        body = "Give this sensor a name — the room, hall or lab it monitors.",
+    )
+
+    OutlinedTextField(
+        value = spaceName,
+        onValueChange = { if (it.length <= 40) onSpaceNameChange(it) },
+        label = { Text("Space name") },
+        placeholder = { Text("e.g. Hall 1, Lab 3, Meeting Room A") },
+        singleLine = true,
+        modifier = androidx.compose.ui.Modifier.fillMaxWidth(),
+    )
+}
+
+@Composable
 private fun DoneStep() {
     StepHeader(
-        title = "5. You're All Set!",
+        title = "6. You're All Set!",
         body = "Everything is ready. reWatt will now watch the room and help manage energy automatically. You can come back to this guide anytime from the Settings tab.",
     )
 

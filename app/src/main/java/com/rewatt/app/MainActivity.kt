@@ -17,6 +17,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import com.rewatt.app.BuildConfig
+import com.rewatt.app.data.HallSnapshot
 import com.rewatt.app.perception.CaptureStartSource
 import com.rewatt.app.ui.ModeSelectionDialog
 import com.rewatt.app.ui.SetupGuideDialog
@@ -93,15 +94,20 @@ class MainActivity : ComponentActivity() {
                 val sensorGuideEvent by authViewModel.sensorGuideEvent.collectAsStateWithLifecycle()
                 val showModeSelectionEvent by authViewModel.showModeSelection.collectAsStateWithLifecycle()
                 val currentUserRole by authViewModel.currentUserRole.collectAsStateWithLifecycle()
+                val spaceName by authViewModel.spaceName.collectAsStateWithLifecycle()
                 val deleteAccountState by authViewModel.deleteAccountState.collectAsStateWithLifecycle()
+                val hallSnapshot by viewModel.hallSnapshot.collectAsStateWithLifecycle()
                 var showSignUp by rememberSaveable { mutableStateOf(false) }
                 var devBypass by rememberSaveable { mutableStateOf(false) }
                 var showSetupGuide by rememberSaveable { mutableStateOf(false) }
                 var showModeDialog by rememberSaveable { mutableStateOf(false) }
 
-                // Load role whenever the user becomes authenticated
+                // Load role and space name whenever the user becomes authenticated
                 LaunchedEffect(authState) {
-                    if (authState is AuthState.Authenticated) authViewModel.loadUserRole()
+                    if (authState is AuthState.Authenticated) {
+                        authViewModel.loadUserRole()
+                        authViewModel.loadSpaceName()
+                    }
                 }
 
                 // Show mode selection dialog after signup
@@ -144,8 +150,14 @@ class MainActivity : ComponentActivity() {
                         onDeleteAccount = authViewModel::deleteAccount,
                         onClearDeleteError = authViewModel::resetDeleteAccountState,
                         currentUserRole = currentUserRole,
+                        spaceName = spaceName,
+                        hallSnapshot = hallSnapshot,
+                        onHallSelect = viewModel::selectHall,
                         onModeSelected = { role ->
                             authViewModel.setMode(role)
+                        },
+                        onRenameSpace = { name ->
+                            authViewModel.renameSpace(name)
                         },
                     )
                 } else {
@@ -186,7 +198,10 @@ class MainActivity : ComponentActivity() {
                 }
 
                 if (showSetupGuide) {
-                    SetupGuideDialog(onDismiss = { showSetupGuide = false })
+                    SetupGuideDialog(onDismiss = { name ->
+                        showSetupGuide = false
+                        if (name != null) authViewModel.setSpaceName(name)
+                    })
                 }
             }
         }

@@ -7,6 +7,17 @@ import com.google.firebase.FirebaseApp
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.SetOptions
+import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.callbackFlow
+
+data class HallSnapshot(
+    val personCount: Int = 0,
+    val primaryActivity: String? = null,
+    val temperatureC: Double? = null,
+    val humidityPercent: Double? = null,
+    val lastUpdatedAt: Long? = null,
+)
 
 class FirebaseSyncRepository(
     context: Context,
@@ -18,6 +29,17 @@ class FirebaseSyncRepository(
             ?.takeIf { it.isNotBlank() }
             ?: "unknown-node"
     }
+
+    // Use the sensor's assigned space name as the Firestore room path so each
+    // sensor's data lands under its hall (e.g. "rooms/Hall 1/nodes/...").
+    // Falls back to the constructor-supplied roomId if no space name is set.
+    private val effectiveRoomId: String
+        get() {
+            val name = appContext
+                .getSharedPreferences("rewatt_space_config", Context.MODE_PRIVATE)
+                .getString("space_name", null)
+            return if (!name.isNullOrBlank()) name else roomId
+        }
 
     fun syncPerceptionSummary(
         perceptionSummary: PerceptionSyncSummary,
@@ -35,9 +57,10 @@ class FirebaseSyncRepository(
         }
 
         val firestore = FirebaseFirestore.getInstance()
+        val room = effectiveRoomId
         val payload = buildPerceptionPayload(
             perceptionSummary = perceptionSummary,
-            roomId = roomId,
+            roomId = room,
             nodeId = nodeId,
             updatedAtMillis = System.currentTimeMillis(),
         )
@@ -50,17 +73,17 @@ class FirebaseSyncRepository(
             ),
         )
 
-        val nodePath = "rooms/$roomId/nodes/$nodeId"
-        val historyPath = "rooms/$roomId/telemetry/$historyId"
+        val nodePath = "rooms/$room/nodes/$nodeId"
+        val historyPath = "rooms/$room/telemetry/$historyId"
 
         val nodeTask = firestore.collection("rooms")
-            .document(roomId)
+            .document(room)
             .collection("nodes")
             .document(nodeId)
             .set(payload, SetOptions.merge())
 
         val historyTask = firestore.collection("rooms")
-            .document(roomId)
+            .document(room)
             .collection("telemetry")
             .document(historyId)
             .set(payload + mapOf("historyId" to historyId), SetOptions.merge())
@@ -84,6 +107,7 @@ class FirebaseSyncRepository(
         val firestore = FirebaseFirestore.getInstance()
         val updatedAtMillis = System.currentTimeMillis()
         val historyId = "$capturedAtMillis-$nodeId"
+        val room = effectiveRoomId
         val payload = mapOf(
             "activityAnalysis" to buildActivityAnalysisPayload(
                 analysis = activityAnalysis,
@@ -94,16 +118,38 @@ class FirebaseSyncRepository(
         )
 
         firestore.collection("rooms")
-            .document(roomId)
+            .document(room)
             .collection("nodes")
             .document(nodeId)
             .set(payload, SetOptions.merge())
 
         firestore.collection("rooms")
-            .document(roomId)
+            .document(room)
             .collection("telemetry")
             .document(historyId)
             .set(payload, SetOptions.merge())
+    }
+
+    fun listenToHall(roomId: String): Flow<HallSnapshot?> = callbackFlow {
+        val listener = FirebaseFirestore.getInstance()
+            .collection("rooms").document(roomId)
+            .collection("nodes")
+            .addSnapshotListener { snapshot, _ ->
+                val doc = snapshot?.documents
+                    ?.maxByOrNull { it.getLong("lastUpdatedAt") ?: 0L }
+                trySend(
+                    doc?.let {
+                        HallSnapshot(
+                            personCount = it.getLong("personCount")?.toInt() ?: 0,
+                            primaryActivity = it.getString("primaryActivity"),
+                            temperatureC = it.getDouble("temperatureC"),
+                            humidityPercent = it.getDouble("humidityPercent"),
+                            lastUpdatedAt = it.getLong("lastUpdatedAt"),
+                        )
+                    },
+                )
+            }
+        awaitClose { listener.remove() }
     }
 
     companion object {

@@ -98,6 +98,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.ui.input.pointer.pointerInput
+import com.rewatt.app.data.HallSnapshot
 import com.rewatt.app.data.UserRole
 import com.rewatt.app.telemetry.OccupancyThreshold
 import com.rewatt.app.telemetry.toOccupancyDecision
@@ -130,15 +131,28 @@ fun DashboardScreen(
     onDeleteAccount: () -> Unit = {},
     onClearDeleteError: () -> Unit = {},
     currentUserRole: UserRole? = null,
+    spaceName: String? = null,
+    hallSnapshot: HallSnapshot? = null,
+    onHallSelect: (String) -> Unit = {},
     onModeSelected: (UserRole) -> Unit = {},
-    showYoloUpload: Boolean = BuildConfig.DEBUG,
+    onRenameSpace: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var selectedTab by rememberSaveable { mutableStateOf(ReWattTab.Live) }
     var selectedHall by rememberSaveable { mutableStateOf(Hall.Hall1) }
+
+    // Keep ViewModel in sync with the locally-selected hall so Firestore listener switches
+    LaunchedEffect(selectedHall) { onHallSelect(selectedHall.label) }
     var pendingCaptureSource by remember { mutableStateOf<CaptureStartSource?>(null) }
     var lastAutoTriggerAtMillis by remember { mutableStateOf<Long?>(null) }
     var autoSuppressedUntilClear by remember { mutableStateOf(false) }
+
+    // If role changes to Admin while Capture tab is active, fall back to Live
+    LaunchedEffect(currentUserRole) {
+        if (currentUserRole == UserRole.Admin && selectedTab == ReWattTab.Capture) {
+            selectedTab = ReWattTab.Live
+        }
+    }
 
     val latestTelemetry = uiState.sensorState.latestTelemetry
     val hasFreshPresence = uiState.packetFreshness == PacketFreshness.Fresh &&
@@ -165,7 +179,7 @@ fun DashboardScreen(
             )
         ) {
             lastAutoTriggerAtMillis = telemetryAtMillis
-            selectedTab = ReWattTab.Capture
+            if (currentUserRole != UserRole.Admin) selectedTab = ReWattTab.Capture
             pendingCaptureSource = CaptureStartSource.Auto
         }
     }
@@ -207,7 +221,10 @@ fun DashboardScreen(
         },
         bottomBar = {
             NavigationBar {
-                ReWattTab.values().forEach { tab ->
+                val visibleTabs = ReWattTab.values().filter { tab ->
+                    !(tab == ReWattTab.Capture && currentUserRole == UserRole.Admin)
+                }
+                visibleTabs.forEach { tab ->
                     NavigationBarItem(
                         selected = selectedTab == tab,
                         onClick = { selectedTab = tab },
@@ -231,6 +248,9 @@ fun DashboardScreen(
                     selectedHall = selectedHall,
                     onHallChange = { selectedHall = it },
                     onStartCapture = { requestCapture(CaptureStartSource.Manual) },
+                    currentUserRole = currentUserRole,
+                    spaceName = spaceName,
+                    hallSnapshot = hallSnapshot,
                 )
 
                 ReWattTab.Analytic -> AnalyticPage(
@@ -250,6 +270,8 @@ fun DashboardScreen(
                     onUploadYoloImage = onUploadYoloImage,
                     showYoloUpload = showYoloUpload,
                     telemetry = uiState.sensorState.latestTelemetry,
+                    currentUserRole = currentUserRole,
+                    spaceName = spaceName,
                 )
 
                 ReWattTab.Setting -> SettingPage(
@@ -263,7 +285,9 @@ fun DashboardScreen(
                     onDeleteAccount = onDeleteAccount,
                     onClearDeleteError = onClearDeleteError,
                     currentUserRole = currentUserRole,
+                    spaceName = spaceName,
                     onModeSelected = onModeSelected,
+                    onRenameSpace = onRenameSpace,
                 )
             }
         }
@@ -331,15 +355,26 @@ private fun LivePage(
     selectedHall: Hall,
     onHallChange: (Hall) -> Unit,
     onStartCapture: () -> Unit,
+    currentUserRole: UserRole? = null,
+    spaceName: String? = null,
+    hallSnapshot: HallSnapshot? = null,
 ) {
     val telemetry = uiState.sensorState.latestTelemetry
     val analysis = uiState.sensorState.activityAnalysisState.analysis
 
-    val nowAction = remember(uiState.nowMillis, perceptionState.personCount, telemetry?.temperatureC, analysis?.occupancyHint, selectedHall) {
+    // For Admin, pull live values from the Firestore snapshot of the selected hall.
+    // For Sensor, use the local perception state and USB radar readings.
+    val isAdmin = currentUserRole == UserRole.Admin
+    val displayPersonCount = if (isAdmin) hallSnapshot?.personCount ?: 0 else perceptionState.personCount
+    val displayTempC = if (isAdmin && hallSnapshot?.temperatureC != null) hallSnapshot.temperatureC else telemetry?.temperatureC?.toDouble()
+    val displayHumidity = if (isAdmin && hallSnapshot?.humidityPercent != null) hallSnapshot.humidityPercent else telemetry?.humidityPercent?.toDouble()
+    val displayTopSound = if (isAdmin) hallSnapshot?.primaryActivity else perceptionState.soundDetections.firstOrNull()?.label
+
+    val nowAction = remember(uiState.nowMillis, displayPersonCount, displayTempC, analysis?.occupancyHint, selectedHall) {
         deriveNowAction(
             nowMillis = uiState.nowMillis,
-            personCount = perceptionState.personCount,
-            temperatureC = telemetry?.temperatureC,
+            personCount = displayPersonCount,
+            temperatureC = displayTempC?.toFloat(),
             occupancyHint = analysis?.occupancyHint,
             hall = selectedHall,
         )
@@ -353,15 +388,20 @@ private fun LivePage(
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        HallDropdown(selectedHall = selectedHall, onHallChange = onHallChange)
+        if (currentUserRole == UserRole.Sensor && spaceName != null) {
+            Text(spaceName, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+        } else {
+            HallDropdown(selectedHall = selectedHall, onHallChange = onHallChange)
+        }
 
         // ── 6-card grid ──────────────────────────────────────────────────────
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             MetricCard(
                 title = "Occupancy",
                 value = when {
-                    perceptionState.personCount > 0 -> "${perceptionState.personCount} ppl"
+                    displayPersonCount > 0 -> "$displayPersonCount ppl"
                     telemetry?.presence == true -> "Detected"
+                    isAdmin && hallSnapshot != null -> "Empty"
                     telemetry != null -> "Empty"
                     else -> "--"
                 },
@@ -376,12 +416,12 @@ private fun LivePage(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             MetricCard(
                 title = "Temperature",
-                value = telemetry?.temperatureC?.let { "%.1f °C".format(it) } ?: "--",
+                value = displayTempC?.let { "%.1f °C".format(it) } ?: "--",
                 modifier = Modifier.weight(1f),
             )
             MetricCard(
                 title = "Humidity",
-                value = telemetry?.humidityPercent?.let { "%.1f %%".format(it) } ?: "--",
+                value = displayHumidity?.let { "%.1f %%".format(it) } ?: "--",
                 modifier = Modifier.weight(1f),
             )
         }
@@ -393,7 +433,7 @@ private fun LivePage(
             )
             MetricCard(
                 title = "Top sound",
-                value = perceptionState.soundDetections.firstOrNull()?.label ?: "--",
+                value = displayTopSound ?: "--",
                 modifier = Modifier.weight(1f),
             )
         }
@@ -1350,6 +1390,8 @@ private fun CapturePage(
     onUploadYoloImage: () -> Unit,
     showYoloUpload: Boolean,
     telemetry: RadarTelemetry? = null,
+    currentUserRole: UserRole? = null,
+    spaceName: String? = null,
 ) {
     var previewView by remember { mutableStateOf<PreviewView?>(null) }
 
@@ -1374,6 +1416,14 @@ private fun CapturePage(
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        if (currentUserRole == UserRole.Sensor && spaceName != null) {
+            Text(spaceName, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            Text(
+                "Your monitored space",
+                fontSize = 12.sp,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         CaptureHeader(
             state = state,
             previewView = previewView,
@@ -1555,16 +1605,53 @@ private fun SettingPage(
     onDeleteAccount: () -> Unit = {},
     onClearDeleteError: () -> Unit = {},
     currentUserRole: UserRole? = null,
+    spaceName: String? = null,
     onModeSelected: (UserRole) -> Unit = {},
+    onRenameSpace: (String) -> Unit = {},
 ) {
     val displayName = userDisplayName?.takeIf { it.isNotBlank() } ?: userEmail
     val avatarLetter = displayName.firstOrNull()?.uppercaseChar()?.toString() ?: "R"
     var showSetupGuide by remember { mutableStateOf(false) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showModeDialog by remember { mutableStateOf(false) }
+    var showRenameDialog by remember { mutableStateOf(false) }
+    var renameInput by remember { mutableStateOf("") }
 
     if (showSetupGuide) {
-        SetupGuideDialog(onDismiss = { showSetupGuide = false })
+        SetupGuideDialog(onDismiss = { name ->
+            showSetupGuide = false
+            if (name != null) onRenameSpace(name)
+        })
+    }
+
+    if (showRenameDialog) {
+        AlertDialog(
+            onDismissRequest = { showRenameDialog = false },
+            title = { Text("Rename Space") },
+            text = {
+                androidx.compose.material3.OutlinedTextField(
+                    value = renameInput,
+                    onValueChange = { if (it.length <= 40) renameInput = it },
+                    label = { Text("Space name") },
+                    placeholder = { Text("e.g. Hall 1, Lab 3") },
+                    singleLine = true,
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (renameInput.isNotBlank()) {
+                            onRenameSpace(renameInput.trim())
+                            showRenameDialog = false
+                        }
+                    },
+                    enabled = renameInput.isNotBlank(),
+                ) { Text("Save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRenameDialog = false }) { Text("Cancel") }
+            },
+        )
     }
 
     if (showModeDialog) {
@@ -1615,36 +1702,62 @@ private fun SettingPage(
     ) {
         Text("Settings", fontWeight = FontWeight.Bold, fontSize = 24.sp)
 
-        // Setup Guide section
-        Text("Device Setup", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-        InfoCard {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { showSetupGuide = true },
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.Info,
-                    contentDescription = null,
-                    tint = androidx.compose.material3.MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(24.dp),
-                )
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Setup Guide", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
-                    Text(
-                        "Permissions, mount & camera view",
-                        fontSize = 12.sp,
-                        color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+        // Setup Guide section — Sensor only
+        if (currentUserRole != UserRole.Admin) {
+            Text("Device Setup", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+            InfoCard {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showSetupGuide = true },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Info,
+                        contentDescription = null,
+                        tint = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp),
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Setup Guide", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                        Text(
+                            "Permissions, mount & camera view",
+                            fontSize = 12.sp,
+                            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.Outlined.Settings,
+                        contentDescription = null,
+                        tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp),
                     )
                 }
-                Icon(
-                    imageVector = Icons.Outlined.Settings,
-                    contentDescription = null,
-                    tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(16.dp),
-                )
+            }
+        }
+
+        // Your Space section — Sensor only
+        if (currentUserRole == UserRole.Sensor) {
+            Text("Your Space", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+            InfoCard {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(spaceName ?: "Not set", fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "The space this sensor monitors",
+                            fontSize = 12.sp,
+                            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    TextButton(onClick = {
+                        renameInput = spaceName ?: ""
+                        showRenameDialog = true
+                    }) { Text("Rename") }
+                }
             }
         }
 
@@ -1741,22 +1854,23 @@ private fun SettingPage(
             }
         }
 
-        // Connection section
-        Text("Connection", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-        ConnectionCard(
-            state = uiState.sensorState,
-            freshness = uiState.packetFreshness,
-            onScanUsb = onScanUsb,
-        )
+        // Connection and System Status sections — Sensor only
+        if (currentUserRole != UserRole.Admin) {
+            Text("Connection", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+            ConnectionCard(
+                state = uiState.sensorState,
+                freshness = uiState.packetFreshness,
+                onScanUsb = onScanUsb,
+            )
 
-        // Status section
-        Text("System status", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-        StatusSummaryCard(
-            sensorState = uiState.sensorState,
-            freshness = uiState.packetFreshness,
-            nowMillis = uiState.nowMillis,
-            modifier = Modifier.fillMaxWidth(),
-        )
+            Text("System status", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+            StatusSummaryCard(
+                sensorState = uiState.sensorState,
+                freshness = uiState.packetFreshness,
+                nowMillis = uiState.nowMillis,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
     }
 }
 

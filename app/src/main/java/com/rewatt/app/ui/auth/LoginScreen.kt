@@ -80,8 +80,8 @@ fun LoginScreen(
         OutlinedTextField(
             value = username,
             onValueChange = { username = it },
-            label = { Text("Username") },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+            label = { Text("Username or Email") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
             enabled = !isLoading,
