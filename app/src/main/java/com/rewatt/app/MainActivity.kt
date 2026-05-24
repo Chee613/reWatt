@@ -58,6 +58,10 @@ class MainActivity : ComponentActivity() {
             pendingPreviewView = null
             pendingCaptureSource = null
         }
+    private val yoloUploadLauncher =
+        registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+            uri?.let(perceptionViewModel::analyzeUploadedYoloImage)
+        }
     private var pendingPreviewView: PreviewView? = null
     private var pendingCaptureSource: CaptureStartSource? = null
 
@@ -128,6 +132,7 @@ class MainActivity : ComponentActivity() {
                         onScanUsb = ::startUsbService,
                         onStartPerception = ::requestPerceptionPermissionsThenStart,
                         onStopPerception = perceptionViewModel::stopPerception,
+                        onUploadYoloImage = ::requestYoloImageUpload,
                         userEmail = authedUser?.email ?: "dev@rewatt.app",
                         userDisplayName = authedUser?.displayName ?: if (devBypass) "Dev Mode" else null,
                         onSignOut = {
@@ -233,6 +238,10 @@ class MainActivity : ComponentActivity() {
                 Manifest.permission.RECORD_AUDIO,
             ),
         )
+    }
+
+    private fun requestYoloImageUpload() {
+        yoloUploadLauncher.launch("image/*")
     }
 
     private fun hasPermission(permission: String): Boolean =
