@@ -48,6 +48,14 @@ data class SoundDetection(
     val supportsHumanPresence: Boolean = presenceLevel != AudioPresenceLevel.None
 }
 
+data class ExposureReading(
+    val ev: Double,
+    val iso: Int,
+    val exposureTimeSeconds: Double,
+    val aperture: Double,
+    val lightsOn: Boolean,
+)
+
 data class PerceptionUiState(
     val isRunning: Boolean = false,
     val captureStartSource: CaptureStartSource? = null,
@@ -58,6 +66,12 @@ data class PerceptionUiState(
     val latestFrameAtMillis: Long? = null,
     val yoloDetections: List<ObjectDetection> = emptyList(),
     val yoloMessage: String = "YOLO is waiting for camera frames.",
+    val exposureEv: Double? = null,
+    val exposureIso: Int? = null,
+    val exposureTimeSeconds: Double? = null,
+    val exposureAperture: Double = ExposureValueCalculator.FIXED_APERTURE,
+    val lightsOn: Boolean? = null,
+    val exposureMessage: String = "Exposure is waiting for camera capture.",
     val latestAudioAtMillis: Long? = null,
     val audioSampleCount: Int = 0,
     val audioRms: Float = 0f,

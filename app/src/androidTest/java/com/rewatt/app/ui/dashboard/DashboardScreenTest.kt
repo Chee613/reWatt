@@ -1,7 +1,7 @@
 package com.rewatt.app.ui.dashboard
 
-import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
@@ -25,17 +25,7 @@ class DashboardScreenTest {
 
     @Test
     fun showsDisconnectedState() {
-        composeRule.setContent {
-            ReWattTheme {
-                DashboardScreen(
-                    uiState = DashboardUiState(),
-                    perceptionState = PerceptionUiState(),
-                    onScanUsb = {},
-                    onStartPerception = { _, _ -> },
-                    onStopPerception = {},
-                )
-            }
-        }
+        setDashboardContent()
 
         composeRule.onNodeWithText("Disconnected").assertIsDisplayed()
         composeRule.onNodeWithText("Waiting for first packet.").assertIsDisplayed()
@@ -46,36 +36,28 @@ class DashboardScreenTest {
 
     @Test
     fun showsLiveTelemetryState() {
-        composeRule.setContent {
-            ReWattTheme {
-                DashboardScreen(
-                    uiState = DashboardUiState(
-                        sensorState = SensorDashboardState(
-                            connectionStatus = UsbConnectionStatus.Connected,
-                            connectionMessage = "Connected at 115200 baud.",
-                            latestTelemetry = RadarTelemetry(
-                                presence = true,
-                                movingEnergy = 42,
-                                stationaryEnergy = 85,
-                                distanceCm = 120,
-                                temperatureC = 26.5f,
-                                humidityPercent = 58.2f,
-                                capturedAtMillis = 1_000L,
-                                rawPacket = "LD2412:PRES=1,MOV=42,STA=85,DIST=120|SHT30:T=26.5,H=58.2",
-                            ),
-                            lastValidPacketAtMillis = 1_000L,
-                            validPacketCount = 1,
-                        ),
-                        packetFreshness = PacketFreshness.Fresh,
-                        nowMillis = 1_500L,
+        setDashboardContent(
+            uiState = DashboardUiState(
+                sensorState = SensorDashboardState(
+                    connectionStatus = UsbConnectionStatus.Connected,
+                    connectionMessage = "Connected at 115200 baud.",
+                    latestTelemetry = RadarTelemetry(
+                        presence = true,
+                        movingEnergy = 42,
+                        stationaryEnergy = 85,
+                        distanceCm = 120,
+                        temperatureC = 26.5f,
+                        humidityPercent = 58.2f,
+                        capturedAtMillis = 1_000L,
+                        rawPacket = "LD2412:PRES=1,MOV=42,STA=85,DIST=120|SHT30:T=26.5,H=58.2",
                     ),
-                    perceptionState = PerceptionUiState(),
-                    onScanUsb = {},
-                    onStartPerception = { _, _ -> },
-                    onStopPerception = {},
-                )
-            }
-        }
+                    lastValidPacketAtMillis = 1_000L,
+                    validPacketCount = 1,
+                ),
+                packetFreshness = PacketFreshness.Fresh,
+                nowMillis = 1_500L,
+            ),
+        )
 
         composeRule.onNodeWithText("Connected").assertIsDisplayed()
         composeRule.onNodeWithText("120 cm").assertIsDisplayed()
@@ -89,22 +71,14 @@ class DashboardScreenTest {
 
     @Test
     fun showsMalformedPacketWarning() {
-        composeRule.setContent {
-            ReWattTheme {
-                DashboardScreen(
-                    uiState = DashboardUiState(
-                        sensorState = SensorDashboardState(
-                            malformedPacketCount = 1,
-                            lastMalformedPacket = "not-sensor-data",
-                        ),
-                    ),
-                    perceptionState = PerceptionUiState(),
-                    onScanUsb = {},
-                    onStartPerception = { _, _ -> },
-                    onStopPerception = {},
-                )
-            }
-        }
+        setDashboardContent(
+            uiState = DashboardUiState(
+                sensorState = SensorDashboardState(
+                    malformedPacketCount = 1,
+                    lastMalformedPacket = "not-sensor-data",
+                ),
+            ),
+        )
 
         composeRule.onNodeWithText("Malformed").assertIsDisplayed()
         composeRule.onNodeWithText("Packet health").assertIsDisplayed()
@@ -112,17 +86,7 @@ class DashboardScreenTest {
 
     @Test
     fun pressingStartCaptureOpensCaptureTab() {
-        composeRule.setContent {
-            ReWattTheme {
-                DashboardScreen(
-                    uiState = DashboardUiState(),
-                    perceptionState = PerceptionUiState(),
-                    onScanUsb = {},
-                    onStartPerception = { _, _ -> },
-                    onStopPerception = {},
-                )
-            }
-        }
+        setDashboardContent()
 
         composeRule.onNodeWithText("Start Capture").performClick()
         composeRule.waitForIdle()
@@ -134,17 +98,7 @@ class DashboardScreenTest {
 
     @Test
     fun analyticTabIsSecondAndShowsTimeFmPlaceholder() {
-        composeRule.setContent {
-            ReWattTheme {
-                DashboardScreen(
-                    uiState = DashboardUiState(),
-                    perceptionState = PerceptionUiState(),
-                    onScanUsb = {},
-                    onStartPerception = { _, _ -> },
-                    onStopPerception = {},
-                )
-            }
-        }
+        setDashboardContent()
 
         composeRule.onNodeWithText("Analytic").performClick()
         composeRule.waitForIdle()
@@ -155,38 +109,30 @@ class DashboardScreenTest {
 
     @Test
     fun showsFilteredLectureHallPerceptionState() {
-        composeRule.setContent {
-            ReWattTheme {
-                DashboardScreen(
-                    uiState = DashboardUiState(),
-                    perceptionState = PerceptionUiState(
-                        yoloDetections = listOf(
-                            ObjectDetection(
-                                label = "person",
-                                confidence = 0.91f,
-                                classId = 0,
-                                box = DetectionBox(0f, 0f, 1f, 1f),
-                            ),
-                            ObjectDetection(
-                                label = "laptop",
-                                confidence = 0.72f,
-                                classId = 63,
-                                box = DetectionBox(0f, 0f, 1f, 1f),
-                            ),
-                        ),
-                        soundDetections = listOf(
-                            SoundDetection(label = "Speech", confidence = 0.84f),
-                            SoundDetection(label = "Clicking", confidence = 0.76f),
-                        ),
-                        captureStartSource = CaptureStartSource.Manual,
-                        isRunning = true,
+        setDashboardContent(
+            perceptionState = PerceptionUiState(
+                yoloDetections = listOf(
+                    ObjectDetection(
+                        label = "person",
+                        confidence = 0.91f,
+                        classId = 0,
+                        box = DetectionBox(0f, 0f, 1f, 1f),
                     ),
-                    onScanUsb = {},
-                    onStartPerception = { _, _ -> },
-                    onStopPerception = {},
-                )
-            }
-        }
+                    ObjectDetection(
+                        label = "laptop",
+                        confidence = 0.72f,
+                        classId = 63,
+                        box = DetectionBox(0f, 0f, 1f, 1f),
+                    ),
+                ),
+                soundDetections = listOf(
+                    SoundDetection(label = "Speech", confidence = 0.84f),
+                    SoundDetection(label = "Clicking", confidence = 0.76f),
+                ),
+                captureStartSource = CaptureStartSource.Manual,
+                isRunning = true,
+            ),
+        )
 
         composeRule.onNodeWithText("Capture").performClick()
         composeRule.waitForIdle()
@@ -194,5 +140,41 @@ class DashboardScreenTest {
         composeRule.onNodeWithText("Top 3 sounds heard").assertIsDisplayed()
         composeRule.onNodeWithText("Human activity sounds").assertIsDisplayed()
         composeRule.onAllNodesWithText("Clicking (support)").assertCountEquals(2)
+    }
+
+    @Test
+    fun captureTabShowsBinaryLightState() {
+        setDashboardContent(
+            perceptionState = PerceptionUiState(
+                lightsOn = true,
+                exposureEv = 2.1,
+            ),
+        )
+
+        composeRule.onNodeWithText("Capture").performClick()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText("Lights On").assertIsDisplayed()
+        composeRule.onNodeWithText("EV 2.1").assertIsDisplayed()
+    }
+
+    private fun setDashboardContent(
+        uiState: DashboardUiState = DashboardUiState(),
+        perceptionState: PerceptionUiState = PerceptionUiState(),
+    ) {
+        composeRule.setContent {
+            ReWattTheme {
+                DashboardScreen(
+                    uiState = uiState,
+                    perceptionState = perceptionState,
+                    onScanUsb = {},
+                    onStartPerception = { _, _ -> },
+                    onStopPerception = {},
+                    userEmail = "test@example.com",
+                    userDisplayName = "Test User",
+                    onSignOut = {},
+                )
+            }
+        }
     }
 }

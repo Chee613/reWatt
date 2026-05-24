@@ -2,33 +2,46 @@ package com.rewatt.app.perception
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import androidx.camera.core.CameraSelector
-import androidx.camera.core.ImageAnalysis
-import androidx.camera.core.ImageProxy
+import androidx.camera.core.ImageCapture
+import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
+import androidx.exifinterface.media.ExifInterface
 import androidx.lifecycle.LifecycleOwner
 import java.io.Closeable
-import java.util.concurrent.ExecutorService
+import java.io.File
 import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.TimeUnit
 
 class CameraCaptureController(
     private val context: Context,
     private val yoloDetectorProvider: () -> YoloDetector?,
-    private val onFrameAnalyzed: (Bitmap?, List<ObjectDetection>, String) -> Unit,
+    private val onFrameAnalyzed: (Bitmap?, List<ObjectDetection>, String, ExposureReading?, String) -> Unit,
     private val onError: (String) -> Unit,
 ) : Closeable {
-    private val cameraExecutor: ExecutorService = Executors.newSingleThreadExecutor()
+    private val cameraExecutor: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor()
     private var cameraProvider: ProcessCameraProvider? = null
-    private var lastInferenceAtMillis = 0L
+    private var imageCapture: ImageCapture? = null
+    private var captureLoop: ScheduledFuture<*>? = null
+
+    @Volatile
+    private var closed = false
+
+    @Volatile
+    private var captureInFlight = false
 
     fun start(lifecycleOwner: LifecycleOwner, previewView: PreviewView) {
         val providerFuture = ProcessCameraProvider.getInstance(context)
         providerFuture.addListener(
             {
+                if (closed) return@addListener
                 runCatching {
                     val provider = providerFuture.get()
                     cameraProvider = provider
@@ -37,23 +50,20 @@ class CameraCaptureController(
                         .build()
                         .also { it.setSurfaceProvider(previewView.surfaceProvider) }
 
-                    val analysis = ImageAnalysis.Builder()
-                        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                        .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
+                    val capture = ImageCapture.Builder()
+                        .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
                         .build()
-                        .also { imageAnalysis ->
-                            imageAnalysis.setAnalyzer(cameraExecutor) { imageProxy ->
-                                analyzeImage(imageProxy)
-                            }
-                        }
+                        .also { it.flashMode = ImageCapture.FLASH_MODE_OFF }
+                    imageCapture = capture
 
                     provider.unbindAll()
                     provider.bindToLifecycle(
                         lifecycleOwner,
                         CameraSelector.DEFAULT_BACK_CAMERA,
                         preview,
-                        analysis,
+                        capture,
                     )
+                    startCaptureLoop()
                 }.onFailure { error ->
                     onError("Camera failed to start: ${error.message ?: error::class.java.simpleName}")
                 }
@@ -63,39 +73,112 @@ class CameraCaptureController(
     }
 
     override fun close() {
+        closed = true
+        captureLoop?.cancel(true)
+        captureLoop = null
         cameraProvider?.unbindAll()
         cameraProvider = null
+        imageCapture = null
         cameraExecutor.shutdownNow()
     }
 
-    private fun analyzeImage(imageProxy: ImageProxy) {
-        try {
-            val now = System.currentTimeMillis()
-            if (now - lastInferenceAtMillis < INFERENCE_INTERVAL_MILLIS) return
-            lastInferenceAtMillis = now
+    private fun startCaptureLoop() {
+        captureLoop?.cancel(false)
+        captureLoop = cameraExecutor.scheduleWithFixedDelay(
+            { captureJpegFrame() },
+            0L,
+            INFERENCE_INTERVAL_MILLIS,
+            TimeUnit.MILLISECONDS,
+        )
+    }
 
-            val bitmap = imageProxy.toBitmapFromRgba()?.rotate(imageProxy.imageInfo.rotationDegrees)
-            if (bitmap == null) {
-                onFrameAnalyzed(null, emptyList(), "Camera frame could not be converted.")
-                return
-            }
+    private fun captureJpegFrame() {
+        if (closed || captureInFlight) return
+        val capture = imageCapture ?: return
+        val photoFile = runCatching {
+            File.createTempFile("rewatt-exposure-", ".jpg", context.cacheDir)
+        }.getOrElse { error ->
+            notifyCaptureFailure("Camera capture failed: ${error.message ?: error::class.java.simpleName}")
+            return
+        }
 
-            val yoloDetector = yoloDetectorProvider()
-            val detections = yoloDetector?.detect(bitmap).orEmpty()
-            val personCount = detections.count { it.isPerson }
-            val contextCount = detections.count { it.isLectureHallContext }
-            val message = if (yoloDetector == null) {
-                "Captured frame; YOLO is still loading."
-            } else if (detections.isEmpty()) {
-                "No people or lecture-hall context objects above confidence threshold."
-            } else {
-                "People detected: $personCount. Context objects: $contextCount."
-            }
-            onFrameAnalyzed(bitmap, detections, message)
-        } catch (error: Throwable) {
-            onFrameAnalyzed(null, emptyList(), "YOLO failed: ${error.message ?: error::class.java.simpleName}")
-        } finally {
-            imageProxy.close()
+        captureInFlight = true
+        val outputOptions = ImageCapture.OutputFileOptions.Builder(photoFile).build()
+        runCatching {
+            capture.takePicture(
+                outputOptions,
+                cameraExecutor,
+                object : ImageCapture.OnImageSavedCallback {
+                    override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
+                        try {
+                            analyzeSavedImage(photoFile)
+                        } catch (error: Throwable) {
+                            notifyCaptureFailure(
+                                "Camera analysis failed: ${error.message ?: error::class.java.simpleName}",
+                            )
+                        } finally {
+                            photoFile.delete()
+                            captureInFlight = false
+                        }
+                    }
+
+                    override fun onError(exception: ImageCaptureException) {
+                        photoFile.delete()
+                        captureInFlight = false
+                        notifyCaptureFailure(
+                            "Camera image capture failed: ${exception.message ?: exception::class.java.simpleName}",
+                        )
+                    }
+                },
+            )
+        }.onFailure { error ->
+            photoFile.delete()
+            captureInFlight = false
+            notifyCaptureFailure("Camera image capture failed: ${error.message ?: error::class.java.simpleName}")
+        }
+    }
+
+    private fun analyzeSavedImage(photoFile: File) {
+        if (closed) return
+        val exposureReading = runCatching {
+            ExposureValueCalculator.fromExif(photoFile.absolutePath)
+        }.getOrNull()
+        val bitmap = BitmapFactory.decodeFile(photoFile.absolutePath)
+            ?.rotateFromExif(photoFile.absolutePath)
+        if (bitmap == null) {
+            onFrameAnalyzed(
+                null,
+                emptyList(),
+                "Camera frame could not be decoded.",
+                exposureReading,
+                exposureReading.toExposureMessage(),
+            )
+            return
+        }
+
+        val yoloDetector = yoloDetectorProvider()
+        val detections = yoloDetector?.detect(bitmap).orEmpty()
+        val personCount = detections.count { it.isPerson }
+        val contextCount = detections.count { it.isLectureHallContext }
+        val message = if (yoloDetector == null) {
+            "Captured frame; YOLO is still loading."
+        } else if (detections.isEmpty()) {
+            "No people or lecture-hall context objects above confidence threshold."
+        } else {
+            "People detected: $personCount. Context objects: $contextCount."
+        }
+        onFrameAnalyzed(
+            bitmap,
+            detections,
+            message,
+            exposureReading,
+            exposureReading.toExposureMessage(),
+        )
+    }
+
+    private fun notifyCaptureFailure(message: String) {
+        if (!closed) {
+            onFrameAnalyzed(null, emptyList(), message, null, "Exposure data unavailable.")
         }
     }
 
@@ -104,31 +187,25 @@ class CameraCaptureController(
     }
 }
 
-private fun ImageProxy.toBitmapFromRgba(): Bitmap? {
-    if (planes.isEmpty()) return null
+private fun ExposureReading?.toExposureMessage(): String =
+    this?.let {
+        "EV %.1f; lights %s.".format(it.ev, if (it.lightsOn) "on" else "off")
+    } ?: "Exposure data unavailable."
 
-    val plane = planes[0]
-    val width = width
-    val height = height
-    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-    val buffer = plane.buffer
-    buffer.rewind()
-
-    if (plane.rowStride == width * 4 && plane.pixelStride == 4) {
-        bitmap.copyPixelsFromBuffer(buffer)
-        return bitmap
+private fun Bitmap.rotateFromExif(imagePath: String): Bitmap {
+    val orientation = runCatching {
+        ExifInterface(imagePath).getAttributeInt(
+            ExifInterface.TAG_ORIENTATION,
+            ExifInterface.ORIENTATION_NORMAL,
+        )
+    }.getOrDefault(ExifInterface.ORIENTATION_NORMAL)
+    val degrees = when (orientation) {
+        ExifInterface.ORIENTATION_ROTATE_90 -> 90
+        ExifInterface.ORIENTATION_ROTATE_180 -> 180
+        ExifInterface.ORIENTATION_ROTATE_270 -> 270
+        else -> 0
     }
-
-    val rowBuffer = ByteArray(plane.rowStride)
-    val bitmapBuffer = java.nio.ByteBuffer.allocate(width * height * 4)
-    repeat(height) {
-        val rowLength = minOf(plane.rowStride, buffer.remaining())
-        buffer.get(rowBuffer, 0, rowLength)
-        bitmapBuffer.put(rowBuffer, 0, width * 4)
-    }
-    bitmapBuffer.rewind()
-    bitmap.copyPixelsFromBuffer(bitmapBuffer)
-    return bitmap
+    return rotate(degrees)
 }
 
 private fun Bitmap.rotate(degrees: Int): Bitmap {

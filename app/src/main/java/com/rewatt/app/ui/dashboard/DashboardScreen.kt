@@ -1447,6 +1447,18 @@ private fun CaptureDetectionSummary(state: PerceptionUiState) {
                 modifier = Modifier.weight(1f),
             )
         }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            MetricCard(
+                title = "Room light",
+                value = state.lightsStateLabel(),
+                modifier = Modifier.weight(1f),
+            )
+            MetricCard(
+                title = "Exposure",
+                value = state.exposureValueLabel(),
+                modifier = Modifier.weight(1f),
+            )
+        }
         InfoCard {
         Text("Top 3 sounds heard", fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(6.dp))
@@ -2010,6 +2022,13 @@ private fun LatestFrameCompactCard(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+        Text(
+            text = state.exposureMessage,
+            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 12.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -2489,6 +2508,16 @@ private fun PerceptionUiState.captureStatusLabel(): String =
 
         else -> statusMessage
     }
+
+private fun PerceptionUiState.lightsStateLabel(): String =
+    when (lightsOn) {
+        true -> "Lights On"
+        false -> "Lights Off"
+        null -> "--"
+    }
+
+private fun PerceptionUiState.exposureValueLabel(): String =
+    exposureEv?.let { "EV %.1f".format(it) } ?: "--"
 
 private fun UsbConnectionStatus.label(): String =
     when (this) {
