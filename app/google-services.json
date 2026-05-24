@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "371921891986",
+    "project_id": "rewatt-5d719",
+    "storage_bucket": "rewatt-5d719.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:371921891986:android:fdb1228df78e5646f26c4b",
+        "android_client_info": {
+          "package_name": "com.rewatt.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBmYKl0NHDzI4WxYS-azSykNSUsFYNoz2Q"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
