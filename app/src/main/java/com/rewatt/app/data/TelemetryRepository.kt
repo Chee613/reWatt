@@ -7,11 +7,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
 class TelemetryRepository(
     private val telemetryDao: TelemetryDao,
@@ -58,6 +59,9 @@ class TelemetryRepository(
             )
         }
     }
+
+    fun listenToHall(roomId: String): Flow<HallSnapshot?> =
+        firebaseSyncRepository.listenToHall(roomId)
 
     fun updatePerceptionSummary(perceptionSummary: PerceptionSyncSummary) {
         val latestTelemetry = mutableState.value.latestTelemetry

@@ -68,6 +68,9 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
     private val _currentUserRole = MutableStateFlow<UserRole?>(null)
     val currentUserRole: StateFlow<UserRole?> = _currentUserRole
 
+    private val _spaceName = MutableStateFlow<String?>(null)
+    val spaceName: StateFlow<String?> = _spaceName
+
     fun signIn(username: String, password: String) {
         viewModelScope.launch {
             _signInState.value = SignInState.Loading
@@ -106,6 +109,22 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
         }
     }
 
+    fun loadSpaceName() {
+        val uid = repository.currentUser?.uid ?: return
+        _spaceName.value = repository.getCachedSpaceName()
+        viewModelScope.launch {
+            _spaceName.value = repository.loadSpaceName(uid)
+        }
+    }
+
+    fun setSpaceName(name: String) {
+        val uid = repository.currentUser?.uid ?: return
+        _spaceName.value = name
+        viewModelScope.launch { repository.saveSpaceName(uid, name) }
+    }
+
+    fun renameSpace(name: String) = setSpaceName(name)
+
     fun deleteAccount() {
         viewModelScope.launch {
             _deleteAccountState.value = DeleteAccountState.Loading
@@ -117,6 +136,7 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
 
     fun signOut() {
         _currentUserRole.value = null
+        _spaceName.value = null
         repository.signOut()
     }
 

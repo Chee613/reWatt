@@ -11,7 +11,7 @@ class AppGraph(context: Context) {
     private val appContext = context.applicationContext
 
     val authRepository: AuthRepository by lazy {
-        AuthRepository()
+        AuthRepository(appContext)
     }
 
     val database: ReWattDatabase by lazy {
