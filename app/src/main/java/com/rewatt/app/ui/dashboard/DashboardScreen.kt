@@ -143,6 +143,7 @@ fun DashboardScreen(
 
     // Keep ViewModel in sync with the locally-selected hall so Firestore listener switches
     LaunchedEffect(selectedHall) { onHallSelect(selectedHall.label) }
+    var showYoloUpload by rememberSaveable { mutableStateOf(false) }
     var pendingCaptureSource by remember { mutableStateOf<CaptureStartSource?>(null) }
     var lastAutoTriggerAtMillis by remember { mutableStateOf<Long?>(null) }
     var autoSuppressedUntilClear by remember { mutableStateOf(false) }
