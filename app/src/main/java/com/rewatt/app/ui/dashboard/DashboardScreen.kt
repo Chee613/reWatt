@@ -29,13 +29,18 @@ import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Sensors
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Usb
 import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -44,6 +49,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -84,10 +90,16 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.ui.input.pointer.pointerInput
+import com.rewatt.app.data.UserRole
+import com.rewatt.app.ui.ModeSelectionDialog
+import com.rewatt.app.ui.SetupGuideDialog
 import java.util.Calendar
 import kotlin.math.min
 
@@ -109,6 +121,12 @@ fun DashboardScreen(
     userEmail: String,
     userDisplayName: String?,
     onSignOut: () -> Unit,
+    isDeletingAccount: Boolean = false,
+    deleteAccountError: String? = null,
+    onDeleteAccount: () -> Unit = {},
+    onClearDeleteError: () -> Unit = {},
+    currentUserRole: UserRole? = null,
+    onModeSelected: (UserRole) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var selectedTab by rememberSaveable { mutableStateOf(ReWattTab.Live) }
@@ -226,6 +244,12 @@ fun DashboardScreen(
                     userEmail = userEmail,
                     userDisplayName = userDisplayName,
                     onSignOut = onSignOut,
+                    isDeletingAccount = isDeletingAccount,
+                    deleteAccountError = deleteAccountError,
+                    onDeleteAccount = onDeleteAccount,
+                    onClearDeleteError = onClearDeleteError,
+                    currentUserRole = currentUserRole,
+                    onModeSelected = onModeSelected,
                 )
             }
         }
@@ -407,6 +431,61 @@ private fun LivePage(
                 }
             }
         }
+
+        // ── Room Context section ──────────────────────────────────────────────
+        Spacer(Modifier.height(4.dp))
+        Text("ROOM CONTEXT", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        RoomContextCard(perceptionState = perceptionState)
+    }
+}
+
+@Composable
+private fun RoomContextCard(perceptionState: PerceptionUiState) {
+    val sounds = perceptionState.soundDetections.take(6)
+    InfoCard {
+        Text("Sound scene", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+        Spacer(Modifier.height(8.dp))
+        if (sounds.isEmpty()) {
+            Text(
+                text = if (perceptionState.isRunning) "Listening…" else "Start capture to detect sounds",
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.sp,
+            )
+        } else {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                sounds.forEach { sound -> SoundChip(sound = sound) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SoundChip(sound: com.rewatt.app.perception.SoundDetection) {
+    val containerColor = if (sound.indicatesHumanPresence) {
+        androidx.compose.material3.MaterialTheme.colorScheme.primaryContainer
+    } else {
+        androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant
+    }
+    val contentColor = if (sound.indicatesHumanPresence) {
+        androidx.compose.material3.MaterialTheme.colorScheme.onPrimaryContainer
+    } else {
+        androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(containerColor)
+            .padding(horizontal = 10.dp, vertical = 5.dp),
+    ) {
+        Text(
+            text = "${sound.label}  ${(sound.confidence * 100).toInt()}%",
+            fontSize = 12.sp,
+            fontWeight = if (sound.indicatesHumanPresence) FontWeight.SemiBold else FontWeight.Normal,
+            color = contentColor,
+        )
     }
 }
 
@@ -424,8 +503,6 @@ private fun AnalyticPage(
             .fillMaxSize()
             .padding(16.dp),
     ) {
-        Text("Analysis", fontWeight = FontWeight.Bold, fontSize = 24.sp)
-        Spacer(Modifier.height(12.dp))
         ActionDataToggle(
             isAction = isAction,
             onAction = { isAction = true },
@@ -436,7 +513,6 @@ private fun AnalyticPage(
             ActionPage(
                 uiState = uiState,
                 perceptionState = perceptionState,
-                hall = selectedHall,
                 modifier = Modifier.weight(1f),
             )
         } else {
@@ -663,9 +739,11 @@ private fun WeeklyHeatmapGrid(
 ) {
     val dayLabels = listOf("M", "T", "W", "T", "F", "S", "S")
     val primaryColor = androidx.compose.material3.MaterialTheme.colorScheme.primary
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column {
         dayLabels.forEachIndexed { day, label ->
+            if (day > 0) Spacer(Modifier.height(if (day == 6) 2.dp else 4.dp))
             val isSelected = selectedDay == day
+            val isWeekend = day >= 5
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -675,13 +753,14 @@ private fun WeeklyHeatmapGrid(
                         else Color.Transparent,
                     )
                     .clickable { onDayClick(day) }
-                    .padding(vertical = 3.dp, horizontal = 2.dp),
+                    .padding(vertical = if (isWeekend) 1.dp else 3.dp, horizontal = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 HeatmapRow(
                     hourLevels = schedule[day],
                     modifier = Modifier.weight(1f),
+                    rowHeight = if (isWeekend) 13.dp else 26.dp,
                 )
                 Text(
                     text = label,
@@ -697,11 +776,15 @@ private fun WeeklyHeatmapGrid(
 }
 
 @Composable
-private fun HeatmapRow(hourLevels: IntArray, modifier: Modifier = Modifier) {
+private fun HeatmapRow(
+    hourLevels: IntArray,
+    modifier: Modifier = Modifier,
+    rowHeight: androidx.compose.ui.unit.Dp = 26.dp,
+) {
     val emptyColor = androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant
     Canvas(
         modifier = modifier
-            .height(26.dp)
+            .height(rowHeight)
             .clip(RoundedCornerShape(13.dp))
             .background(emptyColor),
     ) {
@@ -764,6 +847,10 @@ private fun DailyOccupancyChart(
         }
     }
 
+    var selectedHour by remember(dayIndex, hall) { mutableStateOf<Int?>(null) }
+    val firstHour = 7
+    val lastHour = 18
+    val numHours = lastHour - firstHour + 1  // 12 bars (07:00–18:59)
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -806,12 +893,18 @@ private fun DailyOccupancyChart(
                     .weight(1f)
                     .height(90.dp)
                     .clip(RoundedCornerShape(8.dp))
-                    .background(emptyColor),
+                    .background(emptyColor)
+                    .pointerInput(dayIndex, hall) {
+                        detectTapGestures { offset ->
+                            val barW = size.width / numHours.toFloat()
+                            val tapped = firstHour + (offset.x / barW).toInt().coerceIn(0, numHours - 1)
+                            selectedHour = if (selectedHour == tapped) null else tapped
+                        }
+                    },
             ) {
                 val maxCount = 120f
-                val barW = size.width / 24f
+                val barW = size.width / numHours.toFloat()
                 val gap = 1.5f
-
                 // Reference lines at 40 and 80
                 listOf(40f, 80f).forEach { count ->
                     val y = size.height * (1f - count / maxCount)
@@ -823,30 +916,89 @@ private fun DailyOccupancyChart(
                     )
                 }
 
-                occupancy.forEachIndexed { hour, count ->
-                    if (count == 0) return@forEachIndexed
+                // Draw bars for visible hours only (firstHour..lastHour)
+                for (hour in firstHour..lastHour) {
+                    val count = occupancy[hour]
+                    if (count == 0) continue
+                    val isSelected = selectedHour == hour
                     val barHeight = size.height * (count / maxCount)
-                    val color = when {
+                    val x = (hour - firstHour) * barW
+                    val color = if (isSelected) when {
+                        count > 80 -> Color(0xFF512DA8)   // dark purple  ≈ 0xFF1565C0
+                        count > 40 -> Color(0xFF7E57C2)   // medium purple ≈ 0xFF4A90D9
+                        else       -> Color(0xFFB39DDB)   // light purple  ≈ 0xFF90B4D8
+                    } else when {
                         count > 80 -> Color(0xFF1565C0)
                         count > 40 -> Color(0xFF4A90D9)
                         else       -> Color(0xFF90B4D8)
                     }
                     drawRoundRect(
                         color = color,
-                        topLeft = androidx.compose.ui.geometry.Offset(
-                            x = hour * barW + gap,
-                            y = size.height - barHeight,
-                        ),
-                        size = androidx.compose.ui.geometry.Size(
-                            width = barW - gap * 2,
-                            height = barHeight,
-                        ),
+                        topLeft = androidx.compose.ui.geometry.Offset(x = x + gap, y = size.height - barHeight),
+                        size = androidx.compose.ui.geometry.Size(width = barW - gap * 2, height = barHeight),
                         cornerRadius = androidx.compose.ui.geometry.CornerRadius(4f),
+                    )
+                }
+
+                // Stroke outline on selected column
+                val selHour = selectedHour ?: return@Canvas
+                if (selHour in firstHour..lastHour) {
+                    val x = (selHour - firstHour) * barW
+                    drawRoundRect(
+                        color = Color(0xFF7E57C2).copy(alpha = 0.55f),
+                        topLeft = androidx.compose.ui.geometry.Offset(x = x + gap, y = 0f),
+                        size = androidx.compose.ui.geometry.Size(width = barW - gap * 2, height = size.height),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(4f),
+                        style = Stroke(width = 1.5f),
                     )
                 }
             }
         }
-        HourAxisRow()
+        // Zoomed axis: labels only for the visible 07–18 window
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(end = 20.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            listOf("07", "09", "11", "13", "15", "17", "18").forEach { label ->
+                Text(
+                    text = label,
+                    fontSize = 9.sp,
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        val selHour = selectedHour
+        AnimatedVisibility(
+            visible = selHour != null,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically(),
+        ) {
+            if (selHour != null) {
+                val selCount = occupancy[selHour]
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(androidx.compose.material3.MaterialTheme.colorScheme.primaryContainer)
+                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "%02d:00 – %02d:00".format(selHour, selHour + 1),
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 12.sp,
+                        color = androidx.compose.material3.MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                    Text(
+                        text = if (selCount > 0) "$selCount people" else "Empty",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = androidx.compose.material3.MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                }
+            }
+        }
         Text(
             text = breakLabel,
             fontSize = 11.sp,
@@ -861,7 +1013,6 @@ private fun DailyOccupancyChart(
 private fun ActionPage(
     uiState: DashboardUiState,
     perceptionState: PerceptionUiState,
-    hall: Hall,
     modifier: Modifier = Modifier,
 ) {
     val telemetry = uiState.sensorState.latestTelemetry
@@ -877,23 +1028,25 @@ private fun ActionPage(
     }
 
     val isToday = previewDayOffset == 0
-    val nowAction = remember(previewMillis, isToday, perceptionState.personCount, telemetry?.temperatureC, analysis?.occupancyHint, hall) {
-        deriveNowAction(
-            nowMillis = previewMillis,
-            personCount = if (isToday) perceptionState.personCount else 0,
-            temperatureC = if (isToday) telemetry?.temperatureC else null,
-            occupancyHint = if (isToday) analysis?.occupancyHint else null,
-            hall = hall,
-        )
+    val nowActions = remember(previewMillis, isToday, perceptionState.personCount, telemetry?.temperatureC, analysis?.occupancyHint) {
+        Hall.values().map { hall ->
+            hall to deriveNowAction(
+                nowMillis = previewMillis,
+                personCount = if (isToday) perceptionState.personCount else 0,
+                temperatureC = if (isToday) telemetry?.temperatureC else null,
+                occupancyHint = if (isToday) analysis?.occupancyHint else null,
+                hall = hall,
+            )
+        }
     }
 
-    val dayNotifications = remember(previewDayOffset, uiState.nowMillis, hall) {
-        buildDayNotifications(previewDayOffset, uiState.nowMillis, hall)
+    val dayNotifications = remember(previewDayOffset, uiState.nowMillis) {
+        buildAllHallsDayNotifications(previewDayOffset, uiState.nowMillis)
     }
     var dismissedIds by rememberSaveable { mutableStateOf(setOf<String>()) }
     var nowDismissed by rememberSaveable { mutableStateOf(false) }
 
-    LaunchedEffect(nowAction.first) { nowDismissed = false }
+    LaunchedEffect(nowActions.joinToString { it.second.first }) { nowDismissed = false }
     LaunchedEffect(previewDayOffset) { dismissedIds = emptySet() }
 
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -901,9 +1054,8 @@ private fun ActionPage(
             visible = !nowDismissed,
             exit = slideOutHorizontally(targetOffsetX = { it }),
         ) {
-            NowCard(
-                title = nowAction.first,
-                reason = nowAction.second,
+            AllHallsNowCard(
+                nowActions = nowActions,
                 onDone = { nowDismissed = true },
             )
         }
@@ -984,6 +1136,76 @@ private fun NowCard(title: String, reason: String, onDone: () -> Unit) {
                 modifier = Modifier.padding(start = 12.dp),
             ) {
                 Text("Done")
+            }
+        }
+    }
+}
+
+@Composable
+private fun AllHallsNowCard(
+    nowActions: List<Pair<Hall, Pair<String, String>>>,
+    onDone: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = androidx.compose.material3.MaterialTheme.colorScheme.primaryContainer,
+        ),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(androidx.compose.material3.MaterialTheme.colorScheme.primary)
+                        .padding(horizontal = 8.dp, vertical = 2.dp),
+                ) {
+                    Text(
+                        text = "NOW",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp,
+                        color = androidx.compose.material3.MaterialTheme.colorScheme.onPrimary,
+                    )
+                }
+                OutlinedButton(onClick = onDone) { Text("Done") }
+            }
+            nowActions.forEach { (hall, action) ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.Top,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text(
+                        text = hall.label,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = androidx.compose.material3.MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.width(52.dp),
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = action.first,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = androidx.compose.material3.MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
+                        Text(
+                            text = action.second,
+                            fontSize = 11.sp,
+                            color = androidx.compose.material3.MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f),
+                        )
+                    }
+                }
             }
         }
     }
@@ -1287,9 +1509,61 @@ private fun SettingPage(
     userEmail: String,
     userDisplayName: String?,
     onSignOut: () -> Unit,
+    isDeletingAccount: Boolean = false,
+    deleteAccountError: String? = null,
+    onDeleteAccount: () -> Unit = {},
+    onClearDeleteError: () -> Unit = {},
+    currentUserRole: UserRole? = null,
+    onModeSelected: (UserRole) -> Unit = {},
 ) {
     val displayName = userDisplayName?.takeIf { it.isNotBlank() } ?: userEmail
     val avatarLetter = displayName.firstOrNull()?.uppercaseChar()?.toString() ?: "R"
+    var showSetupGuide by remember { mutableStateOf(false) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
+    var showModeDialog by remember { mutableStateOf(false) }
+
+    if (showSetupGuide) {
+        SetupGuideDialog(onDismiss = { showSetupGuide = false })
+    }
+
+    if (showModeDialog) {
+        ModeSelectionDialog(
+            currentRole = currentUserRole,
+            canDismiss = true,
+            onSelect = { role ->
+                showModeDialog = false
+                onModeSelected(role)
+            },
+            onDismiss = { showModeDialog = false },
+        )
+    }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Delete Account?") },
+            text = {
+                Text(
+                    "This will permanently delete your account and all your data. This action cannot be undone.",
+                    fontSize = 14.sp,
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteConfirm = false
+                        onDeleteAccount()
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = androidx.compose.material3.MaterialTheme.colorScheme.error,
+                    ),
+                ) { Text("Delete Account") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel") }
+            },
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -1299,6 +1573,39 @@ private fun SettingPage(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text("Settings", fontWeight = FontWeight.Bold, fontSize = 24.sp)
+
+        // Setup Guide section
+        Text("Device Setup", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+        InfoCard {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { showSetupGuide = true },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Info,
+                    contentDescription = null,
+                    tint = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp),
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Setup Guide", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                    Text(
+                        "Permissions, mount & camera view",
+                        fontSize = 12.sp,
+                        color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Icon(
+                    imageVector = Icons.Outlined.Settings,
+                    contentDescription = null,
+                    tint = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+        }
 
         // Profile section
         Text("Profile", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
@@ -1333,11 +1640,62 @@ private fun SettingPage(
                         }
                     }
                 }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "Phone Mode",
+                            fontSize = 12.sp,
+                            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            text = when (currentUserRole) {
+                                UserRole.Admin -> "Admin"
+                                UserRole.Sensor -> "Sensor"
+                                null -> "Not set"
+                            },
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 15.sp,
+                        )
+                    }
+                    TextButton(onClick = { showModeDialog = true }) {
+                        Text("Change")
+                    }
+                }
                 OutlinedButton(
                     onClick = onSignOut,
                     modifier = Modifier.fillMaxWidth(),
+                    enabled = !isDeletingAccount,
                 ) {
                     Text("Sign Out")
+                }
+                OutlinedButton(
+                    onClick = { showDeleteConfirm = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isDeletingAccount,
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = androidx.compose.material3.MaterialTheme.colorScheme.error,
+                    ),
+                    border = BorderStroke(
+                        1.dp,
+                        androidx.compose.material3.MaterialTheme.colorScheme.error,
+                    ),
+                ) {
+                    if (isDeletingAccount) {
+                        CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                    } else {
+                        Text("Delete Account")
+                    }
+                }
+                if (deleteAccountError != null) {
+                    Text(
+                        text = deleteAccountError,
+                        color = androidx.compose.material3.MaterialTheme.colorScheme.error,
+                        fontSize = 12.sp,
+                    )
+                    TextButton(onClick = onClearDeleteError) { Text("Dismiss", fontSize = 12.sp) }
                 }
             }
         }
@@ -2071,6 +2429,16 @@ private fun buildDayNotifications(dayOffset: Int, nowMillis: Long, hall: Hall = 
     add(18, 30, "overnight", "Turn off all systems", "No classes until tomorrow 07:30")
     return result.sortedBy { it.timeLabel }
 }
+
+private fun buildAllHallsDayNotifications(dayOffset: Int, nowMillis: Long): List<TimetableNotification> =
+    Hall.values().flatMap { hall ->
+        buildDayNotifications(dayOffset, nowMillis, hall).map { n ->
+            n.copy(
+                id = "${hall.name}-${n.id}",
+                reason = "${hall.label} — ${n.reason}",
+            )
+        }
+    }.sortedBy { it.timeLabel }
 
 private fun buildUpcomingNotifications(nowMillis: Long, hall: Hall = Hall.Hall1): List<TimetableNotification> {
     val cal = Calendar.getInstance().apply { timeInMillis = nowMillis }

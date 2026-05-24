@@ -31,27 +31,52 @@ class AuthRepository {
         email: String,
         username: String,
         password: String,
-        role: UserRole,
-    ): Result<FirebaseUser> = suspendCoroutine { cont ->
-        auth.createUserWithEmailAndPassword(email, password)
-            .addOnSuccessListener { authResult ->
-                val user = authResult.user!!
-                // Set displayName = username so Profile shows it immediately
-                user.updateProfile(
-                    UserProfileChangeRequest.Builder().setDisplayName(username).build()
-                )
-                // Store username → email mapping for username-based login
-                val usernameDoc = mapOf("email" to email, "uid" to user.uid)
-                val userDoc = mapOf(
-                    "username" to username,
-                    "email" to email,
-                    "role" to role.name,
-                    "uid" to user.uid,
-                )
-                firestore.collection("rewatt_usernames").document(username).set(usernameDoc)
-                firestore.collection("rewatt_users").document(user.uid).set(userDoc)
-                cont.resume(Result.success(user))
+    ): Result<FirebaseUser> {
+        // Step 1: Reject duplicate usernames before touching Firebase Auth
+        val usernameTaken = suspendCoroutine<Boolean> { cont ->
+            firestore.collection("rewatt_usernames").document(username).get()
+                .addOnSuccessListener { doc -> cont.resume(doc.exists()) }
+                .addOnFailureListener { cont.resume(false) }
+        }
+        if (usernameTaken) {
+            return Result.failure(Exception("Username is already taken. Please choose a different one."))
+        }
+
+        // Step 2: Create the Firebase Auth account and write Firestore docs (role chosen separately)
+        return suspendCoroutine { cont ->
+            auth.createUserWithEmailAndPassword(email, password)
+                .addOnSuccessListener { authResult ->
+                    val user = authResult.user!!
+                    user.updateProfile(
+                        UserProfileChangeRequest.Builder().setDisplayName(username).build()
+                    )
+                    val usernameDoc = mapOf("email" to email, "uid" to user.uid)
+                    val userDoc = mapOf(
+                        "username" to username,
+                        "email" to email,
+                        "uid" to user.uid,
+                    )
+                    firestore.collection("rewatt_usernames").document(username).set(usernameDoc)
+                    firestore.collection("rewatt_users").document(user.uid).set(userDoc)
+                    cont.resume(Result.success(user))
+                }
+                .addOnFailureListener { e -> cont.resume(Result.failure(e)) }
+        }
+    }
+
+    suspend fun getUserRole(uid: String): UserRole? = suspendCoroutine { cont ->
+        firestore.collection("rewatt_users").document(uid).get()
+            .addOnSuccessListener { doc ->
+                val name = doc.getString("role")
+                cont.resume(name?.let { runCatching { UserRole.valueOf(it) }.getOrNull() })
             }
+            .addOnFailureListener { cont.resume(null) }
+    }
+
+    suspend fun updateRole(uid: String, role: UserRole): Result<Unit> = suspendCoroutine { cont ->
+        firestore.collection("rewatt_users").document(uid)
+            .update("role", role.name)
+            .addOnSuccessListener { cont.resume(Result.success(Unit)) }
             .addOnFailureListener { e -> cont.resume(Result.failure(e)) }
     }
 
@@ -71,6 +96,33 @@ class AuthRepository {
                 }
                 .addOnFailureListener { cont.resume(Result.failure(Exception("Username not found"))) }
         }
+
+    suspend fun deleteAccount(): Result<Unit> = suspendCoroutine { cont ->
+        val user = auth.currentUser
+        if (user == null) {
+            cont.resume(Result.failure(Exception("No user signed in")))
+            return@suspendCoroutine
+        }
+        val uid = user.uid
+        firestore.collection("rewatt_users").document(uid).get()
+            .addOnSuccessListener { doc ->
+                val username = doc.getString("username")
+                user.delete()
+                    .addOnSuccessListener {
+                        firestore.collection("rewatt_users").document(uid).delete()
+                        if (username != null) {
+                            firestore.collection("rewatt_usernames").document(username).delete()
+                        }
+                        cont.resume(Result.success(Unit))
+                    }
+                    .addOnFailureListener { e -> cont.resume(Result.failure(e)) }
+            }
+            .addOnFailureListener {
+                user.delete()
+                    .addOnSuccessListener { cont.resume(Result.success(Unit)) }
+                    .addOnFailureListener { e -> cont.resume(Result.failure(e)) }
+            }
+    }
 
     fun signOut() = auth.signOut()
 }

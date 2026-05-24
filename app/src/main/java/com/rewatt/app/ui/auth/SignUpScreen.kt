@@ -39,7 +39,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rewatt.app.R
-import com.rewatt.app.data.UserRole
 
 @Composable
 fun SignUpScreen(
@@ -51,7 +50,6 @@ fun SignUpScreen(
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
-    var selectedRole by remember { mutableStateOf(UserRole.Admin) }
     val isLoading = signUpState is SignUpState.Loading
     val passwordMismatch = password.isNotEmpty() && confirmPassword.isNotEmpty() && password != confirmPassword
 
@@ -128,39 +126,6 @@ fun SignUpScreen(
             },
         )
 
-        Spacer(Modifier.height(20.dp))
-        Text(
-            "Select Role",
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 14.sp,
-            modifier = Modifier.align(Alignment.Start),
-        )
-        Spacer(Modifier.height(8.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            UserRole.values().forEach { role ->
-                if (role == selectedRole) {
-                    Button(
-                        onClick = { selectedRole = role },
-                        modifier = Modifier.weight(1f),
-                        enabled = !isLoading,
-                    ) {
-                        Text(role.label, fontSize = 13.sp)
-                    }
-                } else {
-                    OutlinedButton(
-                        onClick = { selectedRole = role },
-                        modifier = Modifier.weight(1f),
-                        enabled = !isLoading,
-                    ) {
-                        Text(role.label, fontSize = 13.sp)
-                    }
-                }
-            }
-        }
-
         if (signUpState is SignUpState.Error) {
             Spacer(Modifier.height(8.dp))
             Text(
@@ -172,7 +137,7 @@ fun SignUpScreen(
 
         Spacer(Modifier.height(24.dp))
         Button(
-            onClick = { viewModel.signUp(email, username, password, selectedRole) },
+            onClick = { viewModel.signUp(email, username, password) },
             modifier = Modifier.fillMaxWidth(),
             enabled = !isLoading &&
                 email.isNotBlank() &&
@@ -194,6 +159,8 @@ fun SignUpScreen(
     }
 
     LaunchedEffect(signUpState) {
-        if (signUpState is SignUpState.Success) viewModel.resetSignUpState()
+        if (signUpState is SignUpState.Success) {
+            viewModel.resetSignUpState()
+        }
     }
 }

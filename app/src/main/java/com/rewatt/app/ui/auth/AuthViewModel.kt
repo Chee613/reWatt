@@ -33,6 +33,13 @@ sealed interface SignUpState {
     data class Error(val message: String) : SignUpState
 }
 
+sealed interface DeleteAccountState {
+    object Idle : DeleteAccountState
+    object Loading : DeleteAccountState
+    object Success : DeleteAccountState
+    data class Error(val message: String) : DeleteAccountState
+}
+
 class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
 
     val authState: StateFlow<AuthState> = repository.authStateFlow
@@ -47,6 +54,20 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
     private val _signUpState = MutableStateFlow<SignUpState>(SignUpState.Idle)
     val signUpState: StateFlow<SignUpState> = _signUpState
 
+    private val _deleteAccountState = MutableStateFlow<DeleteAccountState>(DeleteAccountState.Idle)
+    val deleteAccountState: StateFlow<DeleteAccountState> = _deleteAccountState
+
+    // Fires true after signup to prompt mode selection; consume via consumeModeSelection()
+    private val _showModeSelection = MutableStateFlow(false)
+    val showModeSelection: StateFlow<Boolean> = _showModeSelection
+
+    // Fires true when Sensor mode is chosen; consume via consumeSensorGuide()
+    private val _sensorGuideEvent = MutableStateFlow(false)
+    val sensorGuideEvent: StateFlow<Boolean> = _sensorGuideEvent
+
+    private val _currentUserRole = MutableStateFlow<UserRole?>(null)
+    val currentUserRole: StateFlow<UserRole?> = _currentUserRole
+
     fun signIn(username: String, password: String) {
         viewModelScope.launch {
             _signInState.value = SignInState.Loading
@@ -56,19 +77,54 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
         }
     }
 
-    fun signUp(email: String, username: String, password: String, role: UserRole) {
+    fun signUp(email: String, username: String, password: String) {
         viewModelScope.launch {
             _signUpState.value = SignUpState.Loading
-            val result = repository.signUp(email.trim(), username.trim(), password, role)
-            _signUpState.value = if (result.isSuccess) SignUpState.Success
-            else SignUpState.Error(result.exceptionOrNull()?.message ?: "Sign up failed")
+            val result = repository.signUp(email.trim(), username.trim(), password)
+            if (result.isSuccess) {
+                _showModeSelection.value = true
+                _signUpState.value = SignUpState.Success
+            } else {
+                _signUpState.value = SignUpState.Error(result.exceptionOrNull()?.message ?: "Sign up failed")
+            }
         }
     }
 
-    fun signOut() = repository.signOut()
+    fun setMode(role: UserRole) {
+        val uid = repository.currentUser?.uid ?: return
+        viewModelScope.launch {
+            repository.updateRole(uid, role)
+            _currentUserRole.value = role
+            if (role == UserRole.Sensor) _sensorGuideEvent.value = true
+        }
+    }
+
+    fun loadUserRole() {
+        val uid = repository.currentUser?.uid ?: return
+        viewModelScope.launch {
+            _currentUserRole.value = repository.getUserRole(uid)
+        }
+    }
+
+    fun deleteAccount() {
+        viewModelScope.launch {
+            _deleteAccountState.value = DeleteAccountState.Loading
+            val result = repository.deleteAccount()
+            _deleteAccountState.value = if (result.isSuccess) DeleteAccountState.Success
+            else DeleteAccountState.Error(result.exceptionOrNull()?.message ?: "Failed to delete account")
+        }
+    }
+
+    fun signOut() {
+        _currentUserRole.value = null
+        repository.signOut()
+    }
 
     fun resetSignInState() { _signInState.value = SignInState.Idle }
     fun resetSignUpState() { _signUpState.value = SignUpState.Idle }
+    fun resetDeleteAccountState() { _deleteAccountState.value = DeleteAccountState.Idle }
+    fun consumeModeSelection() { _showModeSelection.value = false }
+    fun consumeSensorGuide() { _sensorGuideEvent.value = false }
 }
 
 class AuthViewModelFactory(private val repository: AuthRepository) : ViewModelProvider.Factory {
