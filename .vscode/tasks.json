@@ -1,0 +1,62 @@
+{
+    "version": "2.0.0",
+    "options": {
+        "env": {
+            "ANDROID_HOME": "C:/Users/yongj/AppData/Local/Android/Sdk",
+            "ANDROID_SDK_ROOT": "C:/Users/yongj/AppData/Local/Android/Sdk"
+        }
+    },
+    "tasks": [
+        {
+            "label": "Android: Start Emulator",
+            "type": "shell",
+            "command": "C:/Users/yongj/AppData/Local/Android/Sdk/emulator/emulator.exe",
+            "args": ["-avd", "Medium_Phone_API_36.1", "-netdelay", "none", "-netspeed", "full"],
+            "isBackground": true,
+            "problemMatcher": {
+                "pattern": {
+                    "regexp": "^(.*)$",
+                    "file": 1
+                },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": ".*",
+                    "endsPattern": "Boot completed|emulator: INFO: boot completed|Successfully loaded snapshot"
+                }
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "group": "android"
+            }
+        },
+        {
+            "label": "Android: Build Debug",
+            "type": "shell",
+            "command": "./gradlew.bat",
+            "args": ["assembleDebug", "--console=plain"],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "group": "android"
+            }
+        },
+        {
+            "label": "Android: Install & Launch on Emulator",
+            "type": "shell",
+            "command": "C:/Users/yongj/AppData/Local/Android/Sdk/platform-tools/adb.exe wait-for-device; ./gradlew.bat installDebug --console=plain; C:/Users/yongj/AppData/Local/Android/Sdk/platform-tools/adb.exe shell am start -n com.rewatt.app/.MainActivity",
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared",
+                "group": "android"
+            },
+            "detail": "Waits for a running device/emulator, installs the debug APK, and launches MainActivity."
+        }
+    ]
+}
