@@ -30,8 +30,8 @@ class YoloDetector private constructor(
     companion object {
         const val MODEL_ASSET = "custom_human_detector_fp16.tflite"
 
-        fun create(context: Context): YoloDetector {
-            val modelBytes = AssetModelLoader.loadBytes(context, MODEL_ASSET)
+        fun create(context: Context, assetName: String = MODEL_ASSET): YoloDetector {
+            val modelBytes = AssetModelLoader.loadBytes(context, assetName)
             val labels = readLabelsFromMetadata(modelBytes).ifEmpty { fallbackCocoLabels }
             val modelBuffer = ByteBuffer
                 .allocateDirect(modelBytes.size)

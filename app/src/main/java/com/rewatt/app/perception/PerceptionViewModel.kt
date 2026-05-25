@@ -108,9 +108,20 @@ class PerceptionViewModel(
         }
     }
 
+    fun selectYoloModel(model: YoloModel) {
+        if (mutableState.value.selectedYoloModel == model) return
+        mutableState.update { it.copy(selectedYoloModel = model) }
+        // Drop the loaded detector so the next frame/upload reloads with the new asset.
+        yoloDetector?.close()
+        yoloDetector = null
+        if (mutableState.value.isRunning) loadYoloDetector(perceptionSessionId)
+    }
+
     private fun loadYoloDetector(sessionId: Long) {
         viewModelScope.launch(Dispatchers.Default) {
-            val loadedYolo = runCatching { YoloDetector.create(appContext) }
+            val loadedYolo = runCatching {
+                YoloDetector.create(appContext, mutableState.value.selectedYoloModel.assetName)
+            }
                 .onFailure { error ->
                     updateYoloMessage("YOLO model failed to load: ${error.message ?: error::class.java.simpleName}")
                 }
@@ -128,7 +139,9 @@ class PerceptionViewModel(
     }
 
     private fun loadYoloDetectorForUpload(): YoloDetector? {
-        val loadedYolo = runCatching { YoloDetector.create(appContext) }
+        val loadedYolo = runCatching {
+            YoloDetector.create(appContext, mutableState.value.selectedYoloModel.assetName)
+        }
             .onFailure { error ->
                 updateYoloMessage("YOLO model failed to load: ${error.message ?: error::class.java.simpleName}")
             }

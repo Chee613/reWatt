@@ -139,6 +139,7 @@ class MainActivity : ComponentActivity() {
                         onStartPerception = ::requestPerceptionPermissionsThenStart,
                         onStopPerception = perceptionViewModel::stopPerception,
                         onUploadYoloImage = ::requestYoloImageUpload,
+                        onSelectYoloModel = perceptionViewModel::selectYoloModel,
                         userEmail = authedUser?.email ?: "dev@rewatt.app",
                         userDisplayName = authedUser?.displayName ?: if (devBypass) "Dev Mode" else null,
                         onSignOut = {

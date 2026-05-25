@@ -81,6 +81,7 @@ import com.rewatt.app.data.SensorDashboardState
 import com.rewatt.app.perception.CaptureStartSource
 import com.rewatt.app.perception.ObjectDetection
 import com.rewatt.app.perception.PerceptionUiState
+import com.rewatt.app.perception.YoloModel
 import com.rewatt.app.telemetry.PacketFreshness
 import com.rewatt.app.telemetry.RadarTelemetry
 import com.rewatt.app.usb.UsbConnectionStatus
@@ -123,6 +124,7 @@ fun DashboardScreen(
     onStartPerception: (PreviewView, CaptureStartSource) -> Unit,
     onStopPerception: () -> Unit,
     onUploadYoloImage: () -> Unit,
+    onSelectYoloModel: (YoloModel) -> Unit = {},
     userEmail: String,
     userDisplayName: String?,
     onSignOut: () -> Unit,
@@ -143,7 +145,7 @@ fun DashboardScreen(
 
     // Keep ViewModel in sync with the locally-selected hall so Firestore listener switches
     LaunchedEffect(selectedHall) { onHallSelect(selectedHall.label) }
-    var showYoloUpload by rememberSaveable { mutableStateOf(false) }
+    var showYoloUpload by rememberSaveable { mutableStateOf(true) }
     var pendingCaptureSource by remember { mutableStateOf<CaptureStartSource?>(null) }
     var lastAutoTriggerAtMillis by remember { mutableStateOf<Long?>(null) }
     var autoSuppressedUntilClear by remember { mutableStateOf(false) }
@@ -270,6 +272,7 @@ fun DashboardScreen(
                     onStopPerception = ::stopCapture,
                     onUploadYoloImage = onUploadYoloImage,
                     showYoloUpload = showYoloUpload,
+                    onSelectYoloModel = onSelectYoloModel,
                     telemetry = uiState.sensorState.latestTelemetry,
                     currentUserRole = currentUserRole,
                     spaceName = spaceName,
@@ -1390,6 +1393,7 @@ private fun CapturePage(
     onStopPerception: () -> Unit,
     onUploadYoloImage: () -> Unit,
     showYoloUpload: Boolean,
+    onSelectYoloModel: (YoloModel) -> Unit,
     telemetry: RadarTelemetry? = null,
     currentUserRole: UserRole? = null,
     spaceName: String? = null,
@@ -1432,6 +1436,7 @@ private fun CapturePage(
             onStopPerception = onStopPerception,
             onUploadYoloImage = onUploadYoloImage,
             showYoloUpload = showYoloUpload,
+            onSelectYoloModel = onSelectYoloModel,
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             MetricCard(
@@ -1554,6 +1559,7 @@ private fun CaptureHeader(
     onStopPerception: () -> Unit,
     onUploadYoloImage: () -> Unit,
     showYoloUpload: Boolean,
+    onSelectYoloModel: (YoloModel) -> Unit,
 ) {
     InfoCard {
         Row(
@@ -1571,8 +1577,12 @@ private fun CaptureHeader(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (showYoloUpload) {
+                    YoloModelDropdown(
+                        selectedModel = state.selectedYoloModel,
+                        onModelChange = onSelectYoloModel,
+                    )
                     OutlinedButton(onClick = onUploadYoloImage) {
                         Text("Upload")
                     }
@@ -1914,6 +1924,51 @@ private fun HallDropdown(
                         )
                     },
                     onClick = { onHallChange(hall); expanded = false },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun YoloModelDropdown(
+    selectedModel: YoloModel,
+    onModelChange: (YoloModel) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box(modifier = modifier) {
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .background(androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant)
+                .clickable { expanded = true }
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                text = selectedModel.displayName,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 14.sp,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = "▾",
+                fontSize = 14.sp,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            YoloModel.values().forEach { model ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            model.displayName,
+                            fontWeight = if (model == selectedModel) FontWeight.Bold else FontWeight.Normal,
+                        )
+                    },
+                    onClick = { onModelChange(model); expanded = false },
                 )
             }
         }
