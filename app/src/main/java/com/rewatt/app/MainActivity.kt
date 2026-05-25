@@ -63,6 +63,11 @@ class MainActivity : ComponentActivity() {
         registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
             uri?.let(perceptionViewModel::analyzeUploadedYoloImage)
         }
+    private val locationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+            // Refresh regardless of result; WeatherRepository reports NeedsPermission if still denied.
+            viewModel.refreshWeather()
+        }
     private var pendingPreviewView: PreviewView? = null
     private var pendingCaptureSource: CaptureStartSource? = null
 
@@ -70,7 +75,13 @@ class MainActivity : ComponentActivity() {
         AuthViewModelFactory((application as ReWattApplication).appGraph.authRepository)
     }
     private val viewModel: DashboardViewModel by viewModels {
-        DashboardViewModelFactory((application as ReWattApplication).appGraph.telemetryRepository)
+        val graph = (application as ReWattApplication).appGraph
+        DashboardViewModelFactory(
+            repository = graph.telemetryRepository,
+            weatherRepository = graph.weatherRepository,
+            occupancyForecastProvider = graph.occupancyForecastProvider,
+            energyAdvisor = graph.geminiEnergyAdvisor,
+        )
     }
     private val perceptionViewModel: PerceptionViewModel by viewModels {
         PerceptionViewModelFactory(
@@ -87,6 +98,7 @@ class MainActivity : ComponentActivity() {
             cameraGranted = hasPermission(Manifest.permission.CAMERA),
             microphoneGranted = hasPermission(Manifest.permission.RECORD_AUDIO),
         )
+        requestLocationThenRefreshWeather()
 
         setContent {
             ReWattTheme {
@@ -140,6 +152,8 @@ class MainActivity : ComponentActivity() {
                         onStopPerception = perceptionViewModel::stopPerception,
                         onUploadYoloImage = ::requestYoloImageUpload,
                         onSelectYoloModel = perceptionViewModel::selectYoloModel,
+                        onRefreshWeather = viewModel::refreshWeather,
+                        onRequestEnergyAdvice = viewModel::requestEnergyAdvice,
                         userEmail = authedUser?.email ?: "dev@rewatt.app",
                         userDisplayName = authedUser?.displayName ?: if (devBypass) "Dev Mode" else null,
                         onSignOut = {
@@ -258,6 +272,21 @@ class MainActivity : ComponentActivity() {
 
     private fun requestYoloImageUpload() {
         yoloUploadLauncher.launch("image/*")
+    }
+
+    private fun requestLocationThenRefreshWeather() {
+        val fineGranted = hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)
+        val coarseGranted = hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION)
+        if (fineGranted || coarseGranted) {
+            viewModel.refreshWeather()
+        } else {
+            locationPermissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                ),
+            )
+        }
     }
 
     private fun hasPermission(permission: String): Boolean =
