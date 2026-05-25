@@ -76,8 +76,12 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.rewatt.app.BuildConfig
 import com.rewatt.app.R
 import com.rewatt.app.data.ActivityAnalysisStatus
+import com.rewatt.app.data.EnergyAdviceState
+import com.rewatt.app.data.EnergyAdviceStatus
 import com.rewatt.app.data.FirebaseSyncStatus
 import com.rewatt.app.data.SensorDashboardState
+import com.rewatt.app.data.WeatherState
+import com.rewatt.app.data.WeatherStatus
 import com.rewatt.app.perception.CaptureStartSource
 import com.rewatt.app.perception.ObjectDetection
 import com.rewatt.app.perception.PerceptionUiState
@@ -125,6 +129,8 @@ fun DashboardScreen(
     onStopPerception: () -> Unit,
     onUploadYoloImage: () -> Unit,
     onSelectYoloModel: (YoloModel) -> Unit = {},
+    onRefreshWeather: () -> Unit = {},
+    onRequestEnergyAdvice: () -> Unit = {},
     userEmail: String,
     userDisplayName: String?,
     onSignOut: () -> Unit,
@@ -251,6 +257,8 @@ fun DashboardScreen(
                     selectedHall = selectedHall,
                     onHallChange = { selectedHall = it },
                     onStartCapture = { requestCapture(CaptureStartSource.Manual) },
+                    onRefreshWeather = onRefreshWeather,
+                    onRequestEnergyAdvice = onRequestEnergyAdvice,
                     currentUserRole = currentUserRole,
                     spaceName = spaceName,
                     hallSnapshot = hallSnapshot,
@@ -359,6 +367,8 @@ private fun LivePage(
     selectedHall: Hall,
     onHallChange: (Hall) -> Unit,
     onStartCapture: () -> Unit,
+    onRefreshWeather: () -> Unit = {},
+    onRequestEnergyAdvice: () -> Unit = {},
     currentUserRole: UserRole? = null,
     spaceName: String? = null,
     hallSnapshot: HallSnapshot? = null,
@@ -385,6 +395,11 @@ private fun LivePage(
     }
     val sessionEndTime = remember(uiState.nowMillis, selectedHall) { deriveSessionEndTime(uiState.nowMillis, selectedHall) }
 
+    val weather = uiState.weather
+    val energyAdvice = uiState.energyAdvice
+    val outdoorTempC = weather.info?.temperatureC
+    val deltaT = if (outdoorTempC != null && displayTempC != null) outdoorTempC - displayTempC else null
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -397,6 +412,19 @@ private fun LivePage(
         } else {
             HallDropdown(selectedHall = selectedHall, onHallChange = onHallChange)
         }
+
+        // ── Outdoor weather + deltaT ──────────────────────────────────────────
+        WeatherCard(
+            weather = weather,
+            deltaT = deltaT,
+            onRefreshWeather = onRefreshWeather,
+        )
+
+        // ── Gemini AC energy suggestion ───────────────────────────────────────
+        EnergyAdviceCard(
+            state = energyAdvice,
+            onRequestEnergyAdvice = onRequestEnergyAdvice,
+        )
 
         // ── 6-card grid ──────────────────────────────────────────────────────
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -494,6 +522,118 @@ private fun LivePage(
         Spacer(Modifier.height(4.dp))
         Text("ROOM CONTEXT", fontWeight = FontWeight.Bold, fontSize = 16.sp)
         RoomContextCard(perceptionState = perceptionState)
+    }
+}
+
+@Composable
+private fun WeatherCard(
+    weather: WeatherState,
+    deltaT: Double?,
+    onRefreshWeather: () -> Unit,
+) {
+    InfoCard {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("OUTDOOR WEATHER", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            OutlinedButton(onClick = onRefreshWeather) {
+                Text(if (weather.status == WeatherStatus.Loading) "Loading…" else "Refresh")
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        val info = weather.info
+        if (info != null) {
+            Text(
+                text = info.conditionText ?: "Current conditions",
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 16.sp,
+            )
+            Spacer(Modifier.height(6.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                MetricCard(
+                    title = "Outdoor temp",
+                    value = info.temperatureC?.let { "%.1f °C".format(it) } ?: "--",
+                    modifier = Modifier.weight(1f),
+                )
+                MetricCard(
+                    title = "Outdoor RH",
+                    value = info.humidityPercent?.let { "%.0f %%".format(it) } ?: "--",
+                    modifier = Modifier.weight(1f),
+                )
+                MetricCard(
+                    title = "Δ vs indoor",
+                    value = deltaT?.let { "%+.1f °C".format(it) } ?: "--",
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        } else {
+            Text(
+                text = weather.message,
+                fontSize = 13.sp,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun EnergyAdviceCard(
+    state: EnergyAdviceState,
+    onRequestEnergyAdvice: () -> Unit,
+) {
+    InfoCard {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("AC ENERGY SUGGESTION", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                Text(
+                    text = "Powered by Gemini",
+                    fontSize = 11.sp,
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Button(
+                onClick = onRequestEnergyAdvice,
+                enabled = state.status != EnergyAdviceStatus.Pending,
+            ) {
+                Text(if (state.status == EnergyAdviceStatus.Pending) "Thinking…" else "Suggest action")
+            }
+        }
+
+        val advice = state.advice
+        if (advice != null) {
+            Spacer(Modifier.height(10.dp))
+            Text(advice.acAction, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            advice.recommendedAcStartTime?.let {
+                Text("Suggested AC start: $it", fontSize = 13.sp)
+            }
+            advice.targetSetpointC?.let {
+                Text("Target setpoint: %.0f °C".format(it), fontSize = 13.sp)
+            }
+            Spacer(Modifier.height(4.dp))
+            Text(
+                advice.reason,
+                fontSize = 13.sp,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                "Confidence ${(advice.confidence * 100).toInt()}%",
+                fontSize = 12.sp,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.secondary,
+            )
+        } else {
+            Spacer(Modifier.height(8.dp))
+            Text(
+                state.message,
+                fontSize = 13.sp,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 

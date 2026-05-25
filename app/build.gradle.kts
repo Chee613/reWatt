@@ -38,6 +38,12 @@ android {
             ?: System.getenv("GEMINI_API_KEY")
             ?: ""
         buildConfigField("String", "GEMINI_API_KEY", geminiApiKey.asBuildConfigString())
+
+        val mapsWeatherApiKey = localProperties.getProperty("MAPS_WEATHER_API_KEY")
+            ?: providers.gradleProperty("MAPS_WEATHER_API_KEY").orNull
+            ?: System.getenv("MAPS_WEATHER_API_KEY")
+            ?: ""
+        buildConfigField("String", "MAPS_WEATHER_API_KEY", mapsWeatherApiKey.asBuildConfigString())
     }
 
     buildTypes {
@@ -106,6 +112,8 @@ dependencies {
     implementation(libs.androidx.camera.core)
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
+
+    implementation(libs.play.services.location)
 
     implementation(libs.tensorflow.lite)
 

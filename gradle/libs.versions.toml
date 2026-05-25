@@ -11,6 +11,7 @@ lifecycle = "2.10.0"
 room = "2.8.4"
 usbSerial = "3.9.0"
 cameraX = "1.6.1"
+playServicesLocation = "21.3.0"
 tflite = "2.17.0"
 tfliteSupport = "0.5.0"
 firebaseBom = "34.13.0"
@@ -45,6 +46,7 @@ androidx-camera-camera2 = { module = "androidx.camera:camera-camera2", version.r
 androidx-camera-core = { module = "androidx.camera:camera-core", version.ref = "cameraX" }
 androidx-camera-lifecycle = { module = "androidx.camera:camera-lifecycle", version.ref = "cameraX" }
 androidx-camera-view = { module = "androidx.camera:camera-view", version.ref = "cameraX" }
+play-services-location = { module = "com.google.android.gms:play-services-location", version.ref = "playServicesLocation" }
 coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
 junit = { module = "junit:junit", version.ref = "junit" }
