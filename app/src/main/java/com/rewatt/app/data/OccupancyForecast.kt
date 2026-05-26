@@ -1,5 +1,10 @@
 package com.rewatt.app.data
 
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.firestore.FirebaseFirestore
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
+
 /**
  * Predicted occupancy for a hall, intended to come from the Prophet model.
  *
@@ -19,13 +24,6 @@ interface OccupancyForecastProvider {
     suspend fun forecast(hallLabel: String, nowMillis: Long): OccupancyForecast
 }
 
-/**
- * Temporary stand-in until Prophet forecasts are written to / read from Firestore.
- *
- * TODO: replace with a real provider that reads Prophet results from
- *  `rewatt_users/{uid}/rooms/{roomId}/forecast/...`. This is the single swap-in seam — only
- *  [AppGraph] constructs the concrete provider, so the rest of the app is unaffected by the change.
- */
 class PlaceholderOccupancyForecastProvider : OccupancyForecastProvider {
     override suspend fun forecast(hallLabel: String, nowMillis: Long): OccupancyForecast =
         OccupancyForecast(
@@ -34,4 +32,42 @@ class PlaceholderOccupancyForecastProvider : OccupancyForecastProvider {
             nextSessionStartLabel = "09:00",
             source = "placeholder",
         )
+}
+
+/**
+ * Reads Prophet forecast results written by forecast.py from
+ * `rewatt_users/{uid}/rooms/{hallLabel}/forecast/latest`.
+ * Falls back to a neutral "no forecast yet" value if the document doesn't exist.
+ */
+class FirebaseOccupancyForecastProvider : OccupancyForecastProvider {
+    private val firestore = FirebaseFirestore.getInstance()
+    private val uid get() = FirebaseAuth.getInstance().currentUser?.uid ?: ""
+
+    override suspend fun forecast(hallLabel: String, nowMillis: Long): OccupancyForecast =
+        suspendCoroutine { cont ->
+            if (uid.isEmpty()) { cont.resume(noForecast()); return@suspendCoroutine }
+            firestore.collection("rewatt_users").document(uid)
+                .collection("rooms").document(hallLabel)
+                .collection("forecast").document("latest")
+                .get()
+                .addOnSuccessListener { doc ->
+                    if (!doc.exists()) { cont.resume(noForecast()); return@addOnSuccessListener }
+                    cont.resume(
+                        OccupancyForecast(
+                            predictedOccupancy = (doc.getLong("predictedOccupancy") ?: 0).toInt(),
+                            occupancyLevel = doc.getString("occupancyLevel") ?: "unclear",
+                            nextSessionStartLabel = doc.getString("nextSessionStartLabel"),
+                            source = "prophet",
+                        )
+                    )
+                }
+                .addOnFailureListener { cont.resume(noForecast()) }
+        }
+
+    private fun noForecast() = OccupancyForecast(
+        predictedOccupancy = 0,
+        occupancyLevel = "unclear",
+        nextSessionStartLabel = null,
+        source = "no_forecast_yet",
+    )
 }

@@ -48,6 +48,22 @@ class DashboardViewModel(
     private val energyAdvice = MutableStateFlow(EnergyAdviceState())
     private var energyAdviceJob: Job? = null
 
+    private val _hallSchedules = MutableStateFlow<Map<String, Array<IntArray>>>(emptyMap())
+    val hallSchedules: StateFlow<Map<String, Array<IntArray>>> = _hallSchedules
+
+    init {
+        loadAllHallSchedules()
+    }
+
+    private fun loadAllHallSchedules() {
+        viewModelScope.launch {
+            val halls = listOf("Hall 1", "Hall 2", "Hall 3", "Hall 4")
+            _hallSchedules.value = halls.associateWith { hall ->
+                repository.loadHallSchedule(hall)
+            }
+        }
+    }
+
     val uiState = combine(
         repository.dashboardState,
         weatherRepository.weatherState,

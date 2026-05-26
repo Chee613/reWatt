@@ -20,10 +20,7 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.uid == uid;
     }
 
-    // Room sensor data — any signed-in user (Admin or Sensor) can read all
-    // halls; Sensors write their own perception data here.
-    match /rooms/{roomId}/{document=**} {
-      allow read, write: if request.auth != null;
-    }
+    // Room sensor data is now stored under rewatt_users/{uid}/rooms/... and is
+    // covered by the rewatt_users/{uid}/{subcollection=**} rule above.
   }
 }

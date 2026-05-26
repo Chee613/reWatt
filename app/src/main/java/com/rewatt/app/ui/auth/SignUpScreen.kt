@@ -99,7 +99,8 @@ fun SignUpScreen(
         OutlinedTextField(
             value = username,
             onValueChange = { username = it },
-            label = { Text("Username") },
+            label = { Text("Building") },
+            placeholder = { Text("e.g. fsktm, foe, fass") },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),

@@ -141,6 +141,7 @@ fun DashboardScreen(
     currentUserRole: UserRole? = null,
     spaceName: String? = null,
     hallSnapshot: HallSnapshot? = null,
+    hallSchedules: Map<String, Array<IntArray>> = emptyMap(),
     onHallSelect: (String) -> Unit = {},
     onModeSelected: (UserRole) -> Unit = {},
     onRenameSpace: (String) -> Unit = {},
@@ -269,6 +270,7 @@ fun DashboardScreen(
                     perceptionState = perceptionState,
                     selectedHall = selectedHall,
                     onHallChange = { selectedHall = it },
+                    hallSchedules = hallSchedules,
                 )
 
                 ReWattTab.Capture -> CapturePage(
@@ -693,6 +695,7 @@ private fun AnalyticPage(
     perceptionState: PerceptionUiState,
     selectedHall: Hall,
     onHallChange: (Hall) -> Unit,
+    hallSchedules: Map<String, Array<IntArray>> = emptyMap(),
 ) {
     var isAction by rememberSaveable { mutableStateOf(true) }
 
@@ -712,6 +715,7 @@ private fun AnalyticPage(
                 uiState = uiState,
                 perceptionState = perceptionState,
                 modifier = Modifier.weight(1f),
+                hallSchedules = hallSchedules,
             )
         } else {
             Column(
@@ -721,7 +725,10 @@ private fun AnalyticPage(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 HallDropdown(selectedHall = selectedHall, onHallChange = onHallChange)
-                WeeklyOccupancyCard(hall = selectedHall)
+                WeeklyOccupancyCard(
+                    hall = selectedHall,
+                    firestoreSchedule = hallSchedules[selectedHall.label],
+                )
             }
         }
     }
@@ -866,32 +873,50 @@ private fun buildWeeklySchedule(hall: Hall): Array<IntArray> {
 }
 
 @Composable
-private fun WeeklyOccupancyCard(hall: Hall) {
-    val schedule = remember(hall) { buildWeeklySchedule(hall) }
-    val dayBreaks = hallDayBreaks[hall] ?: emptyMap()
+private fun WeeklyOccupancyCard(hall: Hall, firestoreSchedule: Array<IntArray>? = null) {
+    val hasData = firestoreSchedule?.any { row -> row.any { v -> v != 0 } } == true
+    val schedule = if (hasData) firestoreSchedule!! else remember(hall) { buildWeeklySchedule(hall) }
+    val dayBreaks = if (hasData) emptyMap() else (hallDayBreaks[hall] ?: emptyMap())
     var selectedDay by remember { mutableStateOf<Int?>(null) }
 
     InfoCard(modifier = Modifier.fillMaxWidth()) {
         Text("Weekly occupancy pattern", fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(6.dp))
-        OccupancyHeatmapLegend()
-        Spacer(Modifier.height(10.dp))
-        WeeklyHeatmapGrid(
-            schedule = schedule,
-            selectedDay = selectedDay,
-            onDayClick = { day -> selectedDay = if (selectedDay == day) null else day },
-        )
-        Spacer(Modifier.height(4.dp))
-        HourAxisRow()
-        AnimatedVisibility(
-            visible = selectedDay != null,
-            enter = expandVertically() + fadeIn(),
-            exit = shrinkVertically() + fadeOut(),
-        ) {
-            val day = selectedDay ?: 0
-            Column {
-                Spacer(Modifier.height(12.dp))
-                DailyOccupancyChart(dayIndex = day, schedule = schedule, dayBreaks = dayBreaks, hall = hall)
+        if (firestoreSchedule != null && !hasData) {
+            Spacer(Modifier.height(12.dp))
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text("No sensor history yet", fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "Run the sensor to collect occupancy data for this hall.",
+                    fontSize = 12.sp,
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+        } else {
+            OccupancyHeatmapLegend()
+            Spacer(Modifier.height(10.dp))
+            WeeklyHeatmapGrid(
+                schedule = schedule,
+                selectedDay = selectedDay,
+                onDayClick = { day -> selectedDay = if (selectedDay == day) null else day },
+            )
+            Spacer(Modifier.height(4.dp))
+            HourAxisRow()
+            AnimatedVisibility(
+                visible = selectedDay != null,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut(),
+            ) {
+                val day = selectedDay ?: 0
+                Column {
+                    Spacer(Modifier.height(12.dp))
+                    DailyOccupancyChart(dayIndex = day, schedule = schedule, dayBreaks = dayBreaks, hall = hall)
+                }
             }
         }
     }
@@ -1212,7 +1237,11 @@ private fun ActionPage(
     uiState: DashboardUiState,
     perceptionState: PerceptionUiState,
     modifier: Modifier = Modifier,
+    hallSchedules: Map<String, Array<IntArray>> = emptyMap(),
 ) {
+    val hasAnySensorHistory = hallSchedules.values.any { s -> s.any { row -> row.any { v -> v != 0 } } }
+    val showEmptyState = hallSchedules.isNotEmpty() && !hasAnySensorHistory
+
     val telemetry = uiState.sensorState.latestTelemetry
     val analysis = uiState.sensorState.activityAnalysisState.analysis
 
@@ -1246,6 +1275,23 @@ private fun ActionPage(
 
     LaunchedEffect(nowActions.joinToString { it.second.first }) { nowDismissed = false }
     LaunchedEffect(previewDayOffset) { dismissedIds = emptySet() }
+
+    if (showEmptyState) {
+        Box(modifier = modifier, contentAlignment = Alignment.Center) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(horizontal = 32.dp),
+            ) {
+                Text("No sensor history yet", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                Text(
+                    text = "Action recommendations will appear once the sensor has collected occupancy data for this building.",
+                    fontSize = 13.sp,
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    } else {
 
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         AnimatedVisibility(
@@ -1283,7 +1329,8 @@ private fun ActionPage(
                 }
             }
         }
-    }
+    } // end Column
+    } // end else (has sensor history)
 }
 
 @Composable
@@ -1935,6 +1982,11 @@ private fun SettingPage(
                         )
                     }
                     Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Building",
+                            fontSize = 11.sp,
+                            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                         Text(displayName, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
                         if (userDisplayName != null) {
                             Text(

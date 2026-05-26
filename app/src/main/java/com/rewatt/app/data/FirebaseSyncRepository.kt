@@ -4,9 +4,12 @@ import android.content.Context
 import android.provider.Settings
 import com.google.android.gms.tasks.Task
 import com.google.firebase.FirebaseApp
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.SetOptions
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -31,7 +34,7 @@ class FirebaseSyncRepository(
     }
 
     // Use the sensor's assigned space name as the Firestore room path so each
-    // sensor's data lands under its hall (e.g. "rooms/Hall 1/nodes/...").
+    // sensor's data lands under its hall (e.g. "Hall 1/nodes/...").
     // Falls back to the constructor-supplied roomId if no space name is set.
     private val effectiveRoomId: String
         get() {
@@ -40,6 +43,17 @@ class FirebaseSyncRepository(
                 .getString("space_name", null)
             return if (!name.isNullOrBlank()) name else roomId
         }
+
+    // Current authenticated user's UID — all Firestore paths are scoped under it
+    // so different buildings (accounts) never share data.
+    private val uid: String
+        get() = FirebaseAuth.getInstance().currentUser?.uid ?: error("Not authenticated")
+
+    // Base Firestore reference for a given room, scoped under the current user's UID.
+    private fun roomRef(roomId: String) =
+        FirebaseFirestore.getInstance()
+            .collection("rewatt_users").document(uid)
+            .collection("rooms").document(roomId)
 
     fun syncPerceptionSummary(
         perceptionSummary: PerceptionSyncSummary,
@@ -56,7 +70,6 @@ class FirebaseSyncRepository(
             return
         }
 
-        val firestore = FirebaseFirestore.getInstance()
         val room = effectiveRoomId
         val payload = buildPerceptionPayload(
             perceptionSummary = perceptionSummary,
@@ -73,17 +86,15 @@ class FirebaseSyncRepository(
             ),
         )
 
-        val nodePath = "rooms/$room/nodes/$nodeId"
-        val historyPath = "rooms/$room/telemetry/$historyId"
+        val nodePath = "rewatt_users/$uid/rooms/$room/nodes/$nodeId"
+        val historyPath = "rewatt_users/$uid/rooms/$room/telemetry/$historyId"
 
-        val nodeTask = firestore.collection("rooms")
-            .document(room)
+        val nodeTask = roomRef(room)
             .collection("nodes")
             .document(nodeId)
             .set(payload, SetOptions.merge())
 
-        val historyTask = firestore.collection("rooms")
-            .document(room)
+        val historyTask = roomRef(room)
             .collection("telemetry")
             .document(historyId)
             .set(payload + mapOf("historyId" to historyId), SetOptions.merge())
@@ -104,7 +115,6 @@ class FirebaseSyncRepository(
         val capturedAtMillis = perceptionSummary.capturedAtMillis ?: return
         if (!hasFirebaseConfig()) return
 
-        val firestore = FirebaseFirestore.getInstance()
         val updatedAtMillis = System.currentTimeMillis()
         val historyId = "$capturedAtMillis-$nodeId"
         val room = effectiveRoomId
@@ -117,21 +127,22 @@ class FirebaseSyncRepository(
             "lastUpdatedAt" to updatedAtMillis,
         )
 
-        firestore.collection("rooms")
-            .document(room)
+        roomRef(room)
             .collection("nodes")
             .document(nodeId)
             .set(payload, SetOptions.merge())
 
-        firestore.collection("rooms")
-            .document(room)
+        roomRef(room)
             .collection("telemetry")
             .document(historyId)
             .set(payload, SetOptions.merge())
     }
 
     fun listenToHall(roomId: String): Flow<HallSnapshot?> = callbackFlow {
+        val uid = FirebaseAuth.getInstance().currentUser?.uid
+        if (uid == null) { trySend(null); awaitClose { }; return@callbackFlow }
         val listener = FirebaseFirestore.getInstance()
+            .collection("rewatt_users").document(uid)
             .collection("rooms").document(roomId)
             .collection("nodes")
             .addSnapshotListener { snapshot, _ ->
@@ -150,6 +161,47 @@ class FirebaseSyncRepository(
                 )
             }
         awaitClose { listener.remove() }
+    }
+
+    suspend fun loadHallSchedule(hallLabel: String): Array<IntArray> {
+        val currentUid = FirebaseAuth.getInstance().currentUser?.uid
+            ?: return Array(7) { IntArray(24) { 0 } }
+        val cutoffMs = System.currentTimeMillis() - 30L * 24 * 3600 * 1000
+        return suspendCoroutine { cont ->
+            FirebaseFirestore.getInstance()
+                .collection("rewatt_users").document(currentUid)
+                .collection("rooms").document(hallLabel)
+                .collection("telemetry")
+                .whereGreaterThan("perceptionCapturedAt", cutoffMs)
+                .get()
+                .addOnSuccessListener { snapshot ->
+                    val sums = Array(7) { IntArray(24) { 0 } }
+                    val counts = Array(7) { IntArray(24) { 0 } }
+                    val cal = java.util.Calendar.getInstance()
+                    for (doc in snapshot.documents) {
+                        val ts = doc.getLong("perceptionCapturedAt") ?: continue
+                        val count = doc.getLong("personCount")?.toInt() ?: continue
+                        cal.timeInMillis = ts
+                        val dow = (cal.get(java.util.Calendar.DAY_OF_WEEK) + 5) % 7
+                        val hour = cal.get(java.util.Calendar.HOUR_OF_DAY)
+                        sums[dow][hour] += count
+                        counts[dow][hour]++
+                    }
+                    cont.resume(Array(7) { day ->
+                        IntArray(24) { hour ->
+                            val n = counts[day][hour]
+                            if (n == 0) 0
+                            else when (sums[day][hour] / n) {
+                                0 -> 0
+                                in 1..40 -> 1
+                                in 41..80 -> 2
+                                else -> 3
+                            }
+                        }
+                    })
+                }
+                .addOnFailureListener { cont.resume(Array(7) { IntArray(24) { 0 } }) }
+        }
     }
 
     companion object {
