@@ -179,17 +179,27 @@ private fun PermissionsStep() {
                 PackageManager.PERMISSION_GRANTED,
         )
     }
+    var locationGranted by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
+                PackageManager.PERMISSION_GRANTED ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) ==
+                PackageManager.PERMISSION_GRANTED,
+        )
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { result ->
         cameraGranted = result[Manifest.permission.CAMERA] == true
         micGranted = result[Manifest.permission.RECORD_AUDIO] == true
+        locationGranted = result[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+            result[Manifest.permission.ACCESS_COARSE_LOCATION] == true
     }
 
     StepHeader(
-        title = "1. Allow Camera & Microphone",
-        body = "reWatt uses the camera and microphone to detect who is in the room. Make sure both are turned on.",
+        title = "1. Allow Camera, Microphone & Location",
+        body = "reWatt uses the camera and microphone to detect who is in the room, and location to fetch outdoor weather for energy advice.",
     )
 
     Card(
@@ -202,15 +212,20 @@ private fun PermissionsStep() {
         ) {
             PermissionRow(label = "Camera", granted = cameraGranted)
             PermissionRow(label = "Microphone", granted = micGranted)
+            PermissionRow(label = "Location", granted = locationGranted)
         }
     }
 
-    if (!cameraGranted || !micGranted) {
+    if (!cameraGranted || !micGranted || !locationGranted) {
         Button(
             onClick = {
                 val toRequest = buildList {
                     if (!cameraGranted) add(Manifest.permission.CAMERA)
                     if (!micGranted) add(Manifest.permission.RECORD_AUDIO)
+                    if (!locationGranted) {
+                        add(Manifest.permission.ACCESS_FINE_LOCATION)
+                        add(Manifest.permission.ACCESS_COARSE_LOCATION)
+                    }
                 }
                 permissionLauncher.launch(toRequest.toTypedArray())
             },
