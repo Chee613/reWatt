@@ -94,7 +94,7 @@ class AuthRepository(private val context: Context) {
                 .addOnFailureListener { cont.resume(false) }
         }
         if (usernameTaken) {
-            return Result.failure(Exception("Username is already taken. Please choose a different one."))
+            return Result.failure(Exception("Building name is already taken. Please choose a different one."))
         }
 
         // Step 2: Create the Firebase Auth account

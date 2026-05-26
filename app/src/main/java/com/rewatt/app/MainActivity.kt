@@ -143,6 +143,7 @@ class MainActivity : ComponentActivity() {
                 if (showDashboard) {
                     val uiState = viewModel.uiState.collectAsStateWithLifecycle()
                     val perceptionState = perceptionViewModel.uiState.collectAsStateWithLifecycle()
+                    val hallSchedules by viewModel.hallSchedules.collectAsStateWithLifecycle()
                     val authedUser = (authState as? AuthState.Authenticated)?.user
                     DashboardScreen(
                         uiState = uiState.value,
@@ -167,6 +168,7 @@ class MainActivity : ComponentActivity() {
                         currentUserRole = currentUserRole,
                         spaceName = spaceName,
                         hallSnapshot = hallSnapshot,
+                        hallSchedules = hallSchedules,
                         onHallSelect = viewModel::selectHall,
                         onModeSelected = { role ->
                             authViewModel.setMode(role)

@@ -5,8 +5,8 @@ import com.rewatt.app.data.AuthRepository
 import com.rewatt.app.data.FirebaseSyncRepository
 import com.rewatt.app.data.GeminiActivityAnalyzer
 import com.rewatt.app.data.GeminiEnergyAdvisor
+import com.rewatt.app.data.FirebaseOccupancyForecastProvider
 import com.rewatt.app.data.OccupancyForecastProvider
-import com.rewatt.app.data.PlaceholderOccupancyForecastProvider
 import com.rewatt.app.data.ReWattDatabase
 import com.rewatt.app.data.TelemetryRepository
 import com.rewatt.app.data.WeatherRepository
@@ -43,7 +43,7 @@ class AppGraph(context: Context) {
     }
 
     val occupancyForecastProvider: OccupancyForecastProvider by lazy {
-        PlaceholderOccupancyForecastProvider()
+        FirebaseOccupancyForecastProvider()
     }
 
     val geminiEnergyAdvisor: GeminiEnergyAdvisor by lazy {

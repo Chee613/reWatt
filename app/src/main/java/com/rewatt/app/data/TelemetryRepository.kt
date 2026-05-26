@@ -63,6 +63,9 @@ class TelemetryRepository(
     fun listenToHall(roomId: String): Flow<HallSnapshot?> =
         firebaseSyncRepository.listenToHall(roomId)
 
+    suspend fun loadHallSchedule(hallLabel: String): Array<IntArray> =
+        firebaseSyncRepository.loadHallSchedule(hallLabel)
+
     fun updatePerceptionSummary(perceptionSummary: PerceptionSyncSummary) {
         val latestTelemetry = mutableState.value.latestTelemetry
         val enrichedSummary = perceptionSummary.copy(
