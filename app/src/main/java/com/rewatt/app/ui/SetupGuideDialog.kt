@@ -1,6 +1,7 @@
 package com.rewatt.app.ui
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -38,6 +39,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,6 +57,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 
 private const val TOTAL_STEPS = 6
 
@@ -164,6 +170,14 @@ fun SetupGuideDialog(onDismiss: (spaceName: String?) -> Unit) {
     }
 }
 
+// Sequential request states so the system permission dialogs always appear in a fixed
+// order. RequestMultiplePermissions does NOT guarantee dialog order, so we chain
+// single-permission requests instead.
+private const val REQUEST_IDLE = 0
+private const val REQUEST_CAMERA = 1
+private const val REQUEST_MIC = 2
+private const val REQUEST_LOCATION = 3
+
 @Composable
 private fun PermissionsStep() {
     val context = LocalContext.current
@@ -188,13 +202,48 @@ private fun PermissionsStep() {
         )
     }
 
-    val permissionLauncher = rememberLauncherForActivityResult(
+    // One launcher per permission so we can chain them in a guaranteed order.
+    var requestStep by remember { mutableStateOf(REQUEST_IDLE) }
+
+    val cameraLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        cameraGranted = granted
+        requestStep = REQUEST_MIC
+    }
+    val micLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        micGranted = granted
+        requestStep = REQUEST_LOCATION
+    }
+    val locationLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { result ->
-        cameraGranted = result[Manifest.permission.CAMERA] == true
-        micGranted = result[Manifest.permission.RECORD_AUDIO] == true
         locationGranted = result[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
             result[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        requestStep = REQUEST_IDLE
+    }
+
+    // Drive the chain: each step launches its request, or skips ahead when already granted.
+    LaunchedEffect(requestStep) {
+        when (requestStep) {
+            REQUEST_CAMERA ->
+                if (cameraGranted) requestStep = REQUEST_MIC
+                else cameraLauncher.launch(Manifest.permission.CAMERA)
+            REQUEST_MIC ->
+                if (micGranted) requestStep = REQUEST_LOCATION
+                else micLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            REQUEST_LOCATION ->
+                if (locationGranted) requestStep = REQUEST_IDLE
+                else locationLauncher.launch(
+                    arrayOf(
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.ACCESS_COARSE_LOCATION,
+                    ),
+                )
+            else -> Unit
+        }
     }
 
     StepHeader(
@@ -218,17 +267,7 @@ private fun PermissionsStep() {
 
     if (!cameraGranted || !micGranted || !locationGranted) {
         Button(
-            onClick = {
-                val toRequest = buildList {
-                    if (!cameraGranted) add(Manifest.permission.CAMERA)
-                    if (!micGranted) add(Manifest.permission.RECORD_AUDIO)
-                    if (!locationGranted) {
-                        add(Manifest.permission.ACCESS_FINE_LOCATION)
-                        add(Manifest.permission.ACCESS_COARSE_LOCATION)
-                    }
-                }
-                permissionLauncher.launch(toRequest.toTypedArray())
-            },
+            onClick = { requestStep = REQUEST_CAMERA },
             modifier = Modifier.fillMaxWidth(),
         ) { Text("Allow Permissions") }
     }
@@ -259,11 +298,23 @@ private fun PermissionRow(label: String, granted: Boolean) {
 @Composable
 private fun BatteryStep() {
     val context = LocalContext.current
-    val isIgnoring = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-        (context.getSystemService(android.content.Context.POWER_SERVICE) as PowerManager)
-            .isIgnoringBatteryOptimizations(context.packageName)
-    } else {
-        true
+    val lifecycleOwner = LocalLifecycleOwner.current
+    fun checkIgnoring(): Boolean =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            (context.getSystemService(Context.POWER_SERVICE) as PowerManager)
+                .isIgnoringBatteryOptimizations(context.packageName)
+        } else {
+            true
+        }
+
+    // Re-check on resume so the status updates the moment the user returns from system settings.
+    var isIgnoring by remember { mutableStateOf(checkIgnoring()) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) isIgnoring = checkIgnoring()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     val green = Color(0xFF2E7D32)
 

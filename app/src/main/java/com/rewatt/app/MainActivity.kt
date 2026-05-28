@@ -63,11 +63,6 @@ class MainActivity : ComponentActivity() {
         registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
             uri?.let(perceptionViewModel::analyzeUploadedYoloImage)
         }
-    private val locationPermissionLauncher =
-        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-            // Refresh regardless of result; WeatherRepository reports NeedsPermission if still denied.
-            viewModel.refreshWeather()
-        }
     private var pendingPreviewView: PreviewView? = null
     private var pendingCaptureSource: CaptureStartSource? = null
 
@@ -98,7 +93,7 @@ class MainActivity : ComponentActivity() {
             cameraGranted = hasPermission(Manifest.permission.CAMERA),
             microphoneGranted = hasPermission(Manifest.permission.RECORD_AUDIO),
         )
-        requestLocationThenRefreshWeather()
+        refreshWeatherIfLocationGranted()
 
         setContent {
             ReWattTheme {
@@ -153,6 +148,7 @@ class MainActivity : ComponentActivity() {
                         onStopPerception = perceptionViewModel::stopPerception,
                         onUploadYoloImage = ::requestYoloImageUpload,
                         onSelectYoloModel = perceptionViewModel::selectYoloModel,
+                        onDebugCapture = perceptionViewModel::captureNow,
                         onRefreshWeather = viewModel::refreshWeather,
                         onRequestEnergyAdvice = viewModel::requestEnergyAdvice,
                         userEmail = authedUser?.email ?: "dev@rewatt.app",
@@ -218,6 +214,8 @@ class MainActivity : ComponentActivity() {
                     SetupGuideDialog(onDismiss = { name ->
                         showSetupGuide = false
                         if (name != null) authViewModel.setSpaceName(name)
+                        // Location may have just been granted inside the guide.
+                        refreshWeatherIfLocationGranted()
                     })
                 }
             }
@@ -276,18 +274,11 @@ class MainActivity : ComponentActivity() {
         yoloUploadLauncher.launch("image/*")
     }
 
-    private fun requestLocationThenRefreshWeather() {
+    private fun refreshWeatherIfLocationGranted() {
         val fineGranted = hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)
         val coarseGranted = hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION)
         if (fineGranted || coarseGranted) {
             viewModel.refreshWeather()
-        } else {
-            locationPermissionLauncher.launch(
-                arrayOf(
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION,
-                ),
-            )
         }
     }
 
