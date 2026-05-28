@@ -44,13 +44,14 @@ class FirebaseSyncRepository(
             return if (!name.isNullOrBlank()) name else roomId
         }
 
-    // Current authenticated user's UID — all Firestore paths are scoped under it
-    // so different buildings (accounts) never share data.
-    private val uid: String
-        get() = FirebaseAuth.getInstance().currentUser?.uid ?: error("Not authenticated")
+    // Current authenticated user's UID — all Firestore paths are scoped under it so
+    // different buildings (accounts) never share data. Null when not signed in (e.g. Dev
+    // Mode), in which case sync is skipped rather than crashing a background coroutine.
+    private val currentUid: String?
+        get() = FirebaseAuth.getInstance().currentUser?.uid
 
     // Base Firestore reference for a given room, scoped under the current user's UID.
-    private fun roomRef(roomId: String) =
+    private fun roomRef(uid: String, roomId: String) =
         FirebaseFirestore.getInstance()
             .collection("rewatt_users").document(uid)
             .collection("rooms").document(roomId)
@@ -65,6 +66,17 @@ class FirebaseSyncRepository(
                 FirebaseSyncState(
                     status = FirebaseSyncStatus.ConfigMissing,
                     message = "Firebase config missing. Add app/google-services.json, rebuild, and reinstall the app.",
+                ),
+            )
+            return
+        }
+
+        val uid = currentUid
+        if (uid == null) {
+            onState(
+                FirebaseSyncState(
+                    status = FirebaseSyncStatus.Idle,
+                    message = "Not signed in — skipping Firestore sync (Dev Mode).",
                 ),
             )
             return
@@ -89,12 +101,12 @@ class FirebaseSyncRepository(
         val nodePath = "rewatt_users/$uid/rooms/$room/nodes/$nodeId"
         val historyPath = "rewatt_users/$uid/rooms/$room/telemetry/$historyId"
 
-        val nodeTask = roomRef(room)
+        val nodeTask = roomRef(uid, room)
             .collection("nodes")
             .document(nodeId)
             .set(payload, SetOptions.merge())
 
-        val historyTask = roomRef(room)
+        val historyTask = roomRef(uid, room)
             .collection("telemetry")
             .document(historyId)
             .set(payload + mapOf("historyId" to historyId), SetOptions.merge())
@@ -114,6 +126,7 @@ class FirebaseSyncRepository(
     ) {
         val capturedAtMillis = perceptionSummary.capturedAtMillis ?: return
         if (!hasFirebaseConfig()) return
+        val uid = currentUid ?: return
 
         val updatedAtMillis = System.currentTimeMillis()
         val historyId = "$capturedAtMillis-$nodeId"
@@ -127,12 +140,12 @@ class FirebaseSyncRepository(
             "lastUpdatedAt" to updatedAtMillis,
         )
 
-        roomRef(room)
+        roomRef(uid, room)
             .collection("nodes")
             .document(nodeId)
             .set(payload, SetOptions.merge())
 
-        roomRef(room)
+        roomRef(uid, room)
             .collection("telemetry")
             .document(historyId)
             .set(payload, SetOptions.merge())
