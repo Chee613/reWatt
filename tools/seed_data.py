@@ -7,11 +7,12 @@ Run on your laptop:
 Prerequisites (one-time):
     pip install firebase-admin
 
-You also need serviceAccountKey.json in the same folder as this script.
+You also need serviceAccountKey.json in the repo root (one level above this tools/ folder).
 Download from: Firebase console → Project settings → Service accounts →
                Generate new private key
 """
 
+import os
 import firebase_admin
 from firebase_admin import credentials, firestore
 from datetime import datetime, timedelta, timezone
@@ -19,7 +20,8 @@ import random
 
 MYT = timezone(timedelta(hours=8))  # Malaysia Time (UTC+8)
 
-cred = credentials.Certificate("serviceAccountKey.json")
+_KEY = os.path.join(os.path.dirname(__file__), "..", "serviceAccountKey.json")
+cred = credentials.Certificate(_KEY)
 firebase_admin.initialize_app(cred)
 db = firestore.client()
 
