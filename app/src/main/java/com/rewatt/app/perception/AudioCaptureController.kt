@@ -13,9 +13,11 @@ import kotlin.math.sqrt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 class AudioCaptureController(
     private val context: Context,
@@ -27,6 +29,7 @@ class AudioCaptureController(
 ) : Closeable {
     private var captureJob: Job? = null
     private var audioRecord: AudioRecord? = null
+    private val triggerChannel = Channel<Unit>(Channel.CONFLATED)
 
     @SuppressLint("MissingPermission")
     fun start() {
@@ -67,7 +70,16 @@ class AudioCaptureController(
                 record.startRecording()
                 val shortBuffer = ShortArray(sampleCount)
                 while (isActive) {
+                    // Hold until the next 10-minute wall-clock mark, or until the debug
+                    // "Capture now" trigger fires — whichever happens first.
+                    onStatus("Waiting for the next 10-minute mark to record audio.")
+                    withTimeoutOrNull(millisUntilNextBoundary(RECORDING_INTERVAL_MINUTES)) {
+                        triggerChannel.receive()
+                    }
+                    if (!isActive) break
                     onStatus("Recording audio for 15 seconds.")
+                    // Discard audio buffered during the wait so the window is fresh at the mark.
+                    record.drainStale(shortBuffer)
                     val readCount = record.readFully(shortBuffer, sampleCount)
                     if (readCount <= 0) {
                         onError("Microphone read failed.")
@@ -100,12 +112,16 @@ class AudioCaptureController(
                             },
                         ),
                     )
-                    delay(CAPTURE_PAUSE_MILLIS)
                 }
             }.onFailure { error ->
                 onError("Audio capture failed: ${error.message ?: error::class.java.simpleName}")
             }
         }
+    }
+
+    /** Debug bypass: record one window immediately instead of waiting for the next mark. */
+    fun captureNow() {
+        triggerChannel.trySend(Unit)
     }
 
     override fun close() {
@@ -116,6 +132,14 @@ class AudioCaptureController(
             record.release()
         }
         audioRecord = null
+    }
+
+    /** Drain any samples buffered during the idle wait so the next read starts fresh. */
+    private fun AudioRecord.drainStale(scratch: ShortArray) {
+        while (true) {
+            val read = read(scratch, 0, scratch.size, AudioRecord.READ_NON_BLOCKING)
+            if (read <= 0) break
+        }
     }
 
     private fun AudioRecord.readFully(target: ShortArray, sampleCount: Int): Int {
@@ -130,11 +154,9 @@ class AudioCaptureController(
 
     companion object {
         private const val SAMPLE_RATE_HZ = 16_000
-        private const val RECORDING_WINDOW_MILLIS = 15_000L
-        private const val RECORDING_INTERVAL_MILLIS = 10 * 60 * 1_000L
+        private const val RECORDING_INTERVAL_MINUTES = 10
         private const val RECORDING_SAMPLE_COUNT = SAMPLE_RATE_HZ * 15
         private const val BYTES_PER_SAMPLE = 2
-        private const val CAPTURE_PAUSE_MILLIS = RECORDING_INTERVAL_MILLIS - RECORDING_WINDOW_MILLIS
     }
 }
 

@@ -84,12 +84,20 @@ class CameraCaptureController(
 
     private fun startCaptureLoop() {
         captureLoop?.cancel(false)
-        captureLoop = cameraExecutor.scheduleWithFixedDelay(
+        // Align the first capture to the next 10-minute wall-clock mark (:00/:10/:20...),
+        // then keep firing every interval. scheduleAtFixedRate keeps the cadence anchored.
+        captureLoop = cameraExecutor.scheduleAtFixedRate(
             { captureJpegFrame() },
-            0L,
+            millisUntilNextBoundary(INFERENCE_INTERVAL_MINUTES),
             INFERENCE_INTERVAL_MILLIS,
             TimeUnit.MILLISECONDS,
         )
+    }
+
+    /** Debug bypass: capture and analyze one frame immediately, ignoring the interval. */
+    fun captureNow() {
+        if (closed) return
+        cameraExecutor.execute { captureJpegFrame() }
     }
 
     private fun captureJpegFrame() {
@@ -183,7 +191,8 @@ class CameraCaptureController(
     }
 
     companion object {
-        private const val INFERENCE_INTERVAL_MILLIS = 10 * 60 * 1_000L
+        private const val INFERENCE_INTERVAL_MINUTES = 10
+        private const val INFERENCE_INTERVAL_MILLIS = INFERENCE_INTERVAL_MINUTES * 60 * 1_000L
     }
 }
 

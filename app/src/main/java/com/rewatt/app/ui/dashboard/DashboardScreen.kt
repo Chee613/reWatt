@@ -129,6 +129,7 @@ fun DashboardScreen(
     onStopPerception: () -> Unit,
     onUploadYoloImage: () -> Unit,
     onSelectYoloModel: (YoloModel) -> Unit = {},
+    onDebugCapture: () -> Unit = {},
     onRefreshWeather: () -> Unit = {},
     onRequestEnergyAdvice: () -> Unit = {},
     userEmail: String,
@@ -283,6 +284,7 @@ fun DashboardScreen(
                     onUploadYoloImage = onUploadYoloImage,
                     showYoloUpload = showYoloUpload,
                     onSelectYoloModel = onSelectYoloModel,
+                    onDebugCapture = onDebugCapture,
                     telemetry = uiState.sensorState.latestTelemetry,
                     currentUserRole = currentUserRole,
                     spaceName = spaceName,
@@ -1581,6 +1583,7 @@ private fun CapturePage(
     onUploadYoloImage: () -> Unit,
     showYoloUpload: Boolean,
     onSelectYoloModel: (YoloModel) -> Unit,
+    onDebugCapture: () -> Unit = {},
     telemetry: RadarTelemetry? = null,
     currentUserRole: UserRole? = null,
     spaceName: String? = null,
@@ -1624,6 +1627,7 @@ private fun CapturePage(
             onUploadYoloImage = onUploadYoloImage,
             showYoloUpload = showYoloUpload,
             onSelectYoloModel = onSelectYoloModel,
+            onDebugCapture = onDebugCapture,
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             MetricCard(
@@ -1660,7 +1664,6 @@ private fun CapturePage(
         )
         AudioCompactCard(
             state = state,
-            nowMillis = nowMillis,
             modifier = Modifier.height(260.dp),
         )
         SensorLiveDataCard(telemetry = telemetry)
@@ -1747,6 +1750,7 @@ private fun CaptureHeader(
     onUploadYoloImage: () -> Unit,
     showYoloUpload: Boolean,
     onSelectYoloModel: (YoloModel) -> Unit,
+    onDebugCapture: () -> Unit,
 ) {
     InfoCard {
         Row(
@@ -1793,6 +1797,12 @@ private fun CaptureHeader(
                     selectedModel = state.selectedYoloModel,
                     onModelChange = onSelectYoloModel,
                 )
+                OutlinedButton(
+                    onClick = onDebugCapture,
+                    enabled = state.isRunning,
+                ) {
+                    Text("Capture now")
+                }
             }
         }
     }
@@ -2422,7 +2432,6 @@ private fun LatestFrameCompactCard(
 @Composable
 private fun AudioCompactCard(
     state: PerceptionUiState,
-    nowMillis: Long,
     modifier: Modifier = Modifier,
 ) {
     InfoCard(modifier = modifier) {
@@ -2433,13 +2442,6 @@ private fun AudioCompactCard(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text("Human activity sounds", fontWeight = FontWeight.SemiBold)
-                Text(
-                    text = state.latestAudioAtMillis.ageLabel(nowMillis),
-                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 12.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
             }
             Text(
                 text = if (state.audioPresenceDetected) {

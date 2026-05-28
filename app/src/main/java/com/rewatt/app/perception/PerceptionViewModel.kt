@@ -117,6 +117,12 @@ class PerceptionViewModel(
         if (mutableState.value.isRunning) loadYoloDetector(perceptionSessionId)
     }
 
+    /** Debug bypass: trigger one immediate camera + audio capture, ignoring the 10-minute alignment. */
+    fun captureNow() {
+        cameraController?.captureNow()
+        audioController?.captureNow()
+    }
+
     private fun loadYoloDetector(sessionId: Long) {
         viewModelScope.launch(Dispatchers.Default) {
             val loadedYolo = runCatching {
