@@ -14,13 +14,46 @@ class YoloDetector private constructor(
     private val interpreter: Interpreter,
     private val labels: List<String>,
 ) : Closeable {
-    fun detect(bitmap: Bitmap): List<ObjectDetection> {
-        val inputBuffer = bitmap.toYoloInputBuffer()
+    // The model's expected square input size (e.g. 640 or 1280), read from its input tensor so
+    // models of different resolutions can be swapped via the dropdown without code changes.
+    private val inputSize: Int =
+        interpreter.getInputTensor(0).shape().let { shape ->
+            shape.getOrNull(1)?.takeIf { it > 0 } ?: YoloPostProcessor.INPUT_SIZE
+        }
+
+    fun detect(bitmap: Bitmap, gridSize: Int = DEFAULT_GRID): List<ObjectDetection> {
+        val fullWidth = bitmap.width
+        val fullHeight = bitmap.height
+
+        // Full frame + grid cells (SAHI-style), each letterboxed to the model's square input.
+        val merged = regionsFor(fullWidth, fullHeight, inputSize, gridSize).flatMap { region ->
+            val crop = if (region.isFullFrame && region.width == fullWidth && region.height == fullHeight) {
+                bitmap
+            } else {
+                Bitmap.createBitmap(bitmap, region.left, region.top, region.width, region.height)
+            }
+            val letterboxed = letterbox(crop, inputSize)
+            try {
+                runOnSquare(letterboxed.bitmap).map { detection ->
+                    detection.copy(
+                        box = remapToFullImage(detection.box, letterboxed, region, fullWidth, fullHeight, inputSize),
+                    )
+                }
+            } finally {
+                letterboxed.bitmap.recycle()
+                if (crop !== bitmap) crop.recycle()
+            }
+        }
+
+        // De-duplicate across the full frame + overlapping cells before the label filter.
+        return LectureHallPerceptionFilter.filterYoloDetections(nms(merged))
+    }
+
+    /** Run the interpreter on an already-square (inputSize) bitmap; boxes are normalized to it. */
+    private fun runOnSquare(square: Bitmap): List<ObjectDetection> {
         val output = Array(1) { Array(300) { FloatArray(6) } }
-        interpreter.run(inputBuffer, output)
-        return LectureHallPerceptionFilter.filterYoloDetections(
-            YoloPostProcessor.process(output[0], labels),
-        )
+        interpreter.run(square.toYoloInputBuffer(inputSize), output)
+        return YoloPostProcessor.process(output[0], labels, inputSize = inputSize)
     }
 
     override fun close() {
@@ -28,7 +61,7 @@ class YoloDetector private constructor(
     }
 
     companion object {
-        const val MODEL_ASSET = "custom_human_detector_fp16.tflite"
+        const val MODEL_ASSET = "yolo26n_float16.tflite"
 
         fun create(context: Context, assetName: String = MODEL_ASSET): YoloDetector {
             val modelBytes = AssetModelLoader.loadBytes(context, assetName)
@@ -69,23 +102,12 @@ class YoloDetector private constructor(
     }
 }
 
-private fun Bitmap.toYoloInputBuffer(): ByteBuffer {
-    val resized = Bitmap.createScaledBitmap(
-        this,
-        YoloPostProcessor.INPUT_SIZE,
-        YoloPostProcessor.INPUT_SIZE,
-        true,
-    )
-    val pixels = IntArray(YoloPostProcessor.INPUT_SIZE * YoloPostProcessor.INPUT_SIZE)
-    resized.getPixels(
-        pixels,
-        0,
-        YoloPostProcessor.INPUT_SIZE,
-        0,
-        0,
-        YoloPostProcessor.INPUT_SIZE,
-        YoloPostProcessor.INPUT_SIZE,
-    )
+// Encodes an already-square [size] bitmap (produced by letterbox) as an RGB float32 [0,1] buffer.
+private fun Bitmap.toYoloInputBuffer(size: Int): ByteBuffer {
+    val square = if (width == size && height == size) this else Bitmap.createScaledBitmap(this, size, size, true)
+    val pixels = IntArray(size * size)
+    square.getPixels(pixels, 0, size, 0, 0, size, size)
+    if (square !== this) square.recycle()
 
     return ByteBuffer
         .allocateDirect(4 * pixels.size * 3)
