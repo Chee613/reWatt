@@ -1766,10 +1766,6 @@ private fun CaptureHeader(
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (showYoloUpload) {
-                    YoloModelDropdown(
-                        selectedModel = state.selectedYoloModel,
-                        onModelChange = onSelectYoloModel,
-                    )
                     OutlinedButton(onClick = onUploadYoloImage) {
                         Text("Upload")
                     }
@@ -1786,6 +1782,17 @@ private fun CaptureHeader(
                         Text("Start")
                     }
                 }
+            }
+        }
+
+        // Debug controls: model + tiling-grid selectors on their own row.
+        if (showYoloUpload) {
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                YoloModelDropdown(
+                    selectedModel = state.selectedYoloModel,
+                    onModelChange = onSelectYoloModel,
+                )
             }
         }
     }

@@ -39,8 +39,7 @@ enum class CaptureStartSource {
 }
 
 enum class YoloModel(val displayName: String, val assetName: String) {
-    CustomHumanDetector("Custom human detector", "custom_human_detector_fp16.tflite"),
-    Yolo26n("YOLO26n", "yolo26n_int8.tflite"),
+    Yolo26nFp16("YOLO26n FP16 (1280)", "yolo26n_float16.tflite"),
 }
 
 data class SoundDetection(
@@ -83,7 +82,7 @@ data class PerceptionUiState(
     val audioWaveform: List<Float> = emptyList(),
     val soundDetections: List<SoundDetection> = emptyList(),
     val yamnetMessage: String = "YAMNet is waiting for microphone audio.",
-    val selectedYoloModel: YoloModel = YoloModel.CustomHumanDetector,
+    val selectedYoloModel: YoloModel = YoloModel.Yolo26nFp16,
 ) {
     val peopleDetections: List<ObjectDetection> = yoloDetections.filter { it.isPerson }
     val contextObjectDetections: List<ObjectDetection> = yoloDetections.filter { it.isLectureHallContext }

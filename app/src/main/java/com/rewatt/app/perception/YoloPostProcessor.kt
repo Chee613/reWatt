@@ -4,22 +4,25 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 
 object YoloPostProcessor {
-    const val DEFAULT_CONFIDENCE_THRESHOLD = 0.35f
+    // Low floor: tiled inference + cross-tile NMS recover the recall, then the label filter prunes.
+    const val DEFAULT_CONFIDENCE_THRESHOLD = 0.10f
     const val INPUT_SIZE = 640
 
     fun process(
         rows: Array<FloatArray>,
         labels: List<String>,
         confidenceThreshold: Float = DEFAULT_CONFIDENCE_THRESHOLD,
+        inputSize: Int = INPUT_SIZE,
     ): List<ObjectDetection> =
         rows.asSequence()
-            .mapNotNull { row -> row.toDetection(labels, confidenceThreshold) }
+            .mapNotNull { row -> row.toDetection(labels, confidenceThreshold, inputSize) }
             .sortedByDescending { it.confidence }
             .toList()
 
     private fun FloatArray.toDetection(
         labels: List<String>,
         confidenceThreshold: Float,
+        inputSize: Int,
     ): ObjectDetection? {
         if (size < 6) return null
 
@@ -29,7 +32,7 @@ object YoloPostProcessor {
         val classId = this[5].roundToInt()
         val label = labels.getOrNull(classId) ?: "class $classId"
         val maxCoordinate = max(max(this[0], this[1]), max(this[2], this[3]))
-        val scale = if (maxCoordinate > 2f) INPUT_SIZE.toFloat() else 1f
+        val scale = if (maxCoordinate > 2f) inputSize.toFloat() else 1f
 
         var left = this[0] / scale
         var top = this[1] / scale

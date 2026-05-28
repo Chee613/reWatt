@@ -316,7 +316,8 @@ class PerceptionViewModel(
             MediaStore.Images.Media.getBitmap(appContext.contentResolver, uri)
         }
 
-    private fun Bitmap.limitLongestSide(maxSide: Int = 1600): Bitmap {
+    // Higher cap so tiling has enough pixels per cell to resolve distant people.
+    private fun Bitmap.limitLongestSide(maxSide: Int = 4096): Bitmap {
         val longestSide = maxOf(width, height)
         if (longestSide <= maxSide) return this
 
