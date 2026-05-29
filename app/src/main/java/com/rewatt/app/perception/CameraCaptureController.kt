@@ -167,13 +167,12 @@ class CameraCaptureController(
         val yoloDetector = yoloDetectorProvider()
         val detections = yoloDetector?.detect(bitmap).orEmpty()
         val personCount = detections.count { it.isPerson }
-        val contextCount = detections.count { it.isLectureHallContext }
         val message = if (yoloDetector == null) {
             "Captured frame; YOLO is still loading."
         } else if (detections.isEmpty()) {
-            "No people or lecture-hall context objects above confidence threshold."
+            "No people detected above the confidence threshold."
         } else {
-            "People detected: $personCount. Context objects: $contextCount."
+            "People detected: $personCount."
         }
         onFrameAnalyzed(
             bitmap,

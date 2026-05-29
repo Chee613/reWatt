@@ -1880,18 +1880,11 @@ private fun LivePerceptionSummary(perceptionState: PerceptionUiState) {
 @Composable
 private fun CaptureDetectionSummary(state: PerceptionUiState) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            MetricCard(
-                title = "People detected",
-                value = state.personCount.toString(),
-                modifier = Modifier.weight(1f),
-            )
-            MetricCard(
-                title = "Context objects",
-                value = state.contextObjectDetections.size.toString(),
-                modifier = Modifier.weight(1f),
-            )
-        }
+        MetricCard(
+            title = "People detected",
+            value = state.personCount.toString(),
+            modifier = Modifier.fillMaxWidth(),
+        )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             MetricCard(
                 title = "Room light",
@@ -2703,11 +2696,11 @@ private fun FramePreview(
 private fun DetectionOverlay(detections: List<ObjectDetection>) {
     val strokeWidth = with(LocalDensity.current) { 2.dp.toPx() }
     Canvas(modifier = Modifier.fillMaxSize()) {
-        detections.forEach { detection ->
+        // Only draw person boxes, regardless of model (other categories are not shown).
+        detections.filter { it.isPerson }.forEach { detection ->
             val box = detection.box
-            val color = if (detection.isPerson) Color(0xFF69D7BF) else Color(0xFFFFB782)
             drawRect(
-                color = color,
+                color = Color(0xFF69D7BF),
                 topLeft = androidx.compose.ui.geometry.Offset(
                     x = box.left * size.width,
                     y = box.top * size.height,

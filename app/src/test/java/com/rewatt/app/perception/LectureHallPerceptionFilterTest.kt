@@ -7,7 +7,7 @@ import org.junit.Test
 
 class LectureHallPerceptionFilterTest {
     @Test
-    fun filterYoloDetections_keepsPeopleAndLectureHallContext() {
+    fun filterYoloDetections_keepsOnlyPeople() {
         val detections = listOf(
             detection(label = "person", classId = 0),
             detection(label = "laptop", classId = 63),
@@ -17,9 +17,8 @@ class LectureHallPerceptionFilterTest {
 
         val filtered = LectureHallPerceptionFilter.filterYoloDetections(detections)
 
-        assertEquals(listOf("person", "laptop", "book"), filtered.map { it.label })
+        assertEquals(listOf("person"), filtered.map { it.label })
         assertEquals(1, filtered.count { it.isPerson })
-        assertEquals(2, filtered.count { it.isLectureHallContext })
     }
 
     @Test
