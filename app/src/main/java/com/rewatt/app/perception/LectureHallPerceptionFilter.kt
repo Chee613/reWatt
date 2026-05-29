@@ -1,24 +1,6 @@
 package com.rewatt.app.perception
 
 object LectureHallPerceptionFilter {
-    private val yoloContextLabels = setOf(
-        "backpack",
-        "handbag",
-        "bottle",
-        "cup",
-        "chair",
-        "bench",
-        "dining table",
-        "tv",
-        "laptop",
-        "mouse",
-        "remote",
-        "keyboard",
-        "cell phone",
-        "book",
-        "clock",
-    )
-
     private val strongAudioLabels = setOf(
         "speech",
         "child speech, kid speaking",
@@ -53,12 +35,7 @@ object LectureHallPerceptionFilter {
     )
 
     fun filterYoloDetections(detections: List<ObjectDetection>): List<ObjectDetection> =
-        detections.filter { detection ->
-            detection.isPerson || isYoloContextLabel(detection.label)
-        }
-
-    fun isYoloContextLabel(label: String): Boolean =
-        label.normalized() in yoloContextLabels
+        detections.filter { detection -> detection.isPerson }
 
     fun classifyAudioLabel(label: String): AudioPresenceLevel =
         when (label.normalized()) {

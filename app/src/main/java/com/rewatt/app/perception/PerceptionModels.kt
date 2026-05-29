@@ -24,7 +24,6 @@ data class ObjectDetection(
     val box: DetectionBox,
 ) {
     val isPerson: Boolean = classId == 0 || label.equals("person", ignoreCase = true)
-    val isLectureHallContext: Boolean = LectureHallPerceptionFilter.isYoloContextLabel(label)
 }
 
 enum class AudioPresenceLevel {
@@ -88,7 +87,6 @@ data class PerceptionUiState(
     val selectedYoloModel: YoloModel = YoloModel.Yolo26nFp16,
 ) {
     val peopleDetections: List<ObjectDetection> = yoloDetections.filter { it.isPerson }
-    val contextObjectDetections: List<ObjectDetection> = yoloDetections.filter { it.isLectureHallContext }
     val personCount: Int = peopleDetections.size
     val audioPresenceDetected: Boolean = soundDetections.any { it.indicatesHumanPresence }
     val audioPresenceScore: Float =
