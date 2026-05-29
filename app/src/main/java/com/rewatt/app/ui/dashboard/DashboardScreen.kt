@@ -75,10 +75,15 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.rewatt.app.BuildConfig
 import com.rewatt.app.R
+import android.provider.Settings
+import com.google.firebase.auth.FirebaseAuth
 import com.rewatt.app.data.ActivityAnalysisStatus
 import com.rewatt.app.data.EnergyAdviceState
 import com.rewatt.app.data.EnergyAdviceStatus
+import com.rewatt.app.data.FirebaseSyncState
 import com.rewatt.app.data.FirebaseSyncStatus
+import com.rewatt.app.data.RecentCapture
+import androidx.compose.ui.platform.LocalContext
 import com.rewatt.app.data.SensorDashboardState
 import com.rewatt.app.data.WeatherState
 import com.rewatt.app.data.WeatherStatus
@@ -143,6 +148,7 @@ fun DashboardScreen(
     spaceName: String? = null,
     hallSnapshot: HallSnapshot? = null,
     hallSchedules: Map<String, Array<IntArray>> = emptyMap(),
+    recentCaptures: List<RecentCapture> = emptyList(),
     onHallSelect: (String) -> Unit = {},
     onModeSelected: (UserRole) -> Unit = {},
     onRenameSpace: (String) -> Unit = {},
@@ -288,6 +294,8 @@ fun DashboardScreen(
                     telemetry = uiState.sensorState.latestTelemetry,
                     currentUserRole = currentUserRole,
                     spaceName = spaceName,
+                    firebaseSyncState = uiState.sensorState.firebaseSyncState,
+                    recentCaptures = recentCaptures,
                 )
 
                 ReWattTab.Setting -> SettingPage(
@@ -1587,6 +1595,8 @@ private fun CapturePage(
     telemetry: RadarTelemetry? = null,
     currentUserRole: UserRole? = null,
     spaceName: String? = null,
+    firebaseSyncState: FirebaseSyncState = FirebaseSyncState(),
+    recentCaptures: List<RecentCapture> = emptyList(),
 ) {
     var previewView by remember { mutableStateOf<PreviewView?>(null) }
 
@@ -1667,7 +1677,187 @@ private fun CapturePage(
             modifier = Modifier.height(260.dp),
         )
         SensorLiveDataCard(telemetry = telemetry)
+        if (currentUserRole == UserRole.Sensor && spaceName != null) {
+            DatabaseSection(
+                spaceName = spaceName,
+                firebaseSyncState = firebaseSyncState,
+                recentCaptures = recentCaptures,
+                nowMillis = nowMillis,
+            )
+        }
         Spacer(Modifier.height(8.dp))
+    }
+}
+
+@Composable
+private fun DatabaseSection(
+    spaceName: String,
+    firebaseSyncState: FirebaseSyncState,
+    recentCaptures: List<RecentCapture>,
+    nowMillis: Long,
+) {
+    val context = LocalContext.current
+    val nodeId = remember {
+        Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
+            ?.take(8) ?: "unknown"
+    }
+    val uid = remember { FirebaseAuth.getInstance().currentUser?.uid }
+
+    InfoCard(modifier = Modifier.fillMaxWidth()) {
+        Text("Database", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+        Text(
+            "$spaceName  ·  node $nodeId",
+            fontSize = 12.sp,
+            color = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+        )
+        if (uid != null) {
+            Text(
+                "rewatt_users/$uid/rooms/$spaceName/telemetry",
+                fontSize = 10.sp,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+
+        Spacer(Modifier.height(10.dp))
+
+        // Sync status row
+        val (dotColor, statusLabel) = when (firebaseSyncState.status) {
+            FirebaseSyncStatus.Synced        -> Color(0xFF4CAF50) to "Synced"
+            FirebaseSyncStatus.Pending       -> Color(0xFFFFA000) to "Syncing…"
+            FirebaseSyncStatus.Failed        -> Color(0xFFF44336) to "Failed"
+            FirebaseSyncStatus.ConfigMissing -> Color(0xFFF44336) to "Config missing"
+            FirebaseSyncStatus.Idle          -> Color(0xFF9E9E9E) to "Idle"
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(dotColor),
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(statusLabel, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            firebaseSyncState.lastSyncedAtMillis?.let { lastMs ->
+                val ageS = (nowMillis - lastMs) / 1000
+                val ageLabel = when {
+                    ageS < 60   -> "${ageS}s ago"
+                    ageS < 3600 -> "${ageS / 60}m ago"
+                    else        -> "${ageS / 3600}h ago"
+                }
+                Spacer(Modifier.width(4.dp))
+                Text("· $ageLabel", fontSize = 11.sp,
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        if (firebaseSyncState.message.isNotBlank()) {
+            Text(
+                firebaseSyncState.message,
+                fontSize = 11.sp,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+
+        Spacer(Modifier.height(10.dp))
+
+        // Recent captures header
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Recent Captures", fontWeight = FontWeight.Medium, fontSize = 13.sp)
+            Spacer(Modifier.weight(1f))
+            Text(
+                "${recentCaptures.size} / 20  (this session)",
+                fontSize = 11.sp,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.height(4.dp))
+
+        if (recentCaptures.isEmpty()) {
+            Text(
+                "No captures yet — start the sensor to begin.",
+                fontSize = 12.sp,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(min(recentCaptures.size * 72, 280).dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                items(recentCaptures, key = { it.capturedAtMillis }) { capture ->
+                    CaptureHistoryRow(capture = capture)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CaptureHistoryRow(capture: RecentCapture) {
+    val cal = remember(capture.capturedAtMillis) {
+        Calendar.getInstance().apply { timeInMillis = capture.capturedAtMillis }
+    }
+    val timeLabel = remember(capture.capturedAtMillis) {
+        "%02d:%02d".format(
+            cal.get(Calendar.HOUR_OF_DAY),
+            cal.get(Calendar.MINUTE),
+        )
+    }
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+        ),
+        shape = RoundedCornerShape(6.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    timeLabel,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                )
+                Text("👤 ${capture.personCount}", fontSize = 11.sp)
+                capture.lightsOn?.let { on ->
+                    Text(if (on) "💡 On" else "💡 Off", fontSize = 11.sp)
+                }
+                capture.temperatureC?.let { t ->
+                    Text("🌡 ${"%.1f".format(t)}°C", fontSize = 11.sp)
+                }
+                Spacer(Modifier.weight(1f))
+                Text(
+                    if (capture.synced) "✓" else "✗",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (capture.synced) Color(0xFF4CAF50) else Color(0xFFF44336),
+                )
+            }
+            val detail = buildString {
+                capture.primaryActivity?.let { append(it) }
+                capture.geminiActivity?.let {
+                    if (isNotEmpty()) append(" · Gemini: ")
+                    append(it)
+                    capture.geminiOccupancyHint?.let { hint -> append(" ($hint)") }
+                }
+            }
+            if (detail.isNotEmpty()) {
+                Text(
+                    detail,
+                    fontSize = 11.sp,
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
     }
 }
 

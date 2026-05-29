@@ -60,8 +60,16 @@ class TelemetryRepository(
         }
     }
 
+    val recentCapturesFlow: StateFlow<List<RecentCapture>> =
+        firebaseSyncRepository.recentCapturesFlow
+
+    val nodeId: String get() = firebaseSyncRepository.nodeId
+
     fun listenToHall(roomId: String): Flow<HallSnapshot?> =
         firebaseSyncRepository.listenToHall(roomId)
+
+    fun hallScheduleFlow(hallLabel: String): Flow<Array<IntArray>> =
+        firebaseSyncRepository.hallScheduleFlow(hallLabel)
 
     suspend fun loadHallSchedule(hallLabel: String): Array<IntArray> =
         firebaseSyncRepository.loadHallSchedule(hallLabel)
