@@ -122,6 +122,7 @@ dependencies {
     implementation(libs.firebase.auth)
 
     implementation(libs.usb.serial.android)
+    implementation(libs.androidx.work.runtime.ktx)
 
     testImplementation(libs.junit)
     testImplementation(libs.coroutines.test)

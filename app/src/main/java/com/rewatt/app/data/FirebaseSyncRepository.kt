@@ -7,12 +7,29 @@ import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.SetOptions
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.callbackFlow
+
+data class RecentCapture(
+    val capturedAtMillis: Long,
+    val personCount: Int,
+    val primaryActivity: String?,
+    val lightsOn: Boolean?,
+    val temperatureC: Float?,
+    val humidityPercent: Float?,
+    val exposureEv: Double?,
+    val synced: Boolean,
+    val geminiActivity: String? = null,
+    val geminiOccupancyHint: String? = null,
+)
 
 data class HallSnapshot(
     val personCount: Int = 0,
@@ -27,7 +44,7 @@ class FirebaseSyncRepository(
     private val roomId: String = DEFAULT_ROOM_ID,
 ) {
     private val appContext = context.applicationContext
-    private val nodeId: String by lazy {
+    internal val nodeId: String by lazy {
         Settings.Secure.getString(appContext.contentResolver, Settings.Secure.ANDROID_ID)
             ?.takeIf { it.isNotBlank() }
             ?: "unknown-node"
@@ -49,6 +66,21 @@ class FirebaseSyncRepository(
     // Mode), in which case sync is skipped rather than crashing a background coroutine.
     private val currentUid: String?
         get() = FirebaseAuth.getInstance().currentUser?.uid
+
+    private val _recentCaptures = MutableStateFlow<List<RecentCapture>>(emptyList())
+    val recentCapturesFlow: StateFlow<List<RecentCapture>> = _recentCaptures.asStateFlow()
+
+    private fun addRecentCapture(entry: RecentCapture) {
+        _recentCaptures.value = (listOf(entry) + _recentCaptures.value).take(20)
+    }
+
+    private fun updateRecentCaptureGemini(capturedAtMillis: Long, geminiActivity: String, geminiOccupancyHint: String) {
+        _recentCaptures.value = _recentCaptures.value.map { entry ->
+            if (entry.capturedAtMillis == capturedAtMillis)
+                entry.copy(geminiActivity = geminiActivity, geminiOccupancyHint = geminiOccupancyHint)
+            else entry
+        }
+    }
 
     // Base Firestore reference for a given room, scoped under the current user's UID.
     private fun roomRef(uid: String, roomId: String) =
@@ -111,12 +143,27 @@ class FirebaseSyncRepository(
             .document(historyId)
             .set(payload + mapOf("historyId" to historyId), SetOptions.merge())
 
+        val captureEntry = RecentCapture(
+            capturedAtMillis = capturedAtMillis,
+            personCount = perceptionSummary.personCount,
+            primaryActivity = perceptionSummary.activityLabels.firstOrNull(),
+            lightsOn = perceptionSummary.lightsOn,
+            temperatureC = perceptionSummary.temperatureC,
+            humidityPercent = perceptionSummary.humidityPercent,
+            exposureEv = perceptionSummary.exposureEv,
+            synced = false,
+        )
         observeWriteResults(
             writes = listOf(
                 FirestoreWrite(path = nodePath, task = nodeTask),
                 FirestoreWrite(path = historyPath, task = historyTask),
             ),
-            onState = onState,
+            onState = { state ->
+                if (state.status == FirebaseSyncStatus.Synced || state.status == FirebaseSyncStatus.Failed) {
+                    addRecentCapture(captureEntry.copy(synced = state.status == FirebaseSyncStatus.Synced))
+                }
+                onState(state)
+            },
         )
     }
 
@@ -149,6 +196,12 @@ class FirebaseSyncRepository(
             .collection("telemetry")
             .document(historyId)
             .set(payload, SetOptions.merge())
+
+        updateRecentCaptureGemini(
+            capturedAtMillis = capturedAtMillis,
+            geminiActivity = activityAnalysis.activity,
+            geminiOccupancyHint = activityAnalysis.occupancyHint,
+        )
     }
 
     fun listenToHall(roomId: String): Flow<HallSnapshot?> = callbackFlow {
@@ -174,6 +227,51 @@ class FirebaseSyncRepository(
                 )
             }
         awaitClose { listener.remove() }
+    }
+
+    fun hallScheduleFlow(hallLabel: String): Flow<Array<IntArray>> = callbackFlow {
+        val uid = FirebaseAuth.getInstance().currentUser?.uid
+        if (uid == null) {
+            trySend(Array(7) { IntArray(24) { 0 } })
+            awaitClose { }
+            return@callbackFlow
+        }
+        val cutoffMs = System.currentTimeMillis() - 30L * 24 * 3600 * 1000
+        val listener = FirebaseFirestore.getInstance()
+            .collection("rewatt_users").document(uid)
+            .collection("rooms").document(hallLabel)
+            .collection("telemetry")
+            .whereGreaterThan("perceptionCapturedAt", cutoffMs)
+            .addSnapshotListener { snapshot, _ ->
+                trySend(aggregateSchedule(snapshot?.documents.orEmpty()))
+            }
+        awaitClose { listener.remove() }
+    }
+
+    private fun aggregateSchedule(docs: List<DocumentSnapshot>): Array<IntArray> {
+        val sums   = Array(7) { IntArray(24) { 0 } }
+        val counts = Array(7) { IntArray(24) { 0 } }
+        val cal    = java.util.Calendar.getInstance()
+        for (doc in docs) {
+            val ts    = doc.getLong("perceptionCapturedAt") ?: continue
+            val count = doc.getLong("personCount")?.toInt() ?: continue
+            cal.timeInMillis = ts
+            val dow  = (cal.get(java.util.Calendar.DAY_OF_WEEK) + 5) % 7
+            val hour = cal.get(java.util.Calendar.HOUR_OF_DAY)
+            sums[dow][hour]   += count
+            counts[dow][hour] += 1
+        }
+        return Array(7) { day ->
+            IntArray(24) { hour ->
+                val n = counts[day][hour]
+                if (n == 0) 0 else when (sums[day][hour] / n) {
+                    0        -> 0
+                    in 1..40 -> 1
+                    in 41..80 -> 2
+                    else     -> 3
+                }
+            }
+        }
     }
 
     suspend fun loadHallSchedule(hallLabel: String): Array<IntArray> {

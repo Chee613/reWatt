@@ -8,6 +8,7 @@ import com.rewatt.app.data.EnergyAdviceInput
 import com.rewatt.app.data.EnergyAdviceState
 import com.rewatt.app.data.EnergyAdviceStatus
 import com.rewatt.app.data.GeminiEnergyAdvisor
+import com.rewatt.app.data.RecentCapture
 import com.rewatt.app.data.HallSnapshot
 import com.rewatt.app.data.OccupancyForecastProvider
 import com.rewatt.app.data.SensorDashboardState
@@ -51,15 +52,20 @@ class DashboardViewModel(
     private val _hallSchedules = MutableStateFlow<Map<String, Array<IntArray>>>(emptyMap())
     val hallSchedules: StateFlow<Map<String, Array<IntArray>>> = _hallSchedules
 
+    val recentCaptures: StateFlow<List<RecentCapture>> =
+        repository.recentCapturesFlow
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), emptyList())
+
     init {
-        loadAllHallSchedules()
+        listenToAllHallSchedules()
     }
 
-    private fun loadAllHallSchedules() {
-        viewModelScope.launch {
-            val halls = listOf("Hall 1", "Hall 2", "Hall 3", "Hall 4")
-            _hallSchedules.value = halls.associateWith { hall ->
-                repository.loadHallSchedule(hall)
+    private fun listenToAllHallSchedules() {
+        listOf("Hall 1", "Hall 2", "Hall 3", "Hall 4").forEach { hall ->
+            viewModelScope.launch {
+                repository.hallScheduleFlow(hall).collect { schedule ->
+                    _hallSchedules.update { current -> current + (hall to schedule) }
+                }
             }
         }
     }

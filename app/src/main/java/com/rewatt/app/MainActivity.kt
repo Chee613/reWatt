@@ -33,7 +33,14 @@ import com.rewatt.app.ui.dashboard.DashboardViewModelFactory
 import com.rewatt.app.ui.theme.ReWattTheme
 import com.rewatt.app.perception.PerceptionViewModel
 import com.rewatt.app.perception.PerceptionViewModelFactory
+import androidx.work.Constraints
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
+import com.rewatt.app.data.ForecastWorker
 import com.rewatt.app.usb.UsbSentinelService
+import java.util.concurrent.TimeUnit
 
 class MainActivity : ComponentActivity() {
     private val notificationPermissionLauncher =
@@ -88,6 +95,18 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        WorkManager.getInstance(applicationContext).enqueueUniquePeriodicWork(
+            "occupancy_forecast",
+            ExistingPeriodicWorkPolicy.KEEP,
+            PeriodicWorkRequestBuilder<ForecastWorker>(2, TimeUnit.HOURS)
+                .setConstraints(
+                    Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .build()
+                )
+                .build()
+        )
+
         requestNotificationPermissionIfNeeded()
         perceptionViewModel.setPermissionState(
             cameraGranted = hasPermission(Manifest.permission.CAMERA),
@@ -139,6 +158,7 @@ class MainActivity : ComponentActivity() {
                     val uiState = viewModel.uiState.collectAsStateWithLifecycle()
                     val perceptionState = perceptionViewModel.uiState.collectAsStateWithLifecycle()
                     val hallSchedules by viewModel.hallSchedules.collectAsStateWithLifecycle()
+                    val recentCaptures by viewModel.recentCaptures.collectAsStateWithLifecycle()
                     val authedUser = (authState as? AuthState.Authenticated)?.user
                     DashboardScreen(
                         uiState = uiState.value,
@@ -165,6 +185,7 @@ class MainActivity : ComponentActivity() {
                         spaceName = spaceName,
                         hallSnapshot = hallSnapshot,
                         hallSchedules = hallSchedules,
+                        recentCaptures = recentCaptures,
                         onHallSelect = viewModel::selectHall,
                         onModeSelected = { role ->
                             authViewModel.setMode(role)
