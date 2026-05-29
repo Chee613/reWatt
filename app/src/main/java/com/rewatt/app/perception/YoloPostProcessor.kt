@@ -4,8 +4,7 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 
 object YoloPostProcessor {
-    // Low floor: tiled inference + cross-tile NMS recover the recall, then the label filter prunes.
-    const val DEFAULT_CONFIDENCE_THRESHOLD = 0.10f
+    const val DEFAULT_CONFIDENCE_THRESHOLD = 0.35f
     const val INPUT_SIZE = 640
 
     fun process(
