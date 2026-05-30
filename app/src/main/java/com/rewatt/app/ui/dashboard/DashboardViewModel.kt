@@ -15,6 +15,7 @@ import com.rewatt.app.data.SensorDashboardState
 import com.rewatt.app.data.TelemetryRepository
 import com.rewatt.app.data.WeatherRepository
 import com.rewatt.app.data.WeatherState
+import com.rewatt.app.perception.millisUntilNextBoundary
 import com.rewatt.app.telemetry.PacketFreshness
 import com.rewatt.app.telemetry.TelemetryFreshness
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -58,6 +59,21 @@ class DashboardViewModel(
 
     init {
         listenToAllHallSchedules()
+        startAutoEnergyAdvice()
+    }
+
+    /**
+     * Auto-refresh the AC energy recommendation aligned to the wall clock every
+     * [ENERGY_ADVICE_INTERVAL_MINUTES] minutes (e.g. :00, :30). The manual "Suggest action"
+     * button still triggers the same flow on demand for the demo.
+     */
+    private fun startAutoEnergyAdvice() {
+        viewModelScope.launch {
+            while (isActive) {
+                delay(millisUntilNextBoundary(ENERGY_ADVICE_INTERVAL_MINUTES))
+                requestEnergyAdvice()
+            }
+        }
     }
 
     private fun listenToAllHallSchedules() {
@@ -131,32 +147,46 @@ class DashboardViewModel(
 
         energyAdviceJob?.cancel()
         energyAdviceJob = viewModelScope.launch {
-            runCatching {
-                val occupancy = occupancyForecastProvider.forecast(hallLabel, System.currentTimeMillis())
-                val input = EnergyAdviceInput(
-                    deltaTC = deltaT,
-                    indoorTempC = indoorTempC,
-                    outdoorTempC = outdoorTempC,
-                    indoorHumidity = indoorHumidity,
-                    outdoorHumidity = weatherInfo?.humidityPercent,
-                    occupancy = occupancy,
-                    conditionText = weatherInfo?.conditionText,
-                )
-                energyAdvisor.advise(input)
-            }.onSuccess { advice: EnergyAdvice ->
-                energyAdvice.value = EnergyAdviceState(
-                    status = EnergyAdviceStatus.Complete,
-                    message = advice.acAction,
-                    advice = advice,
-                    lastAdvisedAtMillis = System.currentTimeMillis(),
-                )
-            }.onFailure { error ->
+            val occupancy = runCatching {
+                occupancyForecastProvider.forecast(hallLabel, System.currentTimeMillis())
+            }.getOrNull()
+            if (occupancy == null) {
                 energyAdvice.value = EnergyAdviceState(
                     status = EnergyAdviceStatus.Failed,
-                    message = "Energy advice failed: ${error.message ?: error::class.java.simpleName}",
+                    message = "Occupancy lookup failed.",
                 )
+                return@launch
             }
+            val input = EnergyAdviceInput(
+                deltaTC = deltaT,
+                indoorTempC = indoorTempC,
+                outdoorTempC = outdoorTempC,
+                indoorHumidity = indoorHumidity,
+                outdoorHumidity = weatherInfo?.humidityPercent,
+                occupancy = occupancy,
+                conditionText = weatherInfo?.conditionText,
+            )
+            runCatching { energyAdvisor.advise(input) }
+                .onSuccess { advice: EnergyAdvice ->
+                    energyAdvice.value = EnergyAdviceState(
+                        status = EnergyAdviceStatus.Complete,
+                        message = advice.acAction,
+                        advice = advice,
+                        occupancy = occupancy,
+                        lastAdvisedAtMillis = System.currentTimeMillis(),
+                    )
+                }
+                .onFailure { error ->
+                    energyAdvice.value = EnergyAdviceState(
+                        status = EnergyAdviceStatus.Failed,
+                        message = "Energy advice failed: ${error.message ?: error::class.java.simpleName}",
+                    )
+                }
         }
+    }
+
+    companion object {
+        private const val ENERGY_ADVICE_INTERVAL_MINUTES = 30
     }
 }
 
