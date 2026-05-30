@@ -39,6 +39,7 @@ data class EnergyAdviceState(
     val status: EnergyAdviceStatus = EnergyAdviceStatus.Idle,
     val message: String = "Tap Suggest action to get an AC energy recommendation.",
     val advice: EnergyAdvice? = null,
+    val occupancy: OccupancyForecast? = null,
     val lastAdvisedAtMillis: Long? = null,
 )
 

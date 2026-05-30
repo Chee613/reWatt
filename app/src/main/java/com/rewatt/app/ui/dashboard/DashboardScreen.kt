@@ -621,23 +621,15 @@ private fun EnergyAdviceCard(
         if (advice != null) {
             Spacer(Modifier.height(10.dp))
             Text(advice.acAction, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-            advice.recommendedAcStartTime?.let {
-                Text("Suggested AC start: $it", fontSize = 13.sp)
+            Spacer(Modifier.height(6.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                advice.recommendedAcStartTime?.let { BulletPoint("Start AC at $it") }
+                advice.targetSetpointC?.let { BulletPoint("Target setpoint ${"%.0f".format(it)} °C") }
+                state.occupancy?.let {
+                    BulletPoint("Occupancy: ${it.predictedOccupancy} people (${it.occupancyLevel})")
+                }
+                BulletPoint("Reason: ${advice.reason}")
             }
-            advice.targetSetpointC?.let {
-                Text("Target setpoint: %.0f °C".format(it), fontSize = 13.sp)
-            }
-            Spacer(Modifier.height(4.dp))
-            Text(
-                advice.reason,
-                fontSize = 13.sp,
-                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                "Confidence ${(advice.confidence * 100).toInt()}%",
-                fontSize = 12.sp,
-                color = androidx.compose.material3.MaterialTheme.colorScheme.secondary,
-            )
         } else {
             Spacer(Modifier.height(8.dp))
             Text(
@@ -646,6 +638,26 @@ private fun EnergyAdviceCard(
                 color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    }
+}
+
+@Composable
+private fun BulletPoint(text: String) {
+    Row(
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(
+            text = "•",
+            fontSize = 13.sp,
+            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = text,
+            fontSize = 13.sp,
+            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
     }
 }
 
