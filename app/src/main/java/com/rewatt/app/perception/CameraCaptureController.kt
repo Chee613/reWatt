@@ -84,14 +84,33 @@ class CameraCaptureController(
 
     private fun startCaptureLoop() {
         captureLoop?.cancel(false)
-        // Align the first capture to the next 10-minute wall-clock mark (:00/:10/:20...),
-        // then keep firing every interval. scheduleAtFixedRate keeps the cadence anchored.
-        captureLoop = cameraExecutor.scheduleAtFixedRate(
-            { captureJpegFrame() },
-            millisUntilNextBoundary(INFERENCE_INTERVAL_MINUTES),
-            INFERENCE_INTERVAL_MILLIS,
-            TimeUnit.MILLISECONDS,
-        )
+        scheduleNextCapture()
+    }
+
+    /**
+     * Schedule the next capture to fire at the next 10-minute wall-clock mark
+     * (:00/:10/:20...). The delay is recomputed against the wall clock after every
+     * iteration, so the cadence stays aligned across system-clock corrections, time-zone
+     * or DST changes, and Doze pauses — no drift, no stacked "catch-up" captures.
+     */
+    private fun scheduleNextCapture() {
+        if (closed) return
+        val delay = millisUntilNextBoundary(INFERENCE_INTERVAL_MINUTES)
+        captureLoop = runCatching {
+            cameraExecutor.schedule(
+                {
+                    runCatching { captureJpegFrame() }
+                        .onFailure { error ->
+                            if (!closed) onError(
+                                "Capture loop iteration failed: ${error.message ?: error::class.java.simpleName}",
+                            )
+                        }
+                    scheduleNextCapture()
+                },
+                delay,
+                TimeUnit.MILLISECONDS,
+            )
+        }.getOrNull()
     }
 
     /** Debug bypass: capture and analyze one frame immediately, ignoring the interval. */
@@ -191,7 +210,6 @@ class CameraCaptureController(
 
     companion object {
         private const val INFERENCE_INTERVAL_MINUTES = 10
-        private const val INFERENCE_INTERVAL_MILLIS = INFERENCE_INTERVAL_MINUTES * 60 * 1_000L
     }
 }
 
