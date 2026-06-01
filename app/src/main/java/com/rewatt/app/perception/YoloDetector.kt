@@ -61,7 +61,7 @@ class YoloDetector private constructor(
     }
 
     companion object {
-        const val MODEL_ASSET = "yolo26n_float16.tflite"
+        const val MODEL_ASSET = "yolo26n-1920.tflite"
 
         fun create(context: Context, assetName: String = MODEL_ASSET): YoloDetector {
             val modelBytes = AssetModelLoader.loadBytes(context, assetName)
