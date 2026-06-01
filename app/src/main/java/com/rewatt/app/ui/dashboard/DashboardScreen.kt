@@ -81,6 +81,8 @@ import com.rewatt.app.data.EnergyWasteSummary
 import com.rewatt.app.data.EnergyAdviceStatus
 import com.rewatt.app.data.FirebaseSyncState
 import com.rewatt.app.data.FirebaseSyncStatus
+import com.rewatt.app.data.LearnedSegment
+import com.rewatt.app.data.MalaysiaHolidays
 import com.rewatt.app.data.RecentCapture
 import androidx.compose.ui.platform.LocalContext
 import com.rewatt.app.data.SensorDashboardState
@@ -94,6 +96,7 @@ import com.rewatt.app.perception.YoloModel
 import com.rewatt.app.telemetry.PacketFreshness
 import com.rewatt.app.telemetry.RadarTelemetry
 import com.rewatt.app.usb.UsbConnectionStatus
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -148,6 +151,7 @@ fun DashboardScreen(
     spaceName: String? = null,
     hallSnapshot: HallSnapshot? = null,
     hallSchedules: Map<String, Array<IntArray>> = emptyMap(),
+    learnedSchedules: Map<String, List<List<LearnedSegment>>> = emptyMap(),
     recentCaptures: List<RecentCapture> = emptyList(),
     wasteSummary: EnergyWasteSummary? = null,
     onHallSelect: (String) -> Unit = {},
@@ -281,6 +285,7 @@ fun DashboardScreen(
                     selectedHall = selectedHall,
                     onHallChange = { selectedHall = it },
                     hallSchedules = hallSchedules,
+                    learnedSchedules = learnedSchedules,
                 )
 
                 ReWattTab.Capture -> CapturePage(
@@ -769,6 +774,7 @@ private fun AnalyticPage(
     selectedHall: Hall,
     onHallChange: (Hall) -> Unit,
     hallSchedules: Map<String, Array<IntArray>> = emptyMap(),
+    learnedSchedules: Map<String, List<List<LearnedSegment>>> = emptyMap(),
 ) {
     var isAction by rememberSaveable { mutableStateOf(true) }
 
@@ -801,6 +807,10 @@ private fun AnalyticPage(
                 WeeklyOccupancyCard(
                     hall = selectedHall,
                     firestoreSchedule = hallSchedules[selectedHall.label],
+                )
+                ClassScheduleCard(
+                    hall = selectedHall,
+                    learnedDays = learnedSchedules[selectedHall.label],
                 )
             }
         }
@@ -2311,6 +2321,289 @@ private fun SettingPage(
                 modifier = Modifier.fillMaxWidth(),
             )
         }
+    }
+}
+
+// ── Class Schedule Card (learned session timetable) ──────────────────────────
+
+private val CLASS_GRID_START_HOUR = 7   // 7 AM
+private val CLASS_GRID_END_HOUR   = 20  // 8 PM
+private val CLASS_HOUR_WIDTH_DP   = 60  // dp per hour column
+
+private val dayLabels = listOf("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")
+
+@Composable
+private fun ClassScheduleCard(
+    hall: Hall,
+    learnedDays: List<List<LearnedSegment>>?,
+) {
+    val gridStartMin = CLASS_GRID_START_HOUR * 60
+    val gridEndMin   = CLASS_GRID_END_HOUR   * 60
+    val totalHours   = CLASS_GRID_END_HOUR - CLASS_GRID_START_HOUR
+    val hourWidthDp  = CLASS_HOUR_WIDTH_DP.dp
+
+    // Cold-start: convert hardcoded hallDayBreaks to estimated segments
+    val isEstimated = learnedDays == null || learnedDays.all { it.isEmpty() }
+    val displayDays: List<List<LearnedSegment>> = if (!isEstimated) {
+        learnedDays!!
+    } else {
+        val breaks = hallDayBreaks[hall] ?: emptyMap()
+        List(7) { dow ->
+            val dayBreaks = breaks[dow] ?: emptyList()
+            if (dow >= 5) emptyList() // no Sat/Sun in hardcoded
+            else {
+                // Collect active hours from 7-20 using the existing inRange logic
+                val activeRanges = mutableListOf<IntRange>()
+                var rangeStart: Int? = null
+                for (minuteOfDay in (gridStartMin until gridEndMin)) {
+                    val h = minuteOfDay / 60; val m = minuteOfDay % 60
+                    val inBreak = inRange(h, m, timetableOvernight) ||
+                        dayBreaks.any { inRange(h, m, it) }
+                    if (!inBreak) {
+                        if (rangeStart == null) rangeStart = minuteOfDay
+                    } else {
+                        rangeStart?.let { start ->
+                            activeRanges.add(start until minuteOfDay)
+                            rangeStart = null
+                        }
+                    }
+                }
+                rangeStart?.let { start -> activeRanges.add(start until gridEndMin) }
+                // Merge ranges with gap < 30 min
+                val merged = mutableListOf<IntRange>()
+                for (r in activeRanges) {
+                    if (merged.isNotEmpty() && r.first - merged.last().last <= 30)
+                        merged[merged.lastIndex] = merged.last().first..r.last
+                    else merged.add(r)
+                }
+                merged.map { r ->
+                    LearnedSegment(
+                        startMinuteOfDay = r.first,
+                        endMinuteOfDay = r.last,
+                        predictedOccupancy = 60,
+                        occupancyLevel = "medium",
+                        weeksSeen = 0,
+                        lastSeenMillis = 0L,
+                    )
+                }
+            }
+        }
+    }
+
+    // Count weeks of real data (use weeksSeen from first non-empty day)
+    val weeksSeen = learnedDays?.flatten()?.maxOfOrNull { it.weeksSeen } ?: 0
+
+    // Determine if today is a Malaysian public holiday
+    val todayCal = Calendar.getInstance()
+    val todayDow = (todayCal.get(Calendar.DAY_OF_WEEK) + 5) % 7
+    val todayIsHoliday = MalaysiaHolidays.isHoliday(
+        todayCal.get(Calendar.YEAR),
+        todayCal.get(Calendar.MONTH) + 1,
+        todayCal.get(Calendar.DAY_OF_MONTH),
+    )
+
+    InfoCard(modifier = Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Class Schedule", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            Text(
+                if (isEstimated) "estimated" else "learned from $weeksSeen weeks",
+                fontSize = 11.sp,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+
+        Row(modifier = Modifier.fillMaxWidth()) {
+            // Pinned day-label column
+            Column(modifier = Modifier.width(52.dp)) {
+                // Blank cell above time header
+                Box(modifier = Modifier.height(20.dp))
+                dayLabels.forEachIndexed { idx, label ->
+                    val isToday = idx == todayDow
+                    val isTodayHoliday = isToday && todayIsHoliday
+                    Box(
+                        modifier = Modifier
+                            .height(48.dp)
+                            .fillMaxWidth()
+                            .background(
+                                if (isTodayHoliday) Color(0xFFFFF3E0)
+                                else Color.Transparent
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                label,
+                                fontSize = 10.sp,
+                                fontWeight = if (isToday) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isTodayHoliday) Color(0xFFBF360C)
+                                        else if (isToday) androidx.compose.material3.MaterialTheme.colorScheme.primary
+                                        else androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            if (isTodayHoliday) {
+                                Text(
+                                    "PH",
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFBF360C),
+                                )
+                            } else if (isToday) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(4.dp)
+                                        .background(
+                                            androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                                            shape = androidx.compose.foundation.shape.CircleShape,
+                                        )
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Horizontally scrollable time grid
+            Box(modifier = Modifier
+                .weight(1f)
+                .horizontalScroll(rememberScrollState())
+            ) {
+                val totalGridWidth = hourWidthDp * totalHours
+                Column {
+                    // Time header row
+                    Row(modifier = Modifier.width(totalGridWidth)) {
+                        for (h in CLASS_GRID_START_HOUR until CLASS_GRID_END_HOUR) {
+                            Box(modifier = Modifier.width(hourWidthDp).height(20.dp),
+                                contentAlignment = Alignment.CenterStart) {
+                                Text(
+                                    if (h < 12) "${h}AM" else if (h == 12) "12PM" else "${h - 12}PM",
+                                    fontSize = 9.sp,
+                                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    }
+                    // Day rows
+                    displayDays.forEachIndexed { dow, segments ->
+                        val isHolidayRow = (dow == todayDow) && todayIsHoliday
+                        Box(
+                            modifier = Modifier
+                                .width(totalGridWidth)
+                                .height(48.dp)
+                                .background(
+                                    if (isHolidayRow) Color(0xFFFFF3E0)
+                                    else if (dow % 2 == 0)
+                                        androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                                    else Color.Transparent
+                                ),
+                        ) {
+                            // Hour grid lines
+                            Canvas(modifier = Modifier.fillMaxSize()) {
+                                val lineColor = android.graphics.Color.parseColor("#22000000")
+                                for (h in 0..totalHours) {
+                                    val x = h * CLASS_HOUR_WIDTH_DP.dp.toPx()
+                                    drawLine(
+                                        color = Color(lineColor),
+                                        start = androidx.compose.ui.geometry.Offset(x, 0f),
+                                        end = androidx.compose.ui.geometry.Offset(x, size.height),
+                                        strokeWidth = 0.5.dp.toPx(),
+                                    )
+                                }
+                            }
+                            if (isHolidayRow) {
+                                Box(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        "Public Holiday — No Classes",
+                                        fontSize = 10.sp,
+                                        color = Color(0xFFBF360C),
+                                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                                    )
+                                }
+                            }
+                            // Session blocks (hidden on holiday rows)
+                            if (!isHolidayRow) segments.forEach { seg ->
+                                val startMin = seg.startMinuteOfDay.coerceIn(gridStartMin, gridEndMin)
+                                val endMin   = seg.endMinuteOfDay.coerceIn(gridStartMin, gridEndMin)
+                                if (endMin <= startMin) return@forEach
+                                val leftDp  = ((startMin - gridStartMin) / 60f) * CLASS_HOUR_WIDTH_DP
+                                val widthDp = ((endMin - startMin) / 60f) * CLASS_HOUR_WIDTH_DP
+                                val blockColor = if (isEstimated) Color(0xFFFFE082)
+                                else when (seg.occupancyLevel) {
+                                    "high"   -> Color(0xFFFFA000)
+                                    "medium" -> Color(0xFFFFB300)
+                                    else     -> Color(0xFFFFCC02)
+                                }
+                                var showTooltip by remember { mutableStateOf(false) }
+                                Box(
+                                    modifier = Modifier
+                                        .padding(start = leftDp.dp, top = 4.dp, bottom = 4.dp)
+                                        .width(widthDp.dp.coerceAtLeast(4.dp))
+                                        .fillMaxHeight()
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(blockColor)
+                                        .then(if (isEstimated) Modifier else Modifier.clickable { showTooltip = !showTooltip }),
+                                    contentAlignment = Alignment.TopStart,
+                                ) {
+                                    val startLabel = minuteLabel(startMin)
+                                    val endLabel   = minuteLabel(endMin)
+                                    if (widthDp >= 30) {
+                                        Column(modifier = Modifier.padding(horizontal = 3.dp, vertical = 2.dp)) {
+                                            Text("$startLabel–$endLabel",
+                                                fontSize = 8.sp, fontWeight = FontWeight.SemiBold,
+                                                color = Color(0xFF5D4037), maxLines = 1,
+                                                overflow = TextOverflow.Clip)
+                                            if (!isEstimated && widthDp >= 50) {
+                                                Text("${seg.predictedOccupancy} ppl",
+                                                    fontSize = 7.sp, color = Color(0xFF795548), maxLines = 1)
+                                            }
+                                        }
+                                    }
+                                    if (showTooltip) {
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.BottomStart)
+                                                .padding(bottom = (-36).dp)
+                                                .background(Color(0xFF424242), RoundedCornerShape(4.dp))
+                                                .padding(horizontal = 6.dp, vertical = 4.dp)
+                                                .clickable { showTooltip = false }
+                                        ) {
+                                            Text(
+                                                "$startLabel–$endLabel · ${seg.predictedOccupancy} ppl · seen ${seg.weeksSeen} wks",
+                                                fontSize = 9.sp,
+                                                color = Color.White,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (isEstimated) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "Showing estimated schedule — class detection will improve once sensor data spans 2+ weeks.",
+                fontSize = 10.sp,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+private fun minuteLabel(minuteOfDay: Int): String {
+    val h = minuteOfDay / 60
+    val m = minuteOfDay % 60
+    return if (m == 0) {
+        if (h < 12) "${h}AM" else if (h == 12) "12PM" else "${h - 12}PM"
+    } else {
+        val ampm = if (h < 12) "AM" else "PM"
+        val h12 = if (h == 0 || h == 12) 12 else h % 12
+        "${h12}:${m.toString().padStart(2, '0')}$ampm"
     }
 }
 
