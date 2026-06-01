@@ -73,8 +73,7 @@ Lecture hall filtering:
 
 Bundled model assets:
 
-- `yolo26n_float16.tflite`: Ultralytics COCO detector (FP16, 1280 input), with `person` as class `0`
-- `best_float16.tflite`: custom-trained detector, selectable from the dropdown for A/B testing against the COCO model
+- `yolo26n-1920.tflite`: Ultralytics COCO detector (1920 input), with `person` as class `0` — the only object-detection model shipped, so startup never falls back to a lower-quality model
 - `yamnet.tflite`: raw-audio YAMNet model for 16 kHz mono microphone windows
 - `yamnet_class_map.csv`: YAMNet class-index-to-label map
 

@@ -39,6 +39,19 @@ data class HallSnapshot(
     val lastUpdatedAt: Long? = null,
 )
 
+/** Next-day "wasted electricity" summary computed by [EnergyWasteWorker] and shown on the dashboard. */
+data class EnergyWasteSummary(
+    val dateLabel: String,
+    val wastedMinutes: Int,
+    val wastedKwh: Double,
+    val costRm: Double,
+    val acUnits: Int,
+    val lightbulbs: Int,
+    val roomType: String,
+    val summary: String,
+    val generatedAtMillis: Long,
+)
+
 class FirebaseSyncRepository(
     context: Context,
     private val roomId: String = DEFAULT_ROOM_ID,
@@ -60,6 +73,9 @@ class FirebaseSyncRepository(
                 .getString("space_name", null)
             return if (!name.isNullOrBlank()) name else roomId
         }
+
+    /** The Firestore room this device writes to (its space name, or the default fallback). */
+    val currentRoomId: String get() = effectiveRoomId
 
     // Current authenticated user's UID — all Firestore paths are scoped under it so
     // different buildings (accounts) never share data. Null when not signed in (e.g. Dev
@@ -229,6 +245,18 @@ class FirebaseSyncRepository(
         awaitClose { listener.remove() }
     }
 
+    /** Live next-day energy-waste summary for this device's room (written by [EnergyWasteWorker]). */
+    fun wasteSummaryFlow(): Flow<EnergyWasteSummary?> = callbackFlow {
+        val uid = FirebaseAuth.getInstance().currentUser?.uid
+        if (uid == null) { trySend(null); awaitClose { }; return@callbackFlow }
+        val listener = roomRef(uid, effectiveRoomId)
+            .collection("wasteSummary").document("latest")
+            .addSnapshotListener { snapshot, _ ->
+                trySend(snapshot?.toEnergyWasteSummary())
+            }
+        awaitClose { listener.remove() }
+    }
+
     fun hallScheduleFlow(hallLabel: String): Flow<Array<IntArray>> = callbackFlow {
         val uid = FirebaseAuth.getInstance().currentUser?.uid
         if (uid == null) {
@@ -324,6 +352,22 @@ class FirebaseSyncRepository(
         return runCatching { FirebaseApp.initializeApp(appContext) != null }
             .getOrDefault(false)
     }
+}
+
+private fun DocumentSnapshot.toEnergyWasteSummary(): EnergyWasteSummary? {
+    if (!exists()) return null
+    val generatedAt = getLong("generatedAt") ?: return null
+    return EnergyWasteSummary(
+        dateLabel = getString("dateLabel") ?: "",
+        wastedMinutes = getLong("wastedMinutes")?.toInt() ?: 0,
+        wastedKwh = getDouble("wastedKwh") ?: 0.0,
+        costRm = getDouble("costRm") ?: 0.0,
+        acUnits = getLong("acUnits")?.toInt() ?: 0,
+        lightbulbs = getLong("lightbulbs")?.toInt() ?: 0,
+        roomType = getString("roomType") ?: "",
+        summary = getString("summary") ?: "",
+        generatedAtMillis = generatedAt,
+    )
 }
 
 private data class FirestoreWrite(

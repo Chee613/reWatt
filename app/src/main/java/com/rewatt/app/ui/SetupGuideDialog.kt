@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -52,6 +53,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -64,12 +66,14 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 private const val TOTAL_STEPS = 6
 
 @Composable
-fun SetupGuideDialog(onDismiss: (spaceName: String?) -> Unit) {
+fun SetupGuideDialog(onDismiss: (spaceName: String?, capacity: Int?) -> Unit) {
     var step by remember { mutableStateOf(0) }
     var spaceName by remember { mutableStateOf("") }
+    var capacityText by remember { mutableStateOf("") }
+    val capacity = capacityText.toIntOrNull()
 
     Dialog(
-        onDismissRequest = { onDismiss(null) },
+        onDismissRequest = { onDismiss(null, null) },
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
             dismissOnBackPress = true,
@@ -93,7 +97,7 @@ fun SetupGuideDialog(onDismiss: (spaceName: String?) -> Unit) {
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text("Sensor Setup Guide", fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                    TextButton(onClick = { onDismiss(null) }) { Text("Skip") }
+                    TextButton(onClick = { onDismiss(null, null) }) { Text("Skip") }
                 }
 
                 Spacer(Modifier.height(16.dp))
@@ -139,6 +143,8 @@ fun SetupGuideDialog(onDismiss: (spaceName: String?) -> Unit) {
                         4 -> NameYourSpaceStep(
                             spaceName = spaceName,
                             onSpaceNameChange = { spaceName = it },
+                            capacityText = capacityText,
+                            onCapacityChange = { capacityText = it },
                         )
                         5 -> DoneStep()
                     }
@@ -160,7 +166,9 @@ fun SetupGuideDialog(onDismiss: (spaceName: String?) -> Unit) {
                         Spacer(Modifier.weight(1f))
                     }
                     Button(
-                        onClick = { if (step < TOTAL_STEPS - 1) step++ else onDismiss(spaceName.ifBlank { null }) },
+                        onClick = {
+                            if (step < TOTAL_STEPS - 1) step++ else onDismiss(spaceName.ifBlank { null }, capacity)
+                        },
                         modifier = Modifier.weight(1f),
                         enabled = !(step == 4 && spaceName.isBlank()),
                     ) { Text(if (step == TOTAL_STEPS - 1) "Done" else "Next") }
@@ -424,19 +432,31 @@ private fun VerifyViewStep() {
 private fun NameYourSpaceStep(
     spaceName: String,
     onSpaceNameChange: (String) -> Unit,
+    capacityText: String,
+    onCapacityChange: (String) -> Unit,
 ) {
     StepHeader(
         title = "5. Name Your Space",
-        body = "Give this sensor a name — the room, hall or lab it monitors.",
+        body = "Give this sensor a name and seating capacity — e.g. the room, hall or lab it monitors and how many people it holds. reWatt uses the capacity to estimate energy use.",
     )
 
     OutlinedTextField(
         value = spaceName,
         onValueChange = { if (it.length <= 40) onSpaceNameChange(it) },
         label = { Text("Space name") },
-        placeholder = { Text("e.g. Hall 1, Lab 3, Meeting Room A") },
+        placeholder = { Text("e.g. DK1, Hall 1, Lab 3") },
         singleLine = true,
-        modifier = androidx.compose.ui.Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth(),
+    )
+
+    OutlinedTextField(
+        value = capacityText,
+        onValueChange = { input -> onCapacityChange(input.filter { it.isDigit() }.take(5)) },
+        label = { Text("Capacity (pax)") },
+        placeholder = { Text("e.g. 300") },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        modifier = Modifier.fillMaxWidth(),
     )
 }
 
