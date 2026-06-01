@@ -6,37 +6,33 @@ import android.graphics.ImageDecoder
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
-import androidx.camera.view.PreviewView
-import androidx.lifecycle.LifecycleOwner
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
-import com.rewatt.app.data.PerceptionSyncSummary
-import com.rewatt.app.data.TelemetryRepository
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
+/**
+ * Thin UI-facing controller for perception. The actual capture pipeline now runs inside
+ * [CameraCaptureService] (a foreground service) so it keeps firing with the screen off; this view
+ * model just starts/stops that service and exposes the shared [PerceptionStateHolder] state to the
+ * dashboard. The debug "Upload image" path still runs in-process here since it is a one-shot,
+ * UI-driven analysis with no background requirement.
+ */
 class PerceptionViewModel(
     private val appContext: Context,
-    private val telemetryRepository: TelemetryRepository,
+    private val stateHolder: PerceptionStateHolder,
 ) : ViewModel() {
-    private val mutableState = MutableStateFlow(PerceptionUiState())
-    val uiState: StateFlow<PerceptionUiState> = mutableState.asStateFlow()
+    val uiState: StateFlow<PerceptionUiState> = stateHolder.state
 
-    private var yoloDetector: YoloDetector? = null
-    private var yamnetDetector: YamnetDetector? = null
-    private var cameraController: CameraCaptureController? = null
-    private var audioController: AudioCaptureController? = null
-    private var perceptionSessionId: Long = 0L
+    private var uploadDetector: YoloDetector? = null
 
     fun setPermissionState(cameraGranted: Boolean, microphoneGranted: Boolean) {
-        mutableState.update {
+        stateHolder.update {
             it.copy(
                 cameraPermissionGranted = cameraGranted,
                 microphonePermissionGranted = microphoneGranted,
@@ -44,33 +40,27 @@ class PerceptionViewModel(
         }
     }
 
-    fun startPerception(
-        lifecycleOwner: LifecycleOwner,
-        previewView: PreviewView,
-        source: CaptureStartSource = CaptureStartSource.Manual,
-    ) {
-        stopPerception()
-        val sessionId = ++perceptionSessionId
-        mutableState.update {
-            it.copy(
-                isRunning = true,
-                captureStartSource = source,
-                statusMessage = when (source) {
-                    CaptureStartSource.Manual -> "Manual capture starting."
-                    CaptureStartSource.Auto -> "Auto capture triggered by LD2412 presence."
-                },
-                yoloMessage = "Loading YOLO in the background.",
-                yamnetMessage = "Loading YAMNet in the background.",
-            )
-        }
+    fun startPerception(source: CaptureStartSource = CaptureStartSource.Manual) {
+        stateHolder.update { it.copy(captureStartSource = source) }
+        ContextCompat.startForegroundService(appContext, CameraCaptureService.startIntent(appContext))
+    }
 
-        startControllers(lifecycleOwner, previewView)
-        loadYoloDetector(sessionId)
-        loadYamnetDetector(sessionId)
+    fun stopPerception() {
+        appContext.stopService(CameraCaptureService.startIntent(appContext))
+    }
+
+    /** Debug bypass: ask the running service to capture immediately, ignoring the 10-minute mark. */
+    fun captureNow() {
+        ContextCompat.startForegroundService(appContext, CameraCaptureService.captureNowIntent(appContext))
+    }
+
+    fun selectYoloModel(model: YoloModel) {
+        // Only the yolo26n-1920 model ships now; the selection is purely cosmetic for the debug UI.
+        stateHolder.update { it.copy(selectedYoloModel = model) }
     }
 
     fun analyzeUploadedYoloImage(uri: Uri) {
-        mutableState.update {
+        stateHolder.update {
             it.copy(
                 yoloMessage = "Loading uploaded image for YOLO.",
                 exposureEv = null,
@@ -89,7 +79,7 @@ class PerceptionViewModel(
                 updateYoloMessage("Uploaded image failed to load: ${error.message ?: error::class.java.simpleName}")
             }.getOrNull() ?: return@launch
 
-            val detector = yoloDetector ?: loadYoloDetectorForUpload() ?: return@launch
+            val detector = loadUploadDetector() ?: return@launch
             val detections = runCatching { detector.detect(bitmap) }
                 .onFailure { error ->
                     updateUploadedYoloResult(
@@ -108,180 +98,24 @@ class PerceptionViewModel(
         }
     }
 
-    fun selectYoloModel(model: YoloModel) {
-        if (mutableState.value.selectedYoloModel == model) return
-        mutableState.update { it.copy(selectedYoloModel = model) }
-        // Drop the loaded detector so the next frame/upload reloads with the new asset.
-        yoloDetector?.close()
-        yoloDetector = null
-        if (mutableState.value.isRunning) loadYoloDetector(perceptionSessionId)
-    }
-
-    /** Debug bypass: trigger one immediate camera + audio capture, ignoring the 10-minute alignment. */
-    fun captureNow() {
-        cameraController?.captureNow()
-        audioController?.captureNow()
-    }
-
-    private fun loadYoloDetector(sessionId: Long) {
-        viewModelScope.launch(Dispatchers.Default) {
-            val loadedYolo = runCatching {
-                YoloDetector.create(appContext, mutableState.value.selectedYoloModel.assetName)
-            }
-                .onFailure { error ->
-                    updateYoloMessage("YOLO model failed to load: ${error.message ?: error::class.java.simpleName}")
-                }
-                .getOrNull()
-
-            if (perceptionSessionId == sessionId && mutableState.value.isRunning) {
-                if (loadedYolo != null) {
-                    installYoloDetectorIfAbsent(loadedYolo)
-                    updateYoloMessage("YOLO loaded; analyzing one frame every 10 minutes.")
-                }
-            } else {
-                loadedYolo?.close()
-            }
-        }
-    }
-
-    private fun loadYoloDetectorForUpload(): YoloDetector? {
-        val loadedYolo = runCatching {
-            YoloDetector.create(appContext, mutableState.value.selectedYoloModel.assetName)
-        }
+    private fun loadUploadDetector(): YoloDetector? {
+        uploadDetector?.let { return it }
+        return runCatching { YoloDetector.create(appContext) }
             .onFailure { error ->
                 updateYoloMessage("YOLO model failed to load: ${error.message ?: error::class.java.simpleName}")
             }
             .getOrNull()
-            ?: return null
-
-        return installYoloDetectorIfAbsent(loadedYolo)
-            .also { updateYoloMessage("YOLO loaded; analyzing uploaded image.") }
-    }
-
-    @Synchronized
-    private fun installYoloDetectorIfAbsent(loadedYolo: YoloDetector): YoloDetector {
-        val currentYolo = yoloDetector
-        if (currentYolo != null) {
-            loadedYolo.close()
-            return currentYolo
-        }
-        yoloDetector = loadedYolo
-        return loadedYolo
-    }
-
-    private fun loadYamnetDetector(sessionId: Long) {
-        viewModelScope.launch(Dispatchers.Default) {
-            if (!AssetModelLoader.assetExists(appContext, YamnetDetector.MODEL_ASSET)) {
-                updateYamnetMessage("Captured audio will be shown, but yamnet.tflite is missing.")
-                return@launch
-            }
-
-            val loadedYamnet = runCatching { YamnetDetector.create(appContext) }
-                .onFailure { error ->
-                    updateYamnetMessage("YAMNet model failed to load: ${error.message ?: error::class.java.simpleName}")
-                }
-                .getOrNull()
-
-            if (perceptionSessionId == sessionId && mutableState.value.isRunning) {
-                yamnetDetector = loadedYamnet
-                if (loadedYamnet != null) {
-                    updateYamnetMessage("YAMNet loaded; recording a 15-second window every 10 minutes.")
-                }
-            } else {
-                loadedYamnet?.close()
-            }
-        }
-    }
-
-    fun stopPerception() {
-        perceptionSessionId++
-        cameraController?.close()
-        cameraController = null
-        audioController?.close()
-        audioController = null
-        yoloDetector?.close()
-        yoloDetector = null
-        yamnetDetector?.close()
-        yamnetDetector = null
-        mutableState.update {
-            it.copy(
-                isRunning = false,
-                captureStartSource = null,
-                statusMessage = "Perception is stopped.",
-            )
-        }
+            ?.also { uploadDetector = it }
     }
 
     override fun onCleared() {
-        stopPerception()
+        uploadDetector?.close()
+        uploadDetector = null
         super.onCleared()
     }
 
-    private fun startControllers(lifecycleOwner: LifecycleOwner, previewView: PreviewView) {
-        cameraController = CameraCaptureController(
-            context = appContext,
-            yoloDetectorProvider = { yoloDetector },
-            onFrameAnalyzed = { bitmap, detections, yoloMessage, exposureReading, exposureMessage ->
-                mutableState.update {
-                    it.copy(
-                        latestFrame = bitmap ?: it.latestFrame,
-                        latestFrameAtMillis = if (bitmap != null) System.currentTimeMillis() else it.latestFrameAtMillis,
-                        yoloDetections = detections,
-                        yoloMessage = yoloMessage,
-                        exposureEv = exposureReading?.ev,
-                        exposureIso = exposureReading?.iso,
-                        exposureTimeSeconds = exposureReading?.exposureTimeSeconds,
-                        exposureAperture = exposureReading?.aperture ?: ExposureValueCalculator.FIXED_APERTURE,
-                        lightsOn = exposureReading?.lightsOn,
-                        exposureMessage = exposureMessage,
-                        statusMessage = "Perception is running.",
-                    )
-                        .also(::publishPerceptionSummary)
-                }
-            },
-            onError = { message ->
-                mutableState.update { it.copy(yoloMessage = message) }
-            },
-        ).also { it.start(lifecycleOwner, previewView) }
-
-        audioController = AudioCaptureController(
-            context = appContext,
-            scope = viewModelScope,
-            yamnetDetectorProvider = { yamnetDetector },
-            onStatus = { message ->
-                mutableState.update {
-                    it.copy(
-                        yamnetMessage = message,
-                        statusMessage = "Perception is running.",
-                    )
-                }
-            },
-            onAudioCaptured = { result ->
-                mutableState.update {
-                    it.copy(
-                        latestAudioAtMillis = result.capturedAtMillis,
-                        audioSampleCount = result.sampleCount,
-                        audioRms = result.rms,
-                        audioWaveform = result.waveform,
-                        soundDetections = result.detections,
-                        yamnetMessage = result.message,
-                        statusMessage = "Perception is running.",
-                    )
-                        .also(::publishPerceptionSummary)
-                }
-            },
-            onError = { message ->
-                mutableState.update { it.copy(yamnetMessage = message) }
-            },
-        ).also { it.start() }
-    }
-
     private fun updateYoloMessage(message: String) {
-        mutableState.update { it.copy(yoloMessage = message) }
-    }
-
-    private fun updateYamnetMessage(message: String) {
-        mutableState.update { it.copy(yamnetMessage = message) }
+        stateHolder.update { it.copy(yoloMessage = message) }
     }
 
     private fun updateUploadedYoloResult(
@@ -289,7 +123,7 @@ class PerceptionViewModel(
         detections: List<ObjectDetection>,
         message: String,
     ) {
-        mutableState.update {
+        stateHolder.update {
             it.copy(
                 latestFrame = bitmap,
                 latestFrameAtMillis = System.currentTimeMillis(),
@@ -307,7 +141,6 @@ class PerceptionViewModel(
                     "Uploaded image analyzed for YOLO."
                 },
             )
-                .also(::publishPerceptionSummary)
         }
     }
 
@@ -332,40 +165,18 @@ class PerceptionViewModel(
         val scaledHeight = (height * scale).roundToInt().coerceAtLeast(1)
         return Bitmap.createScaledBitmap(this, scaledWidth, scaledHeight, true)
     }
-
-    private fun publishPerceptionSummary(state: PerceptionUiState) {
-        telemetryRepository.updatePerceptionSummary(
-            PerceptionSyncSummary(
-                personCount = state.personCount,
-                activityLabels = state.soundDetections
-                    .take(YamnetPostProcessor.DEFAULT_TOP_K)
-                    .map { it.label },
-                audioPresenceDetected = state.audioPresenceDetected,
-                audioPresenceScore = state.audioPresenceScore,
-                lightsOn = state.lightsOn,
-                exposureEv = state.exposureEv,
-                exposureIso = state.exposureIso,
-                exposureTimeSeconds = state.exposureTimeSeconds,
-                exposureAperture = state.exposureAperture,
-                capturedAtMillis = listOfNotNull(
-                    state.latestFrameAtMillis,
-                    state.latestAudioAtMillis,
-                ).maxOrNull(),
-            ),
-        )
-    }
 }
 
 class PerceptionViewModelFactory(
     private val appContext: Context,
-    private val telemetryRepository: TelemetryRepository,
+    private val stateHolder: PerceptionStateHolder,
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(PerceptionViewModel::class.java)) {
             return PerceptionViewModel(
                 appContext = appContext.applicationContext,
-                telemetryRepository = telemetryRepository,
+                stateHolder = stateHolder,
             ) as T
         }
         error("Unknown ViewModel class: ${modelClass.name}")

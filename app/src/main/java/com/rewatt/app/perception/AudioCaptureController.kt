@@ -26,6 +26,8 @@ class AudioCaptureController(
     private val onStatus: (String) -> Unit,
     private val onAudioCaptured: (AudioCaptureResult) -> Unit,
     private val onError: (String) -> Unit,
+    // Toggled true while the 15-second window is actively recording, so the UI can show progress.
+    private val onRecordingActive: (Boolean) -> Unit = {},
 ) : Closeable {
     private var captureJob: Job? = null
     private var audioRecord: AudioRecord? = null
@@ -77,10 +79,15 @@ class AudioCaptureController(
                         triggerChannel.receive()
                     }
                     if (!isActive) break
-                    onStatus("Recording audio for 15 seconds.")
+                    onStatus("Recording audio for $RECORDING_WINDOW_SECONDS seconds.")
                     // Discard audio buffered during the wait so the window is fresh at the mark.
                     record.drainStale(shortBuffer)
-                    val readCount = record.readFully(shortBuffer, sampleCount)
+                    onRecordingActive(true)
+                    val readCount = try {
+                        record.readFully(shortBuffer, sampleCount)
+                    } finally {
+                        onRecordingActive(false)
+                    }
                     if (readCount <= 0) {
                         onError("Microphone read failed.")
                         delay(1_000L)
@@ -153,9 +160,10 @@ class AudioCaptureController(
     }
 
     companion object {
+        const val RECORDING_WINDOW_SECONDS = 15
         private const val SAMPLE_RATE_HZ = 16_000
         private const val RECORDING_INTERVAL_MINUTES = 10
-        private const val RECORDING_SAMPLE_COUNT = SAMPLE_RATE_HZ * 15
+        private const val RECORDING_SAMPLE_COUNT = SAMPLE_RATE_HZ * RECORDING_WINDOW_SECONDS
         private const val BYTES_PER_SAMPLE = 2
     }
 }

@@ -38,9 +38,6 @@ enum class CaptureStartSource {
 }
 
 enum class YoloModel(val displayName: String, val assetName: String) {
-    Yolo26nFp16("YOLO26n FP16 (1280)", "yolo26n_float16.tflite"),
-    BestFp16("Best (custom FP16)", "best_float16.tflite"),
-    Yolo26m("YOLO26m (medium)", "yolo26m.tflite"),
     Yolo26n1920("YOLO26n (1920)", "yolo26n-1920.tflite"),
 }
 
@@ -79,12 +76,13 @@ data class PerceptionUiState(
     val lightsOn: Boolean? = null,
     val exposureMessage: String = "Exposure is waiting for camera capture.",
     val latestAudioAtMillis: Long? = null,
+    val audioRecordingStartedAtMillis: Long? = null,
     val audioSampleCount: Int = 0,
     val audioRms: Float = 0f,
     val audioWaveform: List<Float> = emptyList(),
     val soundDetections: List<SoundDetection> = emptyList(),
     val yamnetMessage: String = "YAMNet is waiting for microphone audio.",
-    val selectedYoloModel: YoloModel = YoloModel.Yolo26nFp16,
+    val selectedYoloModel: YoloModel = YoloModel.Yolo26n1920,
 ) {
     val peopleDetections: List<ObjectDetection> = yoloDetections.filter { it.isPerson }
     val personCount: Int = peopleDetections.size

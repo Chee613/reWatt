@@ -5,11 +5,13 @@ import com.rewatt.app.data.AuthRepository
 import com.rewatt.app.data.FirebaseSyncRepository
 import com.rewatt.app.data.GeminiActivityAnalyzer
 import com.rewatt.app.data.GeminiEnergyAdvisor
+import com.rewatt.app.data.GeminiEnergyWasteAnalyzer
 import com.rewatt.app.data.FirebaseOccupancyForecastProvider
 import com.rewatt.app.data.OccupancyForecastProvider
 import com.rewatt.app.data.ReWattDatabase
 import com.rewatt.app.data.TelemetryRepository
 import com.rewatt.app.data.WeatherRepository
+import com.rewatt.app.perception.PerceptionStateHolder
 
 class AppGraph(context: Context) {
     private val appContext = context.applicationContext
@@ -48,5 +50,13 @@ class AppGraph(context: Context) {
 
     val geminiEnergyAdvisor: GeminiEnergyAdvisor by lazy {
         GeminiEnergyAdvisor()
+    }
+
+    val geminiEnergyWasteAnalyzer: GeminiEnergyWasteAnalyzer by lazy {
+        GeminiEnergyWasteAnalyzer()
+    }
+
+    val perceptionStateHolder: PerceptionStateHolder by lazy {
+        PerceptionStateHolder()
     }
 }

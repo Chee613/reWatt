@@ -10,7 +10,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.camera.view.PreviewView
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -39,6 +38,7 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.rewatt.app.data.ForecastWorker
+import com.rewatt.app.data.EnergyWasteWorker
 import com.rewatt.app.usb.UsbSentinelService
 import java.util.concurrent.TimeUnit
 
@@ -54,23 +54,15 @@ class MainActivity : ComponentActivity() {
             val microphoneGranted = permissions[Manifest.permission.RECORD_AUDIO] == true ||
                 hasPermission(Manifest.permission.RECORD_AUDIO)
             perceptionViewModel.setPermissionState(cameraGranted, microphoneGranted)
-            pendingPreviewView?.let { previewView ->
-                if (cameraGranted && microphoneGranted) {
-                    perceptionViewModel.startPerception(
-                        lifecycleOwner = this,
-                        previewView = previewView,
-                        source = pendingCaptureSource ?: CaptureStartSource.Manual,
-                    )
-                }
+            if (cameraGranted && microphoneGranted) {
+                perceptionViewModel.startPerception(pendingCaptureSource ?: CaptureStartSource.Manual)
             }
-            pendingPreviewView = null
             pendingCaptureSource = null
         }
     private val yoloUploadLauncher =
         registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
             uri?.let(perceptionViewModel::analyzeUploadedYoloImage)
         }
-    private var pendingPreviewView: PreviewView? = null
     private var pendingCaptureSource: CaptureStartSource? = null
 
     private val authViewModel: AuthViewModel by viewModels {
@@ -88,7 +80,7 @@ class MainActivity : ComponentActivity() {
     private val perceptionViewModel: PerceptionViewModel by viewModels {
         PerceptionViewModelFactory(
             appContext = applicationContext,
-            telemetryRepository = (application as ReWattApplication).appGraph.telemetryRepository,
+            stateHolder = (application as ReWattApplication).appGraph.perceptionStateHolder,
         )
     }
 
@@ -99,6 +91,18 @@ class MainActivity : ComponentActivity() {
             "occupancy_forecast",
             ExistingPeriodicWorkPolicy.KEEP,
             PeriodicWorkRequestBuilder<ForecastWorker>(2, TimeUnit.HOURS)
+                .setConstraints(
+                    Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .build()
+                )
+                .build()
+        )
+
+        WorkManager.getInstance(applicationContext).enqueueUniquePeriodicWork(
+            "energy_waste_summary",
+            ExistingPeriodicWorkPolicy.KEEP,
+            PeriodicWorkRequestBuilder<EnergyWasteWorker>(1, TimeUnit.DAYS)
                 .setConstraints(
                     Constraints.Builder()
                         .setRequiredNetworkType(NetworkType.CONNECTED)
@@ -159,6 +163,7 @@ class MainActivity : ComponentActivity() {
                     val perceptionState = perceptionViewModel.uiState.collectAsStateWithLifecycle()
                     val hallSchedules by viewModel.hallSchedules.collectAsStateWithLifecycle()
                     val recentCaptures by viewModel.recentCaptures.collectAsStateWithLifecycle()
+                    val wasteSummary by viewModel.wasteSummary.collectAsStateWithLifecycle()
                     val authedUser = (authState as? AuthState.Authenticated)?.user
                     DashboardScreen(
                         uiState = uiState.value,
@@ -186,12 +191,16 @@ class MainActivity : ComponentActivity() {
                         hallSnapshot = hallSnapshot,
                         hallSchedules = hallSchedules,
                         recentCaptures = recentCaptures,
+                        wasteSummary = wasteSummary,
                         onHallSelect = viewModel::selectHall,
                         onModeSelected = { role ->
                             authViewModel.setMode(role)
                         },
                         onRenameSpace = { name ->
                             authViewModel.renameSpace(name)
+                        },
+                        onSetCapacity = { capacity ->
+                            authViewModel.setSpaceCapacity(capacity)
                         },
                     )
                 } else {
@@ -232,9 +241,10 @@ class MainActivity : ComponentActivity() {
                 }
 
                 if (showSetupGuide) {
-                    SetupGuideDialog(onDismiss = { name ->
+                    SetupGuideDialog(onDismiss = { name, capacity ->
                         showSetupGuide = false
                         if (name != null) authViewModel.setSpaceName(name)
+                        if (capacity != null) authViewModel.setSpaceCapacity(capacity)
                         // Location may have just been granted inside the guide.
                         refreshWeatherIfLocationGranted()
                     })
@@ -262,24 +272,15 @@ class MainActivity : ComponentActivity() {
         )
     }
 
-    private fun requestPerceptionPermissionsThenStart(
-        previewView: PreviewView,
-        source: CaptureStartSource,
-    ) {
-        pendingPreviewView = previewView
+    private fun requestPerceptionPermissionsThenStart(source: CaptureStartSource) {
         pendingCaptureSource = source
         val cameraGranted = hasPermission(Manifest.permission.CAMERA)
         val microphoneGranted = hasPermission(Manifest.permission.RECORD_AUDIO)
         perceptionViewModel.setPermissionState(cameraGranted, microphoneGranted)
 
         if (cameraGranted && microphoneGranted) {
-            pendingPreviewView = null
             pendingCaptureSource = null
-            perceptionViewModel.startPerception(
-                lifecycleOwner = this,
-                previewView = previewView,
-                source = source,
-            )
+            perceptionViewModel.startPerception(source)
             return
         }
 
