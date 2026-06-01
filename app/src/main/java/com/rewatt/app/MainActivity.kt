@@ -37,8 +37,12 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import com.rewatt.app.data.ClassScheduleWorker
 import com.rewatt.app.data.ForecastWorker
 import com.rewatt.app.data.EnergyWasteWorker
+import com.rewatt.app.data.MalaysiaHolidays
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import com.rewatt.app.usb.UsbSentinelService
 import java.util.concurrent.TimeUnit
 
@@ -111,6 +115,21 @@ class MainActivity : ComponentActivity() {
                 .build()
         )
 
+        WorkManager.getInstance(applicationContext).enqueueUniquePeriodicWork(
+            "class_schedule_detector",
+            ExistingPeriodicWorkPolicy.KEEP,
+            PeriodicWorkRequestBuilder<ClassScheduleWorker>(6, TimeUnit.HOURS)
+                .setConstraints(
+                    Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .build()
+                )
+                .build()
+        )
+
+        // Refresh holiday list from Google Calendar on startup (uses disk cache if still fresh)
+        lifecycleScope.launch { MalaysiaHolidays.refresh(applicationContext) }
+
         requestNotificationPermissionIfNeeded()
         perceptionViewModel.setPermissionState(
             cameraGranted = hasPermission(Manifest.permission.CAMERA),
@@ -162,6 +181,7 @@ class MainActivity : ComponentActivity() {
                     val uiState = viewModel.uiState.collectAsStateWithLifecycle()
                     val perceptionState = perceptionViewModel.uiState.collectAsStateWithLifecycle()
                     val hallSchedules by viewModel.hallSchedules.collectAsStateWithLifecycle()
+                    val learnedSchedules by viewModel.learnedSchedules.collectAsStateWithLifecycle()
                     val recentCaptures by viewModel.recentCaptures.collectAsStateWithLifecycle()
                     val wasteSummary by viewModel.wasteSummary.collectAsStateWithLifecycle()
                     val authedUser = (authState as? AuthState.Authenticated)?.user
@@ -190,6 +210,7 @@ class MainActivity : ComponentActivity() {
                         spaceName = spaceName,
                         hallSnapshot = hallSnapshot,
                         hallSchedules = hallSchedules,
+                        learnedSchedules = learnedSchedules,
                         recentCaptures = recentCaptures,
                         wasteSummary = wasteSummary,
                         onHallSelect = viewModel::selectHall,

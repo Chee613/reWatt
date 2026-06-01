@@ -18,6 +18,15 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.callbackFlow
 
+data class LearnedSegment(
+    val startMinuteOfDay: Int,
+    val endMinuteOfDay: Int,
+    val predictedOccupancy: Int,
+    val occupancyLevel: String,
+    val weeksSeen: Int,
+    val lastSeenMillis: Long,
+)
+
 data class RecentCapture(
     val capturedAtMillis: Long,
     val personCount: Int,
@@ -343,6 +352,27 @@ class FirebaseSyncRepository(
         }
     }
 
+    fun learnedScheduleFlow(hallLabel: String): Flow<List<List<LearnedSegment>>> = callbackFlow {
+        val uid = FirebaseAuth.getInstance().currentUser?.uid
+        if (uid == null) {
+            trySend(List(7) { emptyList() })
+            awaitClose { }
+            return@callbackFlow
+        }
+        val result = Array(7) { emptyList<LearnedSegment>() }
+        val listeners = (0..6).map { dow ->
+            FirebaseFirestore.getInstance()
+                .collection("rewatt_users").document(uid)
+                .collection("rooms").document(hallLabel)
+                .collection("learned_schedule").document(dow.toString())
+                .addSnapshotListener { snapshot, _ ->
+                    result[dow] = snapshot?.parseLearnedSegments() ?: emptyList()
+                    trySend(result.toList())
+                }
+        }
+        awaitClose { listeners.forEach { it.remove() } }
+    }
+
     companion object {
         private const val DEFAULT_ROOM_ID = "default-room"
     }
@@ -368,6 +398,24 @@ private fun DocumentSnapshot.toEnergyWasteSummary(): EnergyWasteSummary? {
         summary = getString("summary") ?: "",
         generatedAtMillis = generatedAt,
     )
+}
+
+@Suppress("UNCHECKED_CAST")
+private fun com.google.firebase.firestore.DocumentSnapshot.parseLearnedSegments(): List<LearnedSegment> {
+    if (!exists()) return emptyList()
+    val raw = get("segments") as? List<Map<String, Any>> ?: return emptyList()
+    return raw.mapNotNull { map ->
+        val start = (map["startMinuteOfDay"] as? Long)?.toInt() ?: return@mapNotNull null
+        val end = (map["endMinuteOfDay"] as? Long)?.toInt() ?: return@mapNotNull null
+        LearnedSegment(
+            startMinuteOfDay = start,
+            endMinuteOfDay = end,
+            predictedOccupancy = (map["predictedOccupancy"] as? Long)?.toInt() ?: 0,
+            occupancyLevel = map["occupancyLevel"] as? String ?: "low",
+            weeksSeen = (map["weeksSeen"] as? Long)?.toInt() ?: 1,
+            lastSeenMillis = (map["lastSeenMillis"] as? Long) ?: 0L,
+        )
+    }
 }
 
 private data class FirestoreWrite(
