@@ -71,6 +71,9 @@ class TelemetryRepository(
     fun hallScheduleFlow(hallLabel: String): Flow<Array<IntArray>> =
         firebaseSyncRepository.hallScheduleFlow(hallLabel)
 
+    fun wasteSummaryFlow(): Flow<EnergyWasteSummary?> =
+        firebaseSyncRepository.wasteSummaryFlow()
+
     suspend fun loadHallSchedule(hallLabel: String): Array<IntArray> =
         firebaseSyncRepository.loadHallSchedule(hallLabel)
 

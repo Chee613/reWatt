@@ -7,6 +7,7 @@ import com.rewatt.app.data.EnergyAdvice
 import com.rewatt.app.data.EnergyAdviceInput
 import com.rewatt.app.data.EnergyAdviceState
 import com.rewatt.app.data.EnergyAdviceStatus
+import com.rewatt.app.data.EnergyWasteSummary
 import com.rewatt.app.data.GeminiEnergyAdvisor
 import com.rewatt.app.data.RecentCapture
 import com.rewatt.app.data.HallSnapshot
@@ -56,6 +57,10 @@ class DashboardViewModel(
     val recentCaptures: StateFlow<List<RecentCapture>> =
         repository.recentCapturesFlow
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), emptyList())
+
+    val wasteSummary: StateFlow<EnergyWasteSummary?> =
+        repository.wasteSummaryFlow()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), null)
 
     init {
         listenToAllHallSchedules()

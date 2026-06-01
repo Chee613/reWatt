@@ -178,7 +178,7 @@ class DashboardScreenTest {
                     uiState = uiState,
                     perceptionState = perceptionState,
                     onScanUsb = {},
-                    onStartPerception = { _, _ -> },
+                    onStartPerception = { _ -> },
                     onStopPerception = {},
                     onUploadYoloImage = {},
                     userEmail = "test@example.com",

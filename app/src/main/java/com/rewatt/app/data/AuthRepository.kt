@@ -67,6 +67,41 @@ class AuthRepository(private val context: Context) {
         }
     }
 
+    /** Room seating capacity (e.g. 300 for "DK1, 300 pax"). Null until the user sets it. */
+    fun getCachedSpaceCapacity(): Int? =
+        spacePrefs.getInt("space_capacity", -1).takeIf { it > 0 }
+
+    fun cacheSpaceCapacity(capacity: Int) =
+        spacePrefs.edit().putInt("space_capacity", capacity).apply()
+
+    suspend fun saveSpaceCapacity(uid: String, capacity: Int): Result<Unit> {
+        cacheSpaceCapacity(capacity)
+        val deviceId = getOrCreateDeviceId()
+        return suspendCoroutine { cont ->
+            firestore.collection("rewatt_users").document(uid)
+                .collection("devices").document(deviceId)
+                .set(mapOf("capacity" to capacity), SetOptions.merge())
+                .addOnSuccessListener { cont.resume(Result.success(Unit)) }
+                .addOnFailureListener { e -> cont.resume(Result.failure(e)) }
+        }
+    }
+
+    suspend fun loadSpaceCapacity(uid: String): Int? {
+        val cached = getCachedSpaceCapacity()
+        if (cached != null) return cached
+        val deviceId = getOrCreateDeviceId()
+        return suspendCoroutine { cont ->
+            firestore.collection("rewatt_users").document(uid)
+                .collection("devices").document(deviceId).get()
+                .addOnSuccessListener { doc ->
+                    val capacity = doc.getLong("capacity")?.toInt()
+                    if (capacity != null) cacheSpaceCapacity(capacity)
+                    cont.resume(capacity)
+                }
+                .addOnFailureListener { cont.resume(null) }
+        }
+    }
+
     private fun cacheEmail(username: String, email: String) {
         prefs.edit().putString("email_$username", email).apply()
     }

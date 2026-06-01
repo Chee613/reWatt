@@ -71,6 +71,9 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
     private val _spaceName = MutableStateFlow<String?>(null)
     val spaceName: StateFlow<String?> = _spaceName
 
+    private val _spaceCapacity = MutableStateFlow<Int?>(null)
+    val spaceCapacity: StateFlow<Int?> = _spaceCapacity
+
     fun signIn(username: String, password: String) {
         viewModelScope.launch {
             _signInState.value = SignInState.Loading
@@ -112,8 +115,10 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
     fun loadSpaceName() {
         val uid = repository.currentUser?.uid ?: return
         _spaceName.value = repository.getCachedSpaceName()
+        _spaceCapacity.value = repository.getCachedSpaceCapacity()
         viewModelScope.launch {
             _spaceName.value = repository.loadSpaceName(uid)
+            _spaceCapacity.value = repository.loadSpaceCapacity(uid)
         }
     }
 
@@ -121,6 +126,12 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
         val uid = repository.currentUser?.uid ?: return
         _spaceName.value = name
         viewModelScope.launch { repository.saveSpaceName(uid, name) }
+    }
+
+    fun setSpaceCapacity(capacity: Int) {
+        val uid = repository.currentUser?.uid ?: return
+        _spaceCapacity.value = capacity
+        viewModelScope.launch { repository.saveSpaceCapacity(uid, capacity) }
     }
 
     fun renameSpace(name: String) = setSpaceName(name)
@@ -137,6 +148,7 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
     fun signOut() {
         _currentUserRole.value = null
         _spaceName.value = null
+        _spaceCapacity.value = null
         repository.signOut()
     }
 

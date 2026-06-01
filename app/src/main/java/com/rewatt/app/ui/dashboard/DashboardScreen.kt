@@ -1,7 +1,6 @@
 package com.rewatt.app.ui.dashboard
 
 import android.graphics.Bitmap
-import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -72,13 +71,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import com.rewatt.app.BuildConfig
 import com.rewatt.app.R
 import android.provider.Settings
 import com.google.firebase.auth.FirebaseAuth
 import com.rewatt.app.data.ActivityAnalysisStatus
 import com.rewatt.app.data.EnergyAdviceState
+import com.rewatt.app.data.EnergyWasteSummary
 import com.rewatt.app.data.EnergyAdviceStatus
 import com.rewatt.app.data.FirebaseSyncState
 import com.rewatt.app.data.FirebaseSyncStatus
@@ -87,6 +86,7 @@ import androidx.compose.ui.platform.LocalContext
 import com.rewatt.app.data.SensorDashboardState
 import com.rewatt.app.data.WeatherState
 import com.rewatt.app.data.WeatherStatus
+import com.rewatt.app.perception.AudioCaptureController
 import com.rewatt.app.perception.CaptureStartSource
 import com.rewatt.app.perception.ObjectDetection
 import com.rewatt.app.perception.PerceptionUiState
@@ -130,7 +130,7 @@ fun DashboardScreen(
     uiState: DashboardUiState,
     perceptionState: PerceptionUiState,
     onScanUsb: () -> Unit,
-    onStartPerception: (PreviewView, CaptureStartSource) -> Unit,
+    onStartPerception: (CaptureStartSource) -> Unit,
     onStopPerception: () -> Unit,
     onUploadYoloImage: () -> Unit,
     onSelectYoloModel: (YoloModel) -> Unit = {},
@@ -149,9 +149,11 @@ fun DashboardScreen(
     hallSnapshot: HallSnapshot? = null,
     hallSchedules: Map<String, Array<IntArray>> = emptyMap(),
     recentCaptures: List<RecentCapture> = emptyList(),
+    wasteSummary: EnergyWasteSummary? = null,
     onHallSelect: (String) -> Unit = {},
     onModeSelected: (UserRole) -> Unit = {},
     onRenameSpace: (String) -> Unit = {},
+    onSetCapacity: (Int) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var selectedTab by rememberSaveable { mutableStateOf(ReWattTab.Live) }
@@ -270,6 +272,7 @@ fun DashboardScreen(
                     currentUserRole = currentUserRole,
                     spaceName = spaceName,
                     hallSnapshot = hallSnapshot,
+                    wasteSummary = wasteSummary,
                 )
 
                 ReWattTab.Analytic -> AnalyticPage(
@@ -312,6 +315,7 @@ fun DashboardScreen(
                     spaceName = spaceName,
                     onModeSelected = onModeSelected,
                     onRenameSpace = onRenameSpace,
+                    onSetCapacity = onSetCapacity,
                 )
             }
         }
@@ -384,6 +388,7 @@ private fun LivePage(
     currentUserRole: UserRole? = null,
     spaceName: String? = null,
     hallSnapshot: HallSnapshot? = null,
+    wasteSummary: EnergyWasteSummary? = null,
 ) {
     val telemetry = uiState.sensorState.latestTelemetry
     val analysis = uiState.sensorState.activityAnalysisState.analysis
@@ -437,6 +442,9 @@ private fun LivePage(
             state = energyAdvice,
             onRequestEnergyAdvice = onRequestEnergyAdvice,
         )
+
+        // ── Yesterday's wasted-energy summary ─────────────────────────────────
+        wasteSummary?.let { EnergyWasteCard(summary = it) }
 
         // ── 6-card grid ──────────────────────────────────────────────────────
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -637,6 +645,49 @@ private fun EnergyAdviceCard(
                 fontSize = 13.sp,
                 color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+    }
+}
+
+@Composable
+private fun EnergyWasteCard(summary: EnergyWasteSummary) {
+    InfoCard {
+        Column {
+            Text("YESTERDAY'S WASTED ENERGY", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            Text(
+                text = "Powered by Gemini" + summary.dateLabel.takeIf { it.isNotBlank() }?.let { "  ·  $it" }.orEmpty(),
+                fontSize = 11.sp,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            if (summary.wastedKwh > 0.0 || summary.costRm > 0.0) {
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                    Column {
+                        Text("%.2f kWh".format(summary.wastedKwh), fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                        Text("wasted", fontSize = 11.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Column {
+                        Text("RM %.2f".format(summary.costRm), fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                        Text("est. cost", fontSize = 11.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    BulletPoint("${summary.wastedMinutes} min of lights/AC left on while empty")
+                    if (summary.roomType.isNotBlank()) {
+                        BulletPoint("${summary.roomType}: ~${summary.acUnits} AC units, ~${summary.lightbulbs} lights")
+                    }
+                    if (summary.summary.isNotBlank()) BulletPoint(summary.summary)
+                }
+            } else {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    summary.summary.ifBlank { "No wasted energy detected yesterday." },
+                    fontSize = 13.sp,
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
     }
 }
@@ -1598,7 +1649,7 @@ private fun CapturePage(
     nowMillis: Long,
     pendingCaptureSource: CaptureStartSource?,
     onPendingCaptureConsumed: () -> Unit,
-    onStartPerception: (PreviewView, CaptureStartSource) -> Unit,
+    onStartPerception: (CaptureStartSource) -> Unit,
     onStopPerception: () -> Unit,
     onUploadYoloImage: () -> Unit,
     showYoloUpload: Boolean,
@@ -1610,20 +1661,14 @@ private fun CapturePage(
     firebaseSyncState: FirebaseSyncState = FirebaseSyncState(),
     recentCaptures: List<RecentCapture> = emptyList(),
 ) {
-    var previewView by remember { mutableStateOf<PreviewView?>(null) }
-
-    LaunchedEffect(previewView, pendingCaptureSource, state.isRunning) {
-        val source = pendingCaptureSource
-        val preview = previewView
-        if (source == null) return@LaunchedEffect
+    LaunchedEffect(pendingCaptureSource, state.isRunning) {
+        val source = pendingCaptureSource ?: return@LaunchedEffect
         if (state.isRunning) {
             onPendingCaptureConsumed()
             return@LaunchedEffect
         }
-        if (preview != null) {
-            onStartPerception(preview, source)
-            onPendingCaptureConsumed()
-        }
+        onStartPerception(source)
+        onPendingCaptureConsumed()
     }
 
     Column(
@@ -1643,7 +1688,6 @@ private fun CapturePage(
         }
         CaptureHeader(
             state = state,
-            previewView = previewView,
             onStartPerception = onStartPerception,
             onStopPerception = onStopPerception,
             onUploadYoloImage = onUploadYoloImage,
@@ -1666,23 +1710,10 @@ private fun CapturePage(
             )
         }
         CaptureDetectionSummary(state = state)
-        AndroidView(
-            factory = { context ->
-                PreviewView(context).apply {
-                    scaleType = PreviewView.ScaleType.FILL_CENTER
-                    implementationMode = PreviewView.ImplementationMode.COMPATIBLE
-                }.also { previewView = it }
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(150.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant),
-        )
         LatestFrameCompactCard(
             state = state,
             nowMillis = nowMillis,
-            modifier = Modifier.height(320.dp),
+            modifier = Modifier.fillMaxWidth(),
         )
         AudioCompactCard(
             state = state,
@@ -1939,8 +1970,7 @@ private fun CaptureDetectionSummary(state: PerceptionUiState) {
 @Composable
 private fun CaptureHeader(
     state: PerceptionUiState,
-    previewView: PreviewView?,
-    onStartPerception: (PreviewView, CaptureStartSource) -> Unit,
+    onStartPerception: (CaptureStartSource) -> Unit,
     onStopPerception: () -> Unit,
     onUploadYoloImage: () -> Unit,
     showYoloUpload: Boolean,
@@ -1975,8 +2005,7 @@ private fun CaptureHeader(
                     }
                 } else {
                     Button(
-                        onClick = { previewView?.let { onStartPerception(it, CaptureStartSource.Manual) } },
-                        enabled = previewView != null,
+                        onClick = { onStartPerception(CaptureStartSource.Manual) },
                     ) {
                         Text("Start")
                     }
@@ -1984,20 +2013,14 @@ private fun CaptureHeader(
             }
         }
 
-        // Debug controls: model + tiling-grid selectors on their own row.
+        // Debug control: force an immediate capture. The model is fixed to yolo26n-1920.
         if (showYoloUpload) {
             Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                YoloModelDropdown(
-                    selectedModel = state.selectedYoloModel,
-                    onModelChange = onSelectYoloModel,
-                )
-                OutlinedButton(
-                    onClick = onDebugCapture,
-                    enabled = state.isRunning,
-                ) {
-                    Text("Capture now")
-                }
+            OutlinedButton(
+                onClick = onDebugCapture,
+                enabled = state.isRunning,
+            ) {
+                Text("Capture now")
             }
         }
     }
@@ -2018,6 +2041,7 @@ private fun SettingPage(
     spaceName: String? = null,
     onModeSelected: (UserRole) -> Unit = {},
     onRenameSpace: (String) -> Unit = {},
+    onSetCapacity: (Int) -> Unit = {},
 ) {
     val displayName = userDisplayName?.takeIf { it.isNotBlank() } ?: userEmail
     val avatarLetter = displayName.firstOrNull()?.uppercaseChar()?.toString() ?: "R"
@@ -2028,9 +2052,10 @@ private fun SettingPage(
     var renameInput by remember { mutableStateOf("") }
 
     if (showSetupGuide) {
-        SetupGuideDialog(onDismiss = { name ->
+        SetupGuideDialog(onDismiss = { name, capacity ->
             showSetupGuide = false
             if (name != null) onRenameSpace(name)
+            if (capacity != null) onSetCapacity(capacity)
         })
     }
 
@@ -2335,51 +2360,6 @@ private fun HallDropdown(
 }
 
 @Composable
-private fun YoloModelDropdown(
-    selectedModel: YoloModel,
-    onModelChange: (YoloModel) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    var expanded by remember { mutableStateOf(false) }
-    Box(modifier = modifier) {
-        Row(
-            modifier = Modifier
-                .clip(RoundedCornerShape(8.dp))
-                .background(androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant)
-                .clickable { expanded = true }
-                .padding(horizontal = 14.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Text(
-                text = selectedModel.displayName,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 14.sp,
-                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                text = "▾",
-                fontSize = 14.sp,
-                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            YoloModel.values().forEach { model ->
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            model.displayName,
-                            fontWeight = if (model == selectedModel) FontWeight.Bold else FontWeight.Normal,
-                        )
-                    },
-                    onClick = { onModelChange(model); expanded = false },
-                )
-            }
-        }
-    }
-}
-
-@Composable
 private fun ConnectionCard(
     state: SensorDashboardState,
     freshness: PacketFreshness,
@@ -2603,9 +2583,7 @@ private fun LatestFrameCompactCard(
         FramePreview(
             frame = state.latestFrame,
             detections = state.yoloDetections,
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
+            modifier = Modifier.fillMaxWidth(),
         )
         Text(
             text = state.yoloMessage,
@@ -2648,6 +2626,10 @@ private fun AudioCompactCard(
                 fontWeight = FontWeight.SemiBold,
             )
         }
+        state.audioRecordingStartedAtMillis?.let { startedAt ->
+            Spacer(Modifier.height(8.dp))
+            AudioRecordingProgress(startedAtMillis = startedAt)
+        }
         Spacer(Modifier.height(6.dp))
         WaveformBar(waveform = state.audioWaveform)
         Text(
@@ -2672,15 +2654,43 @@ private fun AudioCompactCard(
 }
 
 @Composable
+private fun AudioRecordingProgress(startedAtMillis: Long) {
+    val totalSeconds = AudioCaptureController.RECORDING_WINDOW_SECONDS
+    var now by remember(startedAtMillis) { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(startedAtMillis) {
+        while (true) {
+            now = System.currentTimeMillis()
+            kotlinx.coroutines.delay(100L)
+        }
+    }
+    val elapsedSeconds = ((now - startedAtMillis) / 1000f).coerceIn(0f, totalSeconds.toFloat())
+    val progress = (elapsedSeconds / totalSeconds).coerceIn(0f, 1f)
+
+    Column {
+        Text(
+            text = "Recording audio…  ${elapsedSeconds.toInt()}s / ${totalSeconds}s",
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            color = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+        )
+        Spacer(Modifier.height(4.dp))
+        androidx.compose.material3.LinearProgressIndicator(
+            progress = { progress },
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+@Composable
 private fun FramePreview(
     frame: Bitmap?,
     detections: List<ObjectDetection>,
     modifier: Modifier = Modifier,
 ) {
-    val aspectRatio = frame?.let { it.width.toFloat() / it.height.toFloat() } ?: (16f / 9f)
+    // Always show the capture in a 4:3 box to match the 4:3 camera frames.
     Box(
         modifier = modifier
-            .aspectRatio(aspectRatio)
+            .aspectRatio(4f / 3f)
             .clip(RoundedCornerShape(8.dp))
             .background(androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center,
