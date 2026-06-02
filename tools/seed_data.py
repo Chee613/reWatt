@@ -98,7 +98,8 @@ def person_count(dt, hall):
         base = random.randint(45, 80)    # shoulder
     else:
         base = random.randint(50, 90)    # mid
-    return max(0, base + random.randint(-8, 8))
+    # Add per-10-min micro-variation (±12) so consecutive slots differ slightly
+    return max(0, base + random.randint(-12, 12))
 
 
 def get_uid():
@@ -118,8 +119,8 @@ def seed_hall(uid, hall):
 
     for day_back in range(30, 0, -1):
         day = now - timedelta(days=day_back)
-        for hour in range(7, 20):           # 07:00 – 19:30
-            for minute in (0, 30):
+        for hour in range(7, 20):           # 07:00 – 19:50
+            for minute in range(0, 60, 10): # every 10 minutes
                 dt = day.replace(hour=hour, minute=minute, second=0, microsecond=0)
                 ts_ms = int(dt.timestamp() * 1000)
                 node_id = "seed-node"
@@ -153,7 +154,7 @@ def seed_hall(uid, hall):
     if ops > 0:
         batch.commit()
 
-    print(f"  ✓ {hall}: {total} records written")
+    print(f"  OK {hall}: {total} records written")
 
 
 if __name__ == "__main__":
@@ -172,4 +173,5 @@ if __name__ == "__main__":
             print(f"  ERROR: {e}")
         print()
 
-    print("Done! Open the Admin phone → Analytics tab → Data to see the heatmap.")
+    print("Done! Open the Admin phone > Analytics tab > Data to see the heatmap.")
+    print("(10-min interval data: ~2340 records/hall, ~9360 total)")
