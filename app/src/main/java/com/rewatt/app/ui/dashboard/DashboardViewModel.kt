@@ -55,6 +55,12 @@ class DashboardViewModel(
     private val _hallSchedules = MutableStateFlow<Map<String, Array<IntArray>>>(emptyMap())
     val hallSchedules: StateFlow<Map<String, Array<IntArray>>> = _hallSchedules
 
+    private val _hallMeanSchedules = MutableStateFlow<Map<String, Array<IntArray>>>(emptyMap())
+    val hallMeanSchedules: StateFlow<Map<String, Array<IntArray>>> = _hallMeanSchedules
+
+    private val _hallMinuteSchedules = MutableStateFlow<Map<String, Array<IntArray>>>(emptyMap())
+    val hallMinuteSchedules: StateFlow<Map<String, Array<IntArray>>> = _hallMinuteSchedules
+
     private val _learnedSchedules = MutableStateFlow<Map<String, List<List<LearnedSegment>>>>(emptyMap())
     val learnedSchedules: StateFlow<Map<String, List<List<LearnedSegment>>>> = _learnedSchedules
 
@@ -68,6 +74,8 @@ class DashboardViewModel(
 
     init {
         listenToAllHallSchedules()
+        listenToAllHallMeanSchedules()
+        listenToAllHallMinuteSchedules()
         listenToAllLearnedSchedules()
         startAutoEnergyAdvice()
     }
@@ -82,6 +90,26 @@ class DashboardViewModel(
             while (isActive) {
                 delay(millisUntilNextBoundary(ENERGY_ADVICE_INTERVAL_MINUTES))
                 requestEnergyAdvice()
+            }
+        }
+    }
+
+    private fun listenToAllHallMeanSchedules() {
+        listOf("Hall 1", "Hall 2", "Hall 3", "Hall 4").forEach { hall ->
+            viewModelScope.launch {
+                repository.hallMeanScheduleFlow(hall).collect { schedule ->
+                    _hallMeanSchedules.update { current -> current + (hall to schedule) }
+                }
+            }
+        }
+    }
+
+    private fun listenToAllHallMinuteSchedules() {
+        listOf("Hall 1", "Hall 2", "Hall 3", "Hall 4").forEach { hall ->
+            viewModelScope.launch {
+                repository.hallMinuteScheduleFlow(hall).collect { schedule ->
+                    _hallMinuteSchedules.update { current -> current + (hall to schedule) }
+                }
             }
         }
     }

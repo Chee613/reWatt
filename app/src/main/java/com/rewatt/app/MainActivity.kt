@@ -181,6 +181,8 @@ class MainActivity : ComponentActivity() {
                     val uiState = viewModel.uiState.collectAsStateWithLifecycle()
                     val perceptionState = perceptionViewModel.uiState.collectAsStateWithLifecycle()
                     val hallSchedules by viewModel.hallSchedules.collectAsStateWithLifecycle()
+                    val hallMeanSchedules by viewModel.hallMeanSchedules.collectAsStateWithLifecycle()
+                    val hallMinuteSchedules by viewModel.hallMinuteSchedules.collectAsStateWithLifecycle()
                     val learnedSchedules by viewModel.learnedSchedules.collectAsStateWithLifecycle()
                     val recentCaptures by viewModel.recentCaptures.collectAsStateWithLifecycle()
                     val wasteSummary by viewModel.wasteSummary.collectAsStateWithLifecycle()
@@ -210,6 +212,8 @@ class MainActivity : ComponentActivity() {
                         spaceName = spaceName,
                         hallSnapshot = hallSnapshot,
                         hallSchedules = hallSchedules,
+                        hallMeanSchedules = hallMeanSchedules,
+                        hallMinuteSchedules = hallMinuteSchedules,
                         learnedSchedules = learnedSchedules,
                         recentCaptures = recentCaptures,
                         wasteSummary = wasteSummary,

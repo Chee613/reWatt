@@ -13,6 +13,7 @@ Download from: Firebase console → Project settings → Service accounts →
 """
 
 import os
+import sys
 import firebase_admin
 from firebase_admin import credentials, firestore
 from datetime import datetime, timedelta, timezone
@@ -25,18 +26,20 @@ cred = credentials.Certificate(_KEY)
 firebase_admin.initialize_app(cred)
 db = firestore.client()
 
-ROOMS = ["Hall 1", "Hall 2", "Hall 3", "Hall 4"]
+# Optionally seed only specific halls via CLI args, e.g.  python seed_data.py "Hall 1"
+ALL_ROOMS = ["Hall 1", "Hall 2", "Hall 3", "Hall 4"]
+ROOMS = sys.argv[1:] if len(sys.argv) > 1 else ALL_ROOMS
 
 # Break periods (room is EMPTY during these).
 # Format: (start_hour, start_min, end_hour, end_min)
 # 0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri
 HALL_BREAKS = {
     "Hall 1": {
-        0: [(10, 15, 11, 45), (15, 15, 16, 45)],
-        1: [(11, 15, 12, 45)],
-        2: [(11, 15, 12, 45), (15, 15, 16, 45)],
-        3: [(8,  0,  8, 45), (12, 15, 15, 45)],
-        4: [(12, 15, 15, 45)],
+        0: [(9, 30, 10, 30), (13,  0, 14, 30)],
+        1: [(10, 0, 11,  0), (14,  0, 15, 30)],
+        2: [(9,  0, 10, 30), (13, 30, 14, 30)],
+        3: [(10, 30, 12, 0), (15,  0, 16,  0)],
+        4: [(9, 30, 11,  0), (13,  0, 14, 30)],
     },
     "Hall 2": {
         0: [(9,  0, 10,  0), (14,  0, 15, 30)],

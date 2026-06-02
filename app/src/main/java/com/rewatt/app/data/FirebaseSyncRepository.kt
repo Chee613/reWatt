@@ -311,6 +311,97 @@ class FirebaseSyncRepository(
         }
     }
 
+    /**
+     * Same bucketing as [aggregateSchedule] (10-min telemetry → per day-of-week, per hour mean)
+     * but returns the actual mean person count per hour instead of a 0–3 level. Used by the
+     * Class Schedule to display the exact expected occupants on each block while staying aligned
+     * with the heatmap (the heatmap's level is just this mean bucketed into 1-40 / 41-80 / 81+).
+     */
+    fun hallMeanScheduleFlow(hallLabel: String): Flow<Array<IntArray>> = callbackFlow {
+        val uid = FirebaseAuth.getInstance().currentUser?.uid
+        if (uid == null) {
+            trySend(Array(7) { IntArray(24) { 0 } })
+            awaitClose { }
+            return@callbackFlow
+        }
+        val cutoffMs = System.currentTimeMillis() - 30L * 24 * 3600 * 1000
+        val listener = FirebaseFirestore.getInstance()
+            .collection("rewatt_users").document(uid)
+            .collection("rooms").document(hallLabel)
+            .collection("telemetry")
+            .whereGreaterThan("perceptionCapturedAt", cutoffMs)
+            .addSnapshotListener { snapshot, _ ->
+                trySend(aggregateMeanSchedule(snapshot?.documents.orEmpty()))
+            }
+        awaitClose { listener.remove() }
+    }
+
+    private fun aggregateMeanSchedule(docs: List<DocumentSnapshot>): Array<IntArray> {
+        val sums   = Array(7) { IntArray(24) { 0 } }
+        val counts = Array(7) { IntArray(24) { 0 } }
+        val cal    = java.util.Calendar.getInstance()
+        for (doc in docs) {
+            val ts    = doc.getLong("perceptionCapturedAt") ?: continue
+            val count = doc.getLong("personCount")?.toInt() ?: continue
+            cal.timeInMillis = ts
+            val dow  = (cal.get(java.util.Calendar.DAY_OF_WEEK) + 5) % 7
+            val hour = cal.get(java.util.Calendar.HOUR_OF_DAY)
+            sums[dow][hour]   += count
+            counts[dow][hour] += 1
+        }
+        return Array(7) { day ->
+            IntArray(24) { hour ->
+                val n = counts[day][hour]
+                if (n == 0) 0 else sums[day][hour] / n
+            }
+        }
+    }
+
+    /**
+     * 10-minute resolution mean occupancy: per day-of-week, per 10-min bin (144 bins/day).
+     * Lets the Class Schedule detect session start/end at the real 10-min granularity
+     * instead of snapping everything to whole hours.
+     */
+    fun hallMinuteScheduleFlow(hallLabel: String): Flow<Array<IntArray>> = callbackFlow {
+        val uid = FirebaseAuth.getInstance().currentUser?.uid
+        if (uid == null) {
+            trySend(Array(7) { IntArray(144) { 0 } })
+            awaitClose { }
+            return@callbackFlow
+        }
+        val cutoffMs = System.currentTimeMillis() - 30L * 24 * 3600 * 1000
+        val listener = FirebaseFirestore.getInstance()
+            .collection("rewatt_users").document(uid)
+            .collection("rooms").document(hallLabel)
+            .collection("telemetry")
+            .whereGreaterThan("perceptionCapturedAt", cutoffMs)
+            .addSnapshotListener { snapshot, _ ->
+                trySend(aggregateMinuteSchedule(snapshot?.documents.orEmpty()))
+            }
+        awaitClose { listener.remove() }
+    }
+
+    private fun aggregateMinuteSchedule(docs: List<DocumentSnapshot>): Array<IntArray> {
+        val sums   = Array(7) { IntArray(144) { 0 } }
+        val counts = Array(7) { IntArray(144) { 0 } }
+        val cal    = java.util.Calendar.getInstance()
+        for (doc in docs) {
+            val ts    = doc.getLong("perceptionCapturedAt") ?: continue
+            val count = doc.getLong("personCount")?.toInt() ?: continue
+            cal.timeInMillis = ts
+            val dow = (cal.get(java.util.Calendar.DAY_OF_WEEK) + 5) % 7
+            val bin = (cal.get(java.util.Calendar.HOUR_OF_DAY) * 60 + cal.get(java.util.Calendar.MINUTE)) / 10
+            sums[dow][bin]   += count
+            counts[dow][bin] += 1
+        }
+        return Array(7) { day ->
+            IntArray(144) { bin ->
+                val n = counts[day][bin]
+                if (n == 0) 0 else sums[day][bin] / n
+            }
+        }
+    }
+
     suspend fun loadHallSchedule(hallLabel: String): Array<IntArray> {
         val currentUid = FirebaseAuth.getInstance().currentUser?.uid
             ?: return Array(7) { IntArray(24) { 0 } }
