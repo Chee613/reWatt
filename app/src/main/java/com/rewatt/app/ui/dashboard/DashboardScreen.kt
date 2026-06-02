@@ -811,6 +811,7 @@ private fun AnalyticPage(
                 ClassScheduleCard(
                     hall = selectedHall,
                     learnedDays = learnedSchedules[selectedHall.label],
+                    firestoreSchedule = hallSchedules[selectedHall.label],
                 )
             }
         }
@@ -2336,23 +2337,46 @@ private val dayLabels = listOf("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")
 private fun ClassScheduleCard(
     hall: Hall,
     learnedDays: List<List<LearnedSegment>>?,
+    firestoreSchedule: Array<IntArray>? = null,
 ) {
     val gridStartMin = CLASS_GRID_START_HOUR * 60
     val gridEndMin   = CLASS_GRID_END_HOUR   * 60
     val totalHours   = CLASS_GRID_END_HOUR - CLASS_GRID_START_HOUR
     val hourWidthDp  = CLASS_HOUR_WIDTH_DP.dp
 
-    // Cold-start: convert hardcoded hallDayBreaks to estimated segments
-    val isEstimated = learnedDays == null || learnedDays.all { it.isEmpty() }
-    val displayDays: List<List<LearnedSegment>> = if (!isEstimated) {
-        learnedDays!!
+    // Derive class sessions from the SAME hourly occupancy grid as the Weekly Occupancy
+    // heatmap, so the two views always align. A "session" is a contiguous run of hours
+    // with occupancy level > 0; empty hours (lunch / overnight / weekend) split sessions.
+    val hasHeatmapData = firestoreSchedule?.any { row -> row.any { v -> v > 0 } } == true
+    val isEstimated = !hasHeatmapData
+    val displayDays: List<List<LearnedSegment>> = if (hasHeatmapData) {
+        List(7) { dow ->
+            val hours = firestoreSchedule!![dow]
+            val sessions = mutableListOf<LearnedSegment>()
+            var runStartHour = -1
+            var runMaxLevel = 0
+            for (h in CLASS_GRID_START_HOUR until CLASS_GRID_END_HOUR) {
+                val level = hours.getOrElse(h) { 0 }
+                if (level > 0) {
+                    if (runStartHour < 0) runStartHour = h
+                    if (level > runMaxLevel) runMaxLevel = level
+                } else if (runStartHour >= 0) {
+                    sessions.add(levelSegment(runStartHour, h, runMaxLevel))
+                    runStartHour = -1; runMaxLevel = 0
+                }
+            }
+            if (runStartHour >= 0) {
+                sessions.add(levelSegment(runStartHour, CLASS_GRID_END_HOUR, runMaxLevel))
+            }
+            sessions
+        }
     } else {
+        // Cold-start (no sensor data yet): hardcoded hallDayBreaks estimate
         val breaks = hallDayBreaks[hall] ?: emptyMap()
         List(7) { dow ->
             val dayBreaks = breaks[dow] ?: emptyList()
             if (dow >= 5) emptyList() // no Sat/Sun in hardcoded
             else {
-                // Collect active hours from 7-20 using the existing inRange logic
                 val activeRanges = mutableListOf<IntRange>()
                 var rangeStart: Int? = null
                 for (minuteOfDay in (gridStartMin until gridEndMin)) {
@@ -2369,7 +2393,6 @@ private fun ClassScheduleCard(
                     }
                 }
                 rangeStart?.let { start -> activeRanges.add(start until gridEndMin) }
-                // Merge ranges with gap < 30 min
                 val merged = mutableListOf<IntRange>()
                 for (r in activeRanges) {
                     if (merged.isNotEmpty() && r.first - merged.last().last <= 30)
@@ -2390,9 +2413,6 @@ private fun ClassScheduleCard(
         }
     }
 
-    // Count weeks of real data (use weeksSeen from first non-empty day)
-    val weeksSeen = learnedDays?.flatten()?.maxOfOrNull { it.weeksSeen } ?: 0
-
     // Determine if today is a Malaysian public holiday
     val todayCal = Calendar.getInstance()
     val todayDow = (todayCal.get(Calendar.DAY_OF_WEEK) + 5) % 7
@@ -2406,7 +2426,7 @@ private fun ClassScheduleCard(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Class Schedule", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
             Text(
-                if (isEstimated) "estimated" else "learned from $weeksSeen weeks",
+                if (isEstimated) "estimated" else "from occupancy data",
                 fontSize = 11.sp,
                 color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -2529,12 +2549,29 @@ private fun ClassScheduleCard(
                                 if (endMin <= startMin) return@forEach
                                 val leftDp  = ((startMin - gridStartMin) / 60f) * CLASS_HOUR_WIDTH_DP
                                 val widthDp = ((endMin - startMin) / 60f) * CLASS_HOUR_WIDTH_DP
-                                val blockColor = if (isEstimated) Color(0xFFFFE082)
-                                else when (seg.occupancyLevel) {
-                                    "high"   -> Color(0xFFFFA000)
-                                    "medium" -> Color(0xFFFFB300)
-                                    else     -> Color(0xFFFFCC02)
+
+                                // Use heatmap occupancy level for this session window
+                                val heatLevel = if (firestoreSchedule != null) {
+                                    val startH = startMin / 60
+                                    val endH   = (endMin - 1) / 60
+                                    (startH..endH).maxOfOrNull { h ->
+                                        firestoreSchedule.getOrNull(dow)?.getOrElse(h) { 0 } ?: 0
+                                    } ?: 0
+                                } else 0
+                                val blockColor = when (heatLevel) {
+                                    3    -> Color(0xFF1565C0) // 81+   dark blue
+                                    2    -> Color(0xFF4A90D9) // 41-80 medium blue
+                                    1    -> Color(0xFF90B4D8) // 1-40  light blue
+                                    else -> Color(0xFFFFE082) // no data — pale yellow (estimated)
                                 }
+                                val textColor = if (heatLevel >= 2) Color.White else Color(0xFF5D4037)
+                                val occupancyLabel = when (heatLevel) {
+                                    3 -> "81+ ppl"
+                                    2 -> "41–80 ppl"
+                                    1 -> "1–40 ppl"
+                                    else -> "No data"
+                                }
+
                                 var showTooltip by remember { mutableStateOf(false) }
                                 Box(
                                     modifier = Modifier
@@ -2543,7 +2580,7 @@ private fun ClassScheduleCard(
                                         .fillMaxHeight()
                                         .clip(RoundedCornerShape(4.dp))
                                         .background(blockColor)
-                                        .then(if (isEstimated) Modifier else Modifier.clickable { showTooltip = !showTooltip }),
+                                        .clickable { showTooltip = !showTooltip },
                                     contentAlignment = Alignment.TopStart,
                                 ) {
                                     val startLabel = minuteLabel(startMin)
@@ -2552,11 +2589,11 @@ private fun ClassScheduleCard(
                                         Column(modifier = Modifier.padding(horizontal = 3.dp, vertical = 2.dp)) {
                                             Text("$startLabel–$endLabel",
                                                 fontSize = 8.sp, fontWeight = FontWeight.SemiBold,
-                                                color = Color(0xFF5D4037), maxLines = 1,
+                                                color = textColor, maxLines = 1,
                                                 overflow = TextOverflow.Clip)
-                                            if (!isEstimated && widthDp >= 50) {
-                                                Text("${seg.predictedOccupancy} ppl",
-                                                    fontSize = 7.sp, color = Color(0xFF795548), maxLines = 1)
+                                            if (widthDp >= 50) {
+                                                Text(occupancyLabel,
+                                                    fontSize = 7.sp, color = textColor, maxLines = 1)
                                             }
                                         }
                                     }
@@ -2570,7 +2607,7 @@ private fun ClassScheduleCard(
                                                 .clickable { showTooltip = false }
                                         ) {
                                             Text(
-                                                "$startLabel–$endLabel · ${seg.predictedOccupancy} ppl · seen ${seg.weeksSeen} wks",
+                                                "$startLabel–$endLabel · $occupancyLabel",
                                                 fontSize = 9.sp,
                                                 color = Color.White,
                                             )
@@ -2605,6 +2642,29 @@ private fun minuteLabel(minuteOfDay: Int): String {
         val h12 = if (h == 0 || h == 12) 12 else h % 12
         "${h12}:${m.toString().padStart(2, '0')}$ampm"
     }
+}
+
+/** Build a session segment from an hour range [startHour, endHour) and its heatmap level. */
+private fun levelSegment(startHour: Int, endHour: Int, level: Int): LearnedSegment {
+    val occ = when (level) {
+        3 -> 100  // 81+
+        2 -> 60   // 41–80
+        1 -> 20   // 1–40
+        else -> 0
+    }
+    val lvl = when (level) {
+        3 -> "high"
+        2 -> "medium"
+        else -> "low"
+    }
+    return LearnedSegment(
+        startMinuteOfDay = startHour * 60,
+        endMinuteOfDay = endHour * 60,
+        predictedOccupancy = occ,
+        occupancyLevel = lvl,
+        weeksSeen = 0,
+        lastSeenMillis = 0L,
+    )
 }
 
 @Composable
