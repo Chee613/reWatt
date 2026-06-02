@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -96,7 +98,6 @@ import com.rewatt.app.perception.YoloModel
 import com.rewatt.app.telemetry.PacketFreshness
 import com.rewatt.app.telemetry.RadarTelemetry
 import com.rewatt.app.usb.UsbConnectionStatus
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -151,6 +152,8 @@ fun DashboardScreen(
     spaceName: String? = null,
     hallSnapshot: HallSnapshot? = null,
     hallSchedules: Map<String, Array<IntArray>> = emptyMap(),
+    hallMeanSchedules: Map<String, Array<IntArray>> = emptyMap(),
+    hallMinuteSchedules: Map<String, Array<IntArray>> = emptyMap(),
     learnedSchedules: Map<String, List<List<LearnedSegment>>> = emptyMap(),
     recentCaptures: List<RecentCapture> = emptyList(),
     wasteSummary: EnergyWasteSummary? = null,
@@ -277,6 +280,7 @@ fun DashboardScreen(
                     spaceName = spaceName,
                     hallSnapshot = hallSnapshot,
                     wasteSummary = wasteSummary,
+                    hallMeanSchedules = hallMeanSchedules,
                 )
 
                 ReWattTab.Analytic -> AnalyticPage(
@@ -285,6 +289,8 @@ fun DashboardScreen(
                     selectedHall = selectedHall,
                     onHallChange = { selectedHall = it },
                     hallSchedules = hallSchedules,
+                    hallMeanSchedules = hallMeanSchedules,
+                    hallMinuteSchedules = hallMinuteSchedules,
                     learnedSchedules = learnedSchedules,
                 )
 
@@ -394,6 +400,7 @@ private fun LivePage(
     spaceName: String? = null,
     hallSnapshot: HallSnapshot? = null,
     wasteSummary: EnergyWasteSummary? = null,
+    hallMeanSchedules: Map<String, Array<IntArray>> = emptyMap(),
 ) {
     val telemetry = uiState.sensorState.latestTelemetry
     val analysis = uiState.sensorState.activityAnalysisState.analysis
@@ -406,16 +413,19 @@ private fun LivePage(
     val displayHumidity = if (isAdmin && hallSnapshot?.humidityPercent != null) hallSnapshot.humidityPercent else telemetry?.humidityPercent?.toDouble()
     val displayTopSound = if (isAdmin) hallSnapshot?.primaryActivity else perceptionState.soundDetections.firstOrNull()?.label
 
-    val nowAction = remember(uiState.nowMillis, displayPersonCount, displayTempC, analysis?.occupancyHint, selectedHall) {
+    val nowAction = remember(uiState.nowMillis, displayPersonCount, displayTempC, analysis?.occupancyHint, selectedHall, hallMeanSchedules) {
         deriveNowAction(
             nowMillis = uiState.nowMillis,
             personCount = displayPersonCount,
             temperatureC = displayTempC?.toFloat(),
             occupancyHint = analysis?.occupancyHint,
             hall = selectedHall,
+            schedule = hallMeanSchedules[selectedHall.label],
         )
     }
-    val sessionEndTime = remember(uiState.nowMillis, selectedHall) { deriveSessionEndTime(uiState.nowMillis, selectedHall) }
+    val sessionEndTime = remember(uiState.nowMillis, selectedHall, hallMeanSchedules) {
+        deriveSessionEndTime(uiState.nowMillis, selectedHall, hallMeanSchedules[selectedHall.label])
+    }
 
     val weather = uiState.weather
     val energyAdvice = uiState.energyAdvice
@@ -774,6 +784,8 @@ private fun AnalyticPage(
     selectedHall: Hall,
     onHallChange: (Hall) -> Unit,
     hallSchedules: Map<String, Array<IntArray>> = emptyMap(),
+    hallMeanSchedules: Map<String, Array<IntArray>> = emptyMap(),
+    hallMinuteSchedules: Map<String, Array<IntArray>> = emptyMap(),
     learnedSchedules: Map<String, List<List<LearnedSegment>>> = emptyMap(),
 ) {
     var isAction by rememberSaveable { mutableStateOf(true) }
@@ -795,6 +807,7 @@ private fun AnalyticPage(
                 perceptionState = perceptionState,
                 modifier = Modifier.weight(1f),
                 hallSchedules = hallSchedules,
+                hallMeanSchedules = hallMeanSchedules,
             )
         } else {
             Column(
@@ -804,13 +817,13 @@ private fun AnalyticPage(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 HallDropdown(selectedHall = selectedHall, onHallChange = onHallChange)
-                WeeklyOccupancyCard(
-                    hall = selectedHall,
-                    firestoreSchedule = hallSchedules[selectedHall.label],
-                )
                 ClassScheduleCard(
                     hall = selectedHall,
                     learnedDays = learnedSchedules[selectedHall.label],
+                    minuteSchedule = hallMinuteSchedules[selectedHall.label],
+                )
+                WeeklyOccupancyCard(
+                    hall = selectedHall,
                     firestoreSchedule = hallSchedules[selectedHall.label],
                 )
             }
@@ -894,11 +907,11 @@ private val timetableOvernight = TR(18, 30, 7, 30)
 // Hall 2–4 breaks are all >45 min each, 2–3 per weekday.
 private val hallDayBreaks: Map<Hall, Map<Int, List<TR>>> = mapOf(
     Hall.Hall1 to mapOf(
-        0 to listOf(TR(10, 15, 11, 45), TR(15, 15, 16, 45)),  // Mon  90+90 min
-        1 to listOf(TR(11, 15, 12, 45)),                        // Tue  90 min
-        2 to listOf(TR(11, 15, 12, 45), TR(15, 15, 16, 45)),  // Wed  90+90 min
-        3 to listOf(TR(8, 0, 8, 45),    TR(12, 15, 15, 45)),  // Thu  45+210 min
-        4 to listOf(TR(12, 15, 15, 45)),                        // Fri  210 min
+        0 to listOf(TR(9, 30, 10, 30), TR(13, 0, 14, 30)),   // Mon  60+90 min
+        1 to listOf(TR(10, 0, 11, 0),  TR(14, 0, 15, 30)),   // Tue  60+90 min
+        2 to listOf(TR(9, 0, 10, 30),  TR(13, 30, 14, 30)),  // Wed  90+60 min
+        3 to listOf(TR(10, 30, 12, 0), TR(15, 0, 16, 0)),    // Thu  90+60 min
+        4 to listOf(TR(9, 30, 11, 0),  TR(13, 0, 14, 30)),   // Fri  90+90 min
     ),
     Hall.Hall2 to mapOf(
         0 to listOf(TR(9, 0, 10, 0),   TR(14, 0, 15, 30)),   // Mon  60+90 min
@@ -1322,9 +1335,10 @@ private fun ActionPage(
     perceptionState: PerceptionUiState,
     modifier: Modifier = Modifier,
     hallSchedules: Map<String, Array<IntArray>> = emptyMap(),
+    hallMeanSchedules: Map<String, Array<IntArray>> = emptyMap(),
 ) {
-    val hasAnySensorHistory = hallSchedules.values.any { s -> s.any { row -> row.any { v -> v != 0 } } }
-    val showEmptyState = hallSchedules.isNotEmpty() && !hasAnySensorHistory
+    val hasAnySensorHistory = hallMeanSchedules.values.any { s -> s.any { row -> row.any { v -> v != 0 } } }
+    val showEmptyState = hallMeanSchedules.isNotEmpty() && !hasAnySensorHistory
 
     val telemetry = uiState.sensorState.latestTelemetry
     val analysis = uiState.sensorState.activityAnalysisState.analysis
@@ -1339,7 +1353,7 @@ private fun ActionPage(
     }
 
     val isToday = previewDayOffset == 0
-    val nowActions = remember(previewMillis, isToday, perceptionState.personCount, telemetry?.temperatureC, analysis?.occupancyHint) {
+    val nowActions = remember(previewMillis, isToday, perceptionState.personCount, telemetry?.temperatureC, analysis?.occupancyHint, hallMeanSchedules) {
         Hall.values().map { hall ->
             hall to deriveNowAction(
                 nowMillis = previewMillis,
@@ -1347,12 +1361,13 @@ private fun ActionPage(
                 temperatureC = if (isToday) telemetry?.temperatureC else null,
                 occupancyHint = if (isToday) analysis?.occupancyHint else null,
                 hall = hall,
+                schedule = hallMeanSchedules[hall.label],
             )
         }
     }
 
-    val dayNotifications = remember(previewDayOffset, uiState.nowMillis) {
-        buildAllHallsDayNotifications(previewDayOffset, uiState.nowMillis)
+    val dayNotifications = remember(previewDayOffset, uiState.nowMillis, hallMeanSchedules) {
+        buildAllHallsDayNotifications(previewDayOffset, uiState.nowMillis, hallMeanSchedules)
     }
     var dismissedIds by rememberSaveable { mutableStateOf(setOf<String>()) }
     var nowDismissed by rememberSaveable { mutableStateOf(false) }
@@ -2327,9 +2342,10 @@ private fun SettingPage(
 
 // ── Class Schedule Card (learned session timetable) ──────────────────────────
 
-private val CLASS_GRID_START_HOUR = 7   // 7 AM
-private val CLASS_GRID_END_HOUR   = 20  // 8 PM
-private val CLASS_HOUR_WIDTH_DP   = 60  // dp per hour column
+private val CLASS_GRID_START_HOUR = 8   // 08:00
+private val CLASS_GRID_END_HOUR   = 19  // 19:00  → 11 hours (08:00–19:00), fits on screen
+private val CLASS_DAY_LABEL_WIDTH_DP = 36  // width of the pinned MON/TUE… column
+private val CLASS_ROW_HEIGHT_DP   = 92  // taller rows so all 3 stacked labels fit without clipping
 
 private val dayLabels = listOf("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")
 
@@ -2337,36 +2353,38 @@ private val dayLabels = listOf("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")
 private fun ClassScheduleCard(
     hall: Hall,
     learnedDays: List<List<LearnedSegment>>?,
-    firestoreSchedule: Array<IntArray>? = null,
+    minuteSchedule: Array<IntArray>? = null,
 ) {
     val gridStartMin = CLASS_GRID_START_HOUR * 60
     val gridEndMin   = CLASS_GRID_END_HOUR   * 60
     val totalHours   = CLASS_GRID_END_HOUR - CLASS_GRID_START_HOUR
-    val hourWidthDp  = CLASS_HOUR_WIDTH_DP.dp
+    val startBin = CLASS_GRID_START_HOUR * 6   // 10-min bins (6 per hour)
+    val endBin   = CLASS_GRID_END_HOUR   * 6
 
-    // Derive class sessions from the SAME hourly occupancy grid as the Weekly Occupancy
-    // heatmap, so the two views always align. A "session" is a contiguous run of hours
-    // with occupancy level > 0; empty hours (lunch / overnight / weekend) split sessions.
-    val hasHeatmapData = firestoreSchedule?.any { row -> row.any { v -> v > 0 } } == true
+    // Derive class sessions from the 10-minute occupancy bins so start/end land on the real
+    // session edges (not snapped to whole hours). A "session" is a contiguous run of occupied
+    // 10-min bins (mean > 0); empty bins (breaks / overnight / weekend) split them.
+    val hasHeatmapData = minuteSchedule?.any { row -> row.any { v -> v > 0 } } == true
     val isEstimated = !hasHeatmapData
     val displayDays: List<List<LearnedSegment>> = if (hasHeatmapData) {
         List(7) { dow ->
-            val hours = firestoreSchedule!![dow]
+            val bins = minuteSchedule!![dow]
             val sessions = mutableListOf<LearnedSegment>()
-            var runStartHour = -1
-            var runMaxLevel = 0
-            for (h in CLASS_GRID_START_HOUR until CLASS_GRID_END_HOUR) {
-                val level = hours.getOrElse(h) { 0 }
-                if (level > 0) {
-                    if (runStartHour < 0) runStartHour = h
-                    if (level > runMaxLevel) runMaxLevel = level
-                } else if (runStartHour >= 0) {
-                    sessions.add(levelSegment(runStartHour, h, runMaxLevel))
-                    runStartHour = -1; runMaxLevel = 0
+            var runStartBin = -1
+            var runSum = 0
+            var runCount = 0
+            for (b in startBin until endBin) {
+                val mean = bins.getOrElse(b) { 0 }
+                if (mean > 0) {
+                    if (runStartBin < 0) { runStartBin = b; runSum = 0; runCount = 0 }
+                    runSum += mean; runCount++
+                } else if (runStartBin >= 0) {
+                    sessions.add(meanSegment(runStartBin * 10, b * 10, if (runCount > 0) runSum / runCount else 0))
+                    runStartBin = -1
                 }
             }
-            if (runStartHour >= 0) {
-                sessions.add(levelSegment(runStartHour, CLASS_GRID_END_HOUR, runMaxLevel))
+            if (runStartBin >= 0) {
+                sessions.add(meanSegment(runStartBin * 10, endBin * 10, if (runCount > 0) runSum / runCount else 0))
             }
             sessions
         }
@@ -2435,7 +2453,7 @@ private fun ClassScheduleCard(
 
         Row(modifier = Modifier.fillMaxWidth()) {
             // Pinned day-label column
-            Column(modifier = Modifier.width(52.dp)) {
+            Column(modifier = Modifier.width(CLASS_DAY_LABEL_WIDTH_DP.dp)) {
                 // Blank cell above time header
                 Box(modifier = Modifier.height(20.dp))
                 dayLabels.forEachIndexed { idx, label ->
@@ -2443,7 +2461,7 @@ private fun ClassScheduleCard(
                     val isTodayHoliday = isToday && todayIsHoliday
                     Box(
                         modifier = Modifier
-                            .height(48.dp)
+                            .height(CLASS_ROW_HEIGHT_DP.dp)
                             .fillMaxWidth()
                             .background(
                                 if (isTodayHoliday) Color(0xFFFFF3E0)
@@ -2482,20 +2500,17 @@ private fun ClassScheduleCard(
                 }
             }
 
-            // Horizontally scrollable time grid
-            Box(modifier = Modifier
-                .weight(1f)
-                .horizontalScroll(rememberScrollState())
-            ) {
-                val totalGridWidth = hourWidthDp * totalHours
-                Column {
-                    // Time header row
-                    Row(modifier = Modifier.width(totalGridWidth)) {
+            // Time grid sized to fit the whole 12-hour span on screen (no horizontal scroll).
+            BoxWithConstraints(modifier = Modifier.weight(1f)) {
+                val hourWidth = maxWidth / totalHours   // Dp per hour column, fills available width
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    // Time header row — 24-hour labels (08, 09, … 18)
+                    Row(modifier = Modifier.fillMaxWidth()) {
                         for (h in CLASS_GRID_START_HOUR until CLASS_GRID_END_HOUR) {
-                            Box(modifier = Modifier.width(hourWidthDp).height(20.dp),
-                                contentAlignment = Alignment.CenterStart) {
+                            Box(modifier = Modifier.width(hourWidth).height(20.dp),
+                                contentAlignment = Alignment.Center) {
                                 Text(
-                                    if (h < 12) "${h}AM" else if (h == 12) "12PM" else "${h - 12}PM",
+                                    "%02d".format(h),
                                     fontSize = 9.sp,
                                     color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -2507,8 +2522,8 @@ private fun ClassScheduleCard(
                         val isHolidayRow = (dow == todayDow) && todayIsHoliday
                         Box(
                             modifier = Modifier
-                                .width(totalGridWidth)
-                                .height(48.dp)
+                                .fillMaxWidth()
+                                .height(CLASS_ROW_HEIGHT_DP.dp)
                                 .background(
                                     if (isHolidayRow) Color(0xFFFFF3E0)
                                     else if (dow % 2 == 0)
@@ -2518,11 +2533,11 @@ private fun ClassScheduleCard(
                         ) {
                             // Hour grid lines
                             Canvas(modifier = Modifier.fillMaxSize()) {
-                                val lineColor = android.graphics.Color.parseColor("#22000000")
+                                val lineColor = Color(0x22000000)
                                 for (h in 0..totalHours) {
-                                    val x = h * CLASS_HOUR_WIDTH_DP.dp.toPx()
+                                    val x = h * size.width / totalHours
                                     drawLine(
-                                        color = Color(lineColor),
+                                        color = lineColor,
                                         start = androidx.compose.ui.geometry.Offset(x, 0f),
                                         end = androidx.compose.ui.geometry.Offset(x, size.height),
                                         strokeWidth = 0.5.dp.toPx(),
@@ -2547,71 +2562,60 @@ private fun ClassScheduleCard(
                                 val startMin = seg.startMinuteOfDay.coerceIn(gridStartMin, gridEndMin)
                                 val endMin   = seg.endMinuteOfDay.coerceIn(gridStartMin, gridEndMin)
                                 if (endMin <= startMin) return@forEach
-                                val leftDp  = ((startMin - gridStartMin) / 60f) * CLASS_HOUR_WIDTH_DP
-                                val widthDp = ((endMin - startMin) / 60f) * CLASS_HOUR_WIDTH_DP
+                                val leftDp  = hourWidth * ((startMin - gridStartMin) / 60f)
+                                val widthDp = hourWidth * ((endMin - startMin) / 60f)
 
-                                // Use heatmap occupancy level for this session window
-                                val heatLevel = if (firestoreSchedule != null) {
-                                    val startH = startMin / 60
-                                    val endH   = (endMin - 1) / 60
-                                    (startH..endH).maxOfOrNull { h ->
-                                        firestoreSchedule.getOrNull(dow)?.getOrElse(h) { 0 } ?: 0
-                                    } ?: 0
-                                } else 0
-                                val blockColor = when (heatLevel) {
+                                // Color bucket follows the SAME thresholds as the heatmap so the
+                                // two views align; the exact expected occupants is shown as a number.
+                                val expected = seg.predictedOccupancy
+                                val heatLevel = when {
+                                    expected >= 81 -> 3
+                                    expected >= 41 -> 2
+                                    expected >= 1  -> 1
+                                    else           -> 0
+                                }
+                                val blockColor = if (isEstimated) Color(0xFFFFE082) else when (heatLevel) {
                                     3    -> Color(0xFF1565C0) // 81+   dark blue
                                     2    -> Color(0xFF4A90D9) // 41-80 medium blue
                                     1    -> Color(0xFF90B4D8) // 1-40  light blue
-                                    else -> Color(0xFFFFE082) // no data — pale yellow (estimated)
+                                    else -> Color(0xFFFFE082) // no data — pale yellow
                                 }
                                 val textColor = if (heatLevel >= 2) Color.White else Color(0xFF5D4037)
-                                val occupancyLabel = when (heatLevel) {
-                                    3 -> "81+ ppl"
-                                    2 -> "41–80 ppl"
-                                    1 -> "1–40 ppl"
-                                    else -> "No data"
-                                }
+                                val occupancyLabel = if (isEstimated) "~$expected" else "$expected ppl"
+                                val startLabel = minuteLabel(startMin)
+                                val endLabel   = minuteLabel(endMin)
 
-                                var showTooltip by remember { mutableStateOf(false) }
                                 Box(
                                     modifier = Modifier
-                                        .padding(start = leftDp.dp, top = 4.dp, bottom = 4.dp)
-                                        .width(widthDp.dp.coerceAtLeast(4.dp))
+                                        .padding(start = leftDp, top = 3.dp, bottom = 3.dp, end = 1.dp)
+                                        .width((widthDp - 1.dp).coerceAtLeast(4.dp))
                                         .fillMaxHeight()
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(blockColor)
-                                        .clickable { showTooltip = !showTooltip },
-                                    contentAlignment = Alignment.TopStart,
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(blockColor),
                                 ) {
-                                    val startLabel = minuteLabel(startMin)
-                                    val endLabel   = minuteLabel(endMin)
-                                    if (widthDp >= 30) {
-                                        Column(modifier = Modifier.padding(horizontal = 3.dp, vertical = 2.dp)) {
-                                            Text("$startLabel–$endLabel",
-                                                fontSize = 8.sp, fontWeight = FontWeight.SemiBold,
-                                                color = textColor, maxLines = 1,
-                                                overflow = TextOverflow.Clip)
-                                            if (widthDp >= 50) {
-                                                Text(occupancyLabel,
-                                                    fontSize = 7.sp, color = textColor, maxLines = 1)
-                                            }
-                                        }
-                                    }
-                                    if (showTooltip) {
-                                        Box(
-                                            modifier = Modifier
-                                                .align(Alignment.BottomStart)
-                                                .padding(bottom = (-36).dp)
-                                                .background(Color(0xFF424242), RoundedCornerShape(4.dp))
-                                                .padding(horizontal = 6.dp, vertical = 4.dp)
-                                                .clickable { showTooltip = false }
-                                        ) {
-                                            Text(
-                                                "$startLabel–$endLabel · $occupancyLabel",
-                                                fontSize = 9.sp,
-                                                color = Color.White,
-                                            )
-                                        }
+                                    // Stacked layout: start / occupants / end, centered as a tight group
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(horizontal = 2.dp, vertical = 2.dp),
+                                        verticalArrangement = Arrangement.spacedBy(0.dp, Alignment.CenterVertically),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                    ) {
+                                        Text(startLabel,
+                                            fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                                            lineHeight = 13.sp,
+                                            color = textColor, maxLines = 1, softWrap = false,
+                                            overflow = TextOverflow.Visible)
+                                        Text(occupancyLabel,
+                                            fontSize = 9.sp, fontWeight = FontWeight.SemiBold,
+                                            lineHeight = 11.sp,
+                                            color = textColor, maxLines = 1, softWrap = false,
+                                            overflow = TextOverflow.Visible)
+                                        Text(endLabel,
+                                            fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                                            lineHeight = 13.sp,
+                                            color = textColor, maxLines = 1, softWrap = false,
+                                            overflow = TextOverflow.Visible)
                                     }
                                 }
                             }
@@ -2632,35 +2636,24 @@ private fun ClassScheduleCard(
     }
 }
 
+// 24-hour military format, e.g. 480 -> "0800", 570 -> "0930"
 private fun minuteLabel(minuteOfDay: Int): String {
     val h = minuteOfDay / 60
     val m = minuteOfDay % 60
-    return if (m == 0) {
-        if (h < 12) "${h}AM" else if (h == 12) "12PM" else "${h - 12}PM"
-    } else {
-        val ampm = if (h < 12) "AM" else "PM"
-        val h12 = if (h == 0 || h == 12) 12 else h % 12
-        "${h12}:${m.toString().padStart(2, '0')}$ampm"
-    }
+    return "%02d%02d".format(h, m)
 }
 
-/** Build a session segment from an hour range [startHour, endHour) and its heatmap level. */
-private fun levelSegment(startHour: Int, endHour: Int, level: Int): LearnedSegment {
-    val occ = when (level) {
-        3 -> 100  // 81+
-        2 -> 60   // 41–80
-        1 -> 20   // 1–40
-        else -> 0
-    }
-    val lvl = when (level) {
-        3 -> "high"
-        2 -> "medium"
-        else -> "low"
+/** Build a session segment from a minute range [startMin, endMin) and its mean occupancy. */
+private fun meanSegment(startMin: Int, endMin: Int, meanCount: Int): LearnedSegment {
+    val lvl = when {
+        meanCount >= 81 -> "high"
+        meanCount >= 41 -> "medium"
+        else            -> "low"
     }
     return LearnedSegment(
-        startMinuteOfDay = startHour * 60,
-        endMinuteOfDay = endHour * 60,
-        predictedOccupancy = occ,
+        startMinuteOfDay = startMin,
+        endMinuteOfDay = endMin,
+        predictedOccupancy = meanCount,
         occupancyLevel = lvl,
         weeksSeen = 0,
         lastSeenMillis = 0L,
@@ -3514,13 +3507,37 @@ private fun deriveNowAction(
     temperatureC: Float?,
     occupancyHint: String?,
     hall: Hall = Hall.Hall1,
+    schedule: Array<IntArray>? = null,
 ): Pair<String, String> {
     val cal = Calendar.getInstance().apply { timeInMillis = nowMillis }
     val dow = (cal.get(Calendar.DAY_OF_WEEK) - Calendar.MONDAY + 7) % 7
     val h = cal.get(Calendar.HOUR_OF_DAY)
     val m = cal.get(Calendar.MINUTE)
-    val dayBreaks = hallDayBreaks[hall] ?: emptyMap()
 
+    // Data-driven: derive the action from the account's real occupancy grid when available.
+    val hasData = schedule?.any { row -> row.any { v -> v > 0 } } == true
+    if (hasData) {
+        val row = schedule!!.getOrNull(dow)
+        val expected = row?.getOrElse(h) { 0 } ?: 0
+        val occupiedNow = expected > 0
+        if (!occupiedNow && personCount > 2)
+            return "Keep AC on" to "Unexpected occupancy ($personCount people detected)"
+        if (!occupiedNow) {
+            val resumeH = ((h + 1)..23).firstOrNull { (row?.getOrElse(it) { 0 } ?: 0) > 0 }
+            return if (resumeH != null)
+                "Turn off AC & lights" to "No class until %02d:00".format(resumeH)
+            else
+                "Turn off all systems" to "No more classes today"
+        }
+        if (temperatureC != null && temperatureC > 27f)
+            return "Increase AC cooling" to "Temperature is %.1f°C".format(temperatureC)
+        if (temperatureC != null && temperatureC < 22f)
+            return "Reduce AC cooling" to "Temperature is %.1f°C — too cold".format(temperatureC)
+        return "Maintain current settings" to "Class in session (~$expected expected)"
+    }
+
+    // Fallback: hardcoded timetable (used only before any occupancy data exists)
+    val dayBreaks = hallDayBreaks[hall] ?: emptyMap()
     if (dow >= 5) return "Turn off all systems" to "Weekend — no classes scheduled"
     if (inRange(h, m, timetableOvernight)) return "Turn off all systems" to "Overnight — no classes until 07:30"
 
@@ -3563,11 +3580,22 @@ private fun acLightStateLabel(action: String): String = when {
     else -> "ON"
 }
 
-private fun deriveSessionEndTime(nowMillis: Long, hall: Hall = Hall.Hall1): String {
+private fun deriveSessionEndTime(nowMillis: Long, hall: Hall = Hall.Hall1, schedule: Array<IntArray>? = null): String {
     val cal = Calendar.getInstance().apply { timeInMillis = nowMillis }
     val dow = (cal.get(Calendar.DAY_OF_WEEK) - Calendar.MONDAY + 7) % 7
     val h = cal.get(Calendar.HOUR_OF_DAY)
     val m = cal.get(Calendar.MINUTE)
+
+    // Data-driven: next hour the room becomes empty, from the real occupancy grid.
+    val hasData = schedule?.any { row -> row.any { v -> v > 0 } } == true
+    if (hasData) {
+        val row = schedule!!.getOrNull(dow)
+        val occupiedNow = (row?.getOrElse(h) { 0 } ?: 0) > 0
+        if (!occupiedNow) return "No class"
+        val endH = ((h + 1)..23).firstOrNull { (row?.getOrElse(it) { 0 } ?: 0) == 0 } ?: 24
+        return "%02d:00".format(endH.coerceAtMost(23))
+    }
+
     if (dow >= 5) return "No class"
     if (inRange(h, m, timetableOvernight)) return "07:30"
     val breaks = (hallDayBreaks[hall] ?: emptyMap())[dow] ?: emptyList()
@@ -3579,19 +3607,15 @@ private fun deriveSessionEndTime(nowMillis: Long, hall: Hall = Hall.Hall1): Stri
     return if (next != null) "%02d:%02d".format(next.sh, next.sm) else "18:30"
 }
 
-private fun buildDayNotifications(dayOffset: Int, nowMillis: Long, hall: Hall = Hall.Hall1): List<TimetableNotification> {
+private fun buildDayNotifications(dayOffset: Int, nowMillis: Long, hall: Hall = Hall.Hall1, schedule: Array<IntArray>? = null): List<TimetableNotification> {
     val cal = Calendar.getInstance().apply {
         timeInMillis = nowMillis
         add(Calendar.DAY_OF_YEAR, dayOffset)
     }
     val dow = (cal.get(Calendar.DAY_OF_WEEK) - Calendar.MONDAY + 7) % 7
-    if (dow >= 5) return listOf(
-        TimetableNotification("weekend-off", "--", "No classes today", "Weekend — all systems off"),
-    )
-    val dayNames = listOf("Mon", "Tue", "Wed", "Thu", "Fri")
+    val dayNames = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
     val dayName = dayNames[dow]
     val result = mutableListOf<TimetableNotification>()
-    val dayBreaks = (hallDayBreaks[hall] ?: emptyMap())[dow] ?: emptyList()
 
     fun add(h: Int, m: Int, id: String, title: String, reason: String) {
         result.add(TimetableNotification(
@@ -3602,6 +3626,38 @@ private fun buildDayNotifications(dayOffset: Int, nowMillis: Long, hall: Hall = 
         ))
     }
 
+    // Data-driven: build the day's schedule from the real occupancy grid when available.
+    val hasData = schedule?.any { row -> row.any { v -> v > 0 } } == true
+    if (hasData) {
+        val row = schedule!!.getOrNull(dow)
+        val occupied = (0..23).map { (row?.getOrElse(it) { 0 } ?: 0) > 0 }
+        val firstOcc = occupied.indexOfFirst { it }
+        val lastOcc = occupied.indexOfLast { it }
+        if (firstOcc < 0) return listOf(
+            TimetableNotification("$dayName-noclass", "--", "No classes today", "No occupancy recorded ($dayName)")
+        )
+        add(firstOcc, 0, "startup", "System startup check", "First class at %02d:00 ($dayName)".format(firstOcc))
+        for (hh in (firstOcc + 1)..lastOcc) {
+            if (!occupied[hh] && occupied[hh - 1]) {
+                add(hh, 0, "break$hh-off", "Turn off AC & lights",
+                    "Break starts at %02d:00 ($dayName)".format(hh))
+            }
+            if (occupied[hh] && !occupied[hh - 1]) {
+                val preMin = hh * 60 - 30
+                add(preMin / 60, preMin % 60, "break$hh-precool", "Pre-cool room to 23°C",
+                    "Class resumes at %02d:00 ($dayName)".format(hh))
+            }
+        }
+        val shutdownH = (lastOcc + 1).coerceAtMost(23)
+        add(shutdownH, 0, "shutdown", "Turn off all systems", "No more classes today ($dayName)")
+        return result.sortedBy { it.timeLabel }
+    }
+
+    // Fallback: hardcoded timetable
+    if (dow >= 5) return listOf(
+        TimetableNotification("weekend-off", "--", "No classes today", "Weekend — all systems off"),
+    )
+    val dayBreaks = (hallDayBreaks[hall] ?: emptyMap())[dow] ?: emptyList()
     add(7, 30, "startup", "System startup check", "First class approaching ($dayName)")
     dayBreaks.forEachIndexed { i, br ->
         add(br.sh, br.sm, "break$i-off", "Turn off AC & lights",
@@ -3616,9 +3672,13 @@ private fun buildDayNotifications(dayOffset: Int, nowMillis: Long, hall: Hall = 
     return result.sortedBy { it.timeLabel }
 }
 
-private fun buildAllHallsDayNotifications(dayOffset: Int, nowMillis: Long): List<TimetableNotification> =
+private fun buildAllHallsDayNotifications(
+    dayOffset: Int,
+    nowMillis: Long,
+    hallSchedules: Map<String, Array<IntArray>> = emptyMap(),
+): List<TimetableNotification> =
     Hall.values().flatMap { hall ->
-        buildDayNotifications(dayOffset, nowMillis, hall).map { n ->
+        buildDayNotifications(dayOffset, nowMillis, hall, hallSchedules[hall.label]).map { n ->
             n.copy(
                 id = "${hall.name}-${n.id}",
                 reason = "${hall.label} — ${n.reason}",

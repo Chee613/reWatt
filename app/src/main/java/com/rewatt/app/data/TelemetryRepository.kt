@@ -71,6 +71,12 @@ class TelemetryRepository(
     fun hallScheduleFlow(hallLabel: String): Flow<Array<IntArray>> =
         firebaseSyncRepository.hallScheduleFlow(hallLabel)
 
+    fun hallMeanScheduleFlow(hallLabel: String): Flow<Array<IntArray>> =
+        firebaseSyncRepository.hallMeanScheduleFlow(hallLabel)
+
+    fun hallMinuteScheduleFlow(hallLabel: String): Flow<Array<IntArray>> =
+        firebaseSyncRepository.hallMinuteScheduleFlow(hallLabel)
+
     fun learnedScheduleFlow(hallLabel: String): Flow<List<List<LearnedSegment>>> =
         firebaseSyncRepository.learnedScheduleFlow(hallLabel)
 
