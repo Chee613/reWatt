@@ -18,7 +18,7 @@ import kotlin.math.min
 class ClassScheduleWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
 
     private val firestore = FirebaseFirestore.getInstance()
-    private val halls = listOf("Hall 1", "Hall 2", "Hall 3", "Hall 4")
+    private val halls = listOf("DK1", "DK2", "MM8")
     private val dayFmt = SimpleDateFormat("yyyyMMdd", Locale.US)
 
     override suspend fun doWork(): Result {

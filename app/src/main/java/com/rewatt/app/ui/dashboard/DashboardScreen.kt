@@ -1142,10 +1142,9 @@ private fun SegmentButton(
 // ── Timetable primitives (shared by heatmap + action engine) ─────────────────
 
 private enum class Hall(val label: String) {
-    Hall1("Hall 1"),
-    Hall2("Hall 2"),
-    Hall3("Hall 3"),
-    Hall4("Hall 4"),
+    Hall1("DK1"),
+    Hall2("DK2"),
+    Hall3("MM8"),
 }
 
 private data class TR(val sh: Int, val sm: Int, val eh: Int, val em: Int)
@@ -1161,7 +1160,7 @@ private fun inRange(h: Int, m: Int, r: TR): Boolean {
 private val timetableOvernight = TR(18, 30, 7, 30)
 
 // Per-hall break intervals. 18:30–07:30 overnight zero applies to all halls.
-// Hall 2–4 breaks are all >45 min each, 2–3 per weekday.
+// DK2/MM8 breaks are all >45 min each, 2–3 per weekday.
 private val hallDayBreaks: Map<Hall, Map<Int, List<TR>>> = mapOf(
     Hall.Hall1 to mapOf(
         0 to listOf(TR(9, 30, 10, 30), TR(13, 0, 14, 30)),   // Mon  60+90 min
@@ -1183,13 +1182,6 @@ private val hallDayBreaks: Map<Hall, Map<Int, List<TR>>> = mapOf(
         2 to listOf(TR(10, 0, 11, 30), TR(14, 30, 16, 0)),   // Wed  90+90 min
         3 to listOf(TR(8, 30, 10, 0),  TR(12, 0, 13, 0)),    // Thu  90+60 min
         4 to listOf(TR(11, 0, 12, 30), TR(15, 0, 16, 30)),   // Fri  90+90 min
-    ),
-    Hall.Hall4 to mapOf(
-        0 to listOf(TR(9, 0, 10, 30),  TR(13, 0, 14, 0),  TR(16, 0, 17, 30)), // Mon  90+60+90 min
-        1 to listOf(TR(10, 30, 12, 0), TR(14, 0, 15, 0)),                      // Tue  90+60 min
-        2 to listOf(TR(9, 0, 10, 0),   TR(13, 30, 15, 0)),                     // Wed  60+90 min
-        3 to listOf(TR(11, 30, 13, 0), TR(15, 30, 17, 0)),                     // Thu  90+90 min
-        4 to listOf(TR(10, 0, 11, 30), TR(13, 0, 14, 30), TR(16, 0, 17, 30)), // Fri  90+90+90 min
     ),
 )
 
@@ -2392,7 +2384,7 @@ private fun SettingPage(
                     value = renameInput,
                     onValueChange = { if (it.length <= 40) renameInput = it },
                     label = { Text("Space name") },
-                    placeholder = { Text("e.g. Hall 1, Lab 3") },
+                    placeholder = { Text("e.g. DK1, MM8, Lab 3") },
                     singleLine = true,
                 )
             },
