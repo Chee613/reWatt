@@ -90,7 +90,7 @@ class DashboardViewModel(
     }
 
     private fun listenToAllHallNodes() {
-        listOf("Hall 1", "Hall 2", "Hall 3", "Hall 4").forEach { hall ->
+        listOf("DK1", "DK2", "MM8").forEach { hall ->
             viewModelScope.launch {
                 repository.listenToHallNodes(hall).collect { nodes ->
                     _sensorFleet.update { current -> current + (hall to nodes) }
@@ -105,7 +105,7 @@ class DashboardViewModel(
      * than waiting for the next 10-minute capture sync.
      */
     fun refreshSensorFleet() {
-        listOf("Hall 1", "Hall 2", "Hall 3", "Hall 4").forEach { hall ->
+        listOf("DK1", "DK2", "MM8").forEach { hall ->
             viewModelScope.launch {
                 val nodes = repository.fetchHallNodes(hall)
                 _sensorFleet.update { current -> current + (hall to nodes) }
@@ -128,7 +128,7 @@ class DashboardViewModel(
     }
 
     private fun listenToAllHallMeanSchedules() {
-        listOf("Hall 1", "Hall 2", "Hall 3", "Hall 4").forEach { hall ->
+        listOf("DK1", "DK2", "MM8").forEach { hall ->
             viewModelScope.launch {
                 repository.hallMeanScheduleFlow(hall).collect { schedule ->
                     _hallMeanSchedules.update { current -> current + (hall to schedule) }
@@ -138,7 +138,7 @@ class DashboardViewModel(
     }
 
     private fun listenToAllHallMinuteSchedules() {
-        listOf("Hall 1", "Hall 2", "Hall 3", "Hall 4").forEach { hall ->
+        listOf("DK1", "DK2", "MM8").forEach { hall ->
             viewModelScope.launch {
                 repository.hallMinuteScheduleFlow(hall).collect { schedule ->
                     _hallMinuteSchedules.update { current -> current + (hall to schedule) }
@@ -148,7 +148,7 @@ class DashboardViewModel(
     }
 
     private fun listenToAllHallSchedules() {
-        listOf("Hall 1", "Hall 2", "Hall 3", "Hall 4").forEach { hall ->
+        listOf("DK1", "DK2", "MM8").forEach { hall ->
             viewModelScope.launch {
                 repository.hallScheduleFlow(hall).collect { schedule ->
                     _hallSchedules.update { current -> current + (hall to schedule) }
@@ -158,7 +158,7 @@ class DashboardViewModel(
     }
 
     private fun listenToAllLearnedSchedules() {
-        listOf("Hall 1", "Hall 2", "Hall 3", "Hall 4").forEach { hall ->
+        listOf("DK1", "DK2", "MM8").forEach { hall ->
             viewModelScope.launch {
                 repository.learnedScheduleFlow(hall).collect { days ->
                     _learnedSchedules.update { current -> current + (hall to days) }
@@ -186,7 +186,7 @@ class DashboardViewModel(
         initialValue = DashboardUiState(),
     )
 
-    private val _selectedHallLabel = MutableStateFlow("Hall 1")
+    private val _selectedHallLabel = MutableStateFlow("DK1")
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val hallSnapshot: StateFlow<HallSnapshot?> = _selectedHallLabel

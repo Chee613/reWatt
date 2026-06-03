@@ -444,7 +444,7 @@ private fun NameYourSpaceStep(
         value = spaceName,
         onValueChange = { if (it.length <= 40) onSpaceNameChange(it) },
         label = { Text("Space name") },
-        placeholder = { Text("e.g. DK1, Hall 1, Lab 3") },
+        placeholder = { Text("e.g. DK1, MM8, Lab 3") },
         singleLine = true,
         modifier = Modifier.fillMaxWidth(),
     )
