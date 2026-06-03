@@ -51,7 +51,7 @@ class GeminiActivityAnalyzer(
         }
 
     companion object {
-        const val MODEL_ID = "gemini-3.5-flash"
+        const val MODEL_ID = "gemini-3.1-flash-lite"
         private const val GEMINI_ENDPOINT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
         private val allowedOccupancyHints = setOf(
             "occupied",
@@ -87,7 +87,6 @@ class GeminiActivityAnalyzer(
                 "",
                 "Inputs:",
                 "- people count from YOLO: ${summary.personCount}",
-                "- top 3 YAMNet sound labels: ${summary.activityLabels.take(3).joinToString(", ").ifBlank { "none" }}",
                 "- temperature C: ${summary.temperatureC?.toString() ?: "unknown"}",
                 "- humidity percent: ${summary.humidityPercent?.toString() ?: "unknown"}",
                 "",

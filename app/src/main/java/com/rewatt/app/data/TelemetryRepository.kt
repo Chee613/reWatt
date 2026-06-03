@@ -112,22 +112,12 @@ class TelemetryRepository(
     }
 
     private fun analyzeActivity(summary: PerceptionSyncSummary) {
+        // Camera-only trigger: run once per distinct capture (no dependency on audio labels).
         val capturedAtMillis = summary.capturedAtMillis ?: return
-        if (summary.activityLabels.isEmpty()) {
-            mutableState.update { current ->
-                current.copy(
-                    activityAnalysisState = ActivityAnalysisState(
-                        message = "Gemini activity analysis is waiting for top-3 YAMNet labels.",
-                    ),
-                )
-            }
-            return
-        }
 
         val analysisKey = listOf(
             capturedAtMillis,
             summary.personCount,
-            summary.activityLabels.take(3).joinToString("|"),
             summary.temperatureC,
             summary.humidityPercent,
         ).joinToString(separator = "::")
@@ -151,7 +141,7 @@ class TelemetryRepository(
             current.copy(
                 activityAnalysisState = ActivityAnalysisState(
                     status = ActivityAnalysisStatus.Pending,
-                    message = "Gemini is analyzing the top-3 YAMNet labels.",
+                    message = "Gemini is analyzing current activity.",
                 ),
             )
         }

@@ -236,11 +236,11 @@ class CameraCaptureService : LifecycleService() {
         telemetryRepository.updatePerceptionSummary(
             PerceptionSyncSummary(
                 personCount = state.personCount,
-                activityLabels = state.soundDetections
-                    .take(YamnetPostProcessor.DEFAULT_TOP_K)
-                    .map { it.label },
-                audioPresenceDetected = state.audioPresenceDetected,
-                audioPresenceScore = state.audioPresenceScore,
+                // YAMNet output is intentionally suppressed: keep audio fields empty so it does not
+                // propagate to Firestore, Gemini, or the UI. YAMNet still runs internally.
+                activityLabels = emptyList(),
+                audioPresenceDetected = false,
+                audioPresenceScore = 0f,
                 lightsOn = state.lightsOn,
                 exposureEv = state.exposureEv,
                 exposureIso = state.exposureIso,
