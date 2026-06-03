@@ -7,7 +7,7 @@ import org.junit.Test
 
 class GeminiActivityAnalyzerTest {
     @Test
-    fun buildPrompt_usesTopThreeLabelsAndEnvironment() {
+    fun buildPrompt_usesCameraAndEnvironmentOnly() {
         val prompt = GeminiActivityAnalyzer.buildPrompt(
             PerceptionSyncSummary(
                 personCount = 2,
@@ -18,10 +18,12 @@ class GeminiActivityAnalyzerTest {
         )
 
         assertTrue(prompt.contains("people count from YOLO: 2"))
-        assertTrue(prompt.contains("top 3 YAMNet sound labels: Clapping, Speech, Computer keyboard"))
         assertTrue(prompt.contains("temperature C: 26.5"))
         assertTrue(prompt.contains("humidity percent: 58.2"))
-        assertTrue(!prompt.contains("Typing"))
+        // Audio (YAMNet) output must never reach the prompt.
+        assertTrue(!prompt.contains("YAMNet"))
+        assertTrue(!prompt.contains("sound"))
+        assertTrue(!prompt.contains("Clapping"))
     }
 
     @Test

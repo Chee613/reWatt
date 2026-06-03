@@ -17,7 +17,7 @@ data class ActivityAnalysis(
 
 data class ActivityAnalysisState(
     val status: ActivityAnalysisStatus = ActivityAnalysisStatus.Idle,
-    val message: String = "Gemini activity analysis is waiting for top-3 YAMNet labels.",
+    val message: String = "Gemini activity analysis is waiting for the next capture.",
     val analysis: ActivityAnalysis? = null,
     val lastAnalyzedAtMillis: Long? = null,
 )

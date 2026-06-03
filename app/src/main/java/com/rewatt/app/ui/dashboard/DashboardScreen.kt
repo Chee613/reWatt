@@ -251,9 +251,6 @@ private fun SensorNodeCard(node: SensorNodeSnapshot, online: Boolean) {
                         text = "${"%.1f".format(temp)}°C$humidity",
                     )
                 }
-                node.primaryActivity?.takeIf { it.isNotBlank() }?.let { activity ->
-                    NodeInfoRow(icon = Icons.Outlined.GraphicEq, text = activity)
-                }
             }
 
             // Battery is shown even when offline (last-known reading).
@@ -676,7 +673,6 @@ private fun OverviewContent(
     val displayPersonCount = if (isAdmin) hallSnapshot?.personCount ?: 0 else perceptionState.personCount
     val displayTempC = if (isAdmin && hallSnapshot?.temperatureC != null) hallSnapshot.temperatureC else telemetry?.temperatureC?.toDouble()
     val displayHumidity = if (isAdmin && hallSnapshot?.humidityPercent != null) hallSnapshot.humidityPercent else telemetry?.humidityPercent?.toDouble()
-    val displayTopSound = if (isAdmin) hallSnapshot?.primaryActivity else perceptionState.soundDetections.firstOrNull()?.label
 
     val nowAction = remember(uiState.nowMillis, displayPersonCount, displayTempC, displayHumidity, analysis?.occupancyHint, selectedHall, hallMeanSchedules) {
         deriveNowAction(
@@ -764,11 +760,6 @@ private fun OverviewContent(
                 value = sessionEndTime,
                 modifier = Modifier.weight(1f),
             )
-            MetricCard(
-                title = "Top sound",
-                value = displayTopSound ?: "--",
-                modifier = Modifier.weight(1f),
-            )
         }
 
         // ── Activity section ─────────────────────────────────────────────────
@@ -819,10 +810,6 @@ private fun OverviewContent(
             }
         }
 
-        // ── Room Context section ──────────────────────────────────────────────
-        Spacer(Modifier.height(4.dp))
-        Text("ROOM CONTEXT", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-        RoomContextCard(perceptionState = perceptionState)
     }
 }
 
@@ -2031,21 +2018,11 @@ private fun CapturePage(
                 modifier = Modifier.weight(1f),
                 warning = !state.cameraPermissionGranted,
             )
-            MetricCard(
-                title = "Mic",
-                value = if (state.microphonePermissionGranted) "Allowed" else "Need access",
-                modifier = Modifier.weight(1f),
-                warning = !state.microphonePermissionGranted,
-            )
         }
         CaptureDetectionSummary(state = state)
         LatestFrameCompactCard(
             state = state,
             nowMillis = nowMillis,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        AudioCompactCard(
-            state = state,
             modifier = Modifier.fillMaxWidth(),
         )
         SensorLiveDataCard(telemetry = telemetry)
@@ -2213,9 +2190,8 @@ private fun CaptureHistoryRow(capture: RecentCapture) {
                 )
             }
             val detail = buildString {
-                capture.primaryActivity?.let { append(it) }
                 capture.geminiActivity?.let {
-                    if (isNotEmpty()) append(" · Gemini: ")
+                    append("Gemini: ")
                     append(it)
                     capture.geminiOccupancyHint?.let { hint -> append(" ($hint)") }
                 }
@@ -2241,11 +2217,6 @@ private fun LivePerceptionSummary(perceptionState: PerceptionUiState) {
             value = perceptionState.personCount.toString(),
             modifier = Modifier.weight(1f),
         )
-        MetricCard(
-            title = "Top sound",
-            value = perceptionState.soundDetections.firstOrNull()?.label ?: "--",
-            modifier = Modifier.weight(1f),
-        )
     }
 }
 
@@ -2268,30 +2239,6 @@ private fun CaptureDetectionSummary(state: PerceptionUiState) {
                 value = state.exposureValueLabel(),
                 modifier = Modifier.weight(1f),
             )
-        }
-        InfoCard {
-        Text("Top 3 sounds heard", fontWeight = FontWeight.SemiBold)
-        Spacer(Modifier.height(6.dp))
-        val topSounds = state.soundDetections.take(3)
-        if (topSounds.isEmpty()) {
-            Text(
-                text = "Waiting for YAMNet audio capture.",
-                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 12.sp,
-            )
-        } else {
-            topSounds.forEach { detection ->
-                DetectionRow(
-                    label = if (detection.indicatesHumanPresence) {
-                        detection.label
-                    } else {
-                        "${detection.label} (support)"
-                    },
-                    confidence = detection.confidence,
-                    highlight = detection.indicatesHumanPresence,
-                )
-            }
-        }
         }
     }
 }
