@@ -2,6 +2,7 @@ package com.rewatt.app.notify
 
 import android.content.Context
 import androidx.core.content.ContextCompat
+import com.rewatt.app.data.UserRole
 
 /**
  * Decides when the sticky "turn off the lights/AC" prompt should be shown and drives
@@ -21,6 +22,16 @@ object EnergyAlertNotifier {
      * conditions are no longer wasteful.
      */
     fun onPerception(context: Context, personCount: Int, lightsOn: Boolean?) {
+        // Sensor-mode edge devices must stay silent. Read the locally-cached APP_MODE
+        // directly from SharedPreferences (safe on a background thread, no Firestore).
+        val mode = context
+            .getSharedPreferences("rewatt_space_config", Context.MODE_PRIVATE)
+            .getString("APP_MODE", null)
+        if (mode == UserRole.Sensor.name) {
+            stop(context) // clear any stale alert if a device just switched to Sensor
+            return
+        }
+
         val wasteful = personCount == 0 && lightsOn == true
         if (!wasteful) {
             stop(context)
