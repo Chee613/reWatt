@@ -35,6 +35,16 @@ class AuthRepository(private val context: Context) {
         }
     }
 
+    /**
+     * Locally-cached device mode ("APP_MODE") so background code (e.g. the energy-alert
+     * notifier) can read the role without touching Firestore or any ViewModel state.
+     */
+    fun cacheRole(role: UserRole) =
+        spacePrefs.edit().putString("APP_MODE", role.name).apply()
+
+    fun getCachedRole(): UserRole? =
+        spacePrefs.getString("APP_MODE", null)?.let { runCatching { UserRole.valueOf(it) }.getOrNull() }
+
     fun getCachedSpaceName(): String? = spacePrefs.getString("space_name", null)
 
     fun cacheSpaceName(name: String) = spacePrefs.edit().putString("space_name", name).apply()
@@ -177,16 +187,23 @@ class AuthRepository(private val context: Context) {
         firestore.collection("rewatt_users").document(uid).get()
             .addOnSuccessListener { doc ->
                 val name = doc.getString("role")
-                cont.resume(name?.let { runCatching { UserRole.valueOf(it) }.getOrNull() })
+                val role = name?.let { runCatching { UserRole.valueOf(it) }.getOrNull() }
+                if (role != null) cacheRole(role)
+                cont.resume(role)
             }
             .addOnFailureListener { cont.resume(null) }
     }
 
-    suspend fun updateRole(uid: String, role: UserRole): Result<Unit> = suspendCoroutine { cont ->
-        firestore.collection("rewatt_users").document(uid)
-            .update("role", role.name)
-            .addOnSuccessListener { cont.resume(Result.success(Unit)) }
-            .addOnFailureListener { e -> cont.resume(Result.failure(e)) }
+    suspend fun updateRole(uid: String, role: UserRole): Result<Unit> {
+        // Cache locally first so background code reflects the chosen mode even if
+        // the Firestore write is delayed or fails.
+        cacheRole(role)
+        return suspendCoroutine { cont ->
+            firestore.collection("rewatt_users").document(uid)
+                .update("role", role.name)
+                .addOnSuccessListener { cont.resume(Result.success(Unit)) }
+                .addOnFailureListener { e -> cont.resume(Result.failure(e)) }
+        }
     }
 
     suspend fun signIn(username: String, password: String): Result<FirebaseUser> {

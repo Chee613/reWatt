@@ -48,6 +48,19 @@ data class HallSnapshot(
     val lastUpdatedAt: Long? = null,
 )
 
+/** Live per-node state for the Admin "Manage" fleet view (one entry per sensor device). */
+data class SensorNodeSnapshot(
+    val nodeId: String,
+    val roomId: String,
+    val personCount: Int,
+    val primaryActivity: String?,
+    val lightsOn: Boolean?,
+    val temperatureC: Double?,
+    val humidityPercent: Double?,
+    val batteryPercent: Int?,
+    val lastUpdatedAt: Long?,
+)
+
 /** Next-day "wasted electricity" summary computed by [EnergyWasteWorker] and shown on the dashboard. */
 data class EnergyWasteSummary(
     val dateLabel: String,
@@ -107,6 +120,13 @@ class FirebaseSyncRepository(
         }
     }
 
+    /** Current battery level (0–100) of this reporting phone, or null if unavailable. */
+    private fun readBatteryPercent(): Int? {
+        val bm = appContext.getSystemService(Context.BATTERY_SERVICE) as? android.os.BatteryManager
+        return bm?.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY)
+            ?.takeIf { it in 0..100 }
+    }
+
     // Base Firestore reference for a given room, scoped under the current user's UID.
     private fun roomRef(uid: String, roomId: String) =
         FirebaseFirestore.getInstance()
@@ -145,7 +165,7 @@ class FirebaseSyncRepository(
             roomId = room,
             nodeId = nodeId,
             updatedAtMillis = System.currentTimeMillis(),
-        )
+        ) + mapOf("batteryPercent" to readBatteryPercent())
         val historyId = "$capturedAtMillis-$nodeId"
 
         onState(
@@ -252,6 +272,41 @@ class FirebaseSyncRepository(
                 )
             }
         awaitClose { listener.remove() }
+    }
+
+    /** Live list of every sensor node reporting to [roomId] (for the Admin Manage fleet view). */
+    fun listenToHallNodes(roomId: String): Flow<List<SensorNodeSnapshot>> = callbackFlow {
+        val uid = FirebaseAuth.getInstance().currentUser?.uid
+        if (uid == null) { trySend(emptyList()); awaitClose { }; return@callbackFlow }
+        val listener = FirebaseFirestore.getInstance()
+            .collection("rewatt_users").document(uid)
+            .collection("rooms").document(roomId)
+            .collection("nodes")
+            .addSnapshotListener { snapshot, _ ->
+                val nodes = snapshot?.documents.orEmpty().map { it.toSensorNodeSnapshot(roomId) }
+                trySend(nodes)
+            }
+        awaitClose { listener.remove() }
+    }
+
+    /**
+     * One-shot fetch of the latest node docs for [roomId]. Used to force the freshest
+     * stored data into the Manage fleet view the moment it opens, without waiting for the
+     * next 10-minute capture sync (the live listener keeps it updated afterwards).
+     */
+    suspend fun fetchHallNodes(roomId: String): List<SensorNodeSnapshot> {
+        val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return emptyList()
+        return suspendCoroutine { cont ->
+            FirebaseFirestore.getInstance()
+                .collection("rewatt_users").document(uid)
+                .collection("rooms").document(roomId)
+                .collection("nodes")
+                .get()
+                .addOnSuccessListener { snapshot ->
+                    cont.resume(snapshot.documents.map { it.toSensorNodeSnapshot(roomId) })
+                }
+                .addOnFailureListener { cont.resume(emptyList()) }
+        }
     }
 
     /** Live next-day energy-waste summary for this device's room (written by [EnergyWasteWorker]). */
@@ -474,6 +529,19 @@ class FirebaseSyncRepository(
             .getOrDefault(false)
     }
 }
+
+private fun DocumentSnapshot.toSensorNodeSnapshot(fallbackRoomId: String): SensorNodeSnapshot =
+    SensorNodeSnapshot(
+        nodeId = getString("nodeId") ?: id,
+        roomId = getString("roomId") ?: fallbackRoomId,
+        personCount = getLong("personCount")?.toInt() ?: 0,
+        primaryActivity = getString("primaryActivity"),
+        lightsOn = getBoolean("lightsOn"),
+        temperatureC = getDouble("temperatureC"),
+        humidityPercent = getDouble("humidityPercent"),
+        batteryPercent = getLong("batteryPercent")?.toInt(),
+        lastUpdatedAt = getLong("lastUpdatedAt"),
+    )
 
 private fun DocumentSnapshot.toEnergyWasteSummary(): EnergyWasteSummary? {
     if (!exists()) return null
