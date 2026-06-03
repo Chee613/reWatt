@@ -68,6 +68,12 @@ class TelemetryRepository(
     fun listenToHall(roomId: String): Flow<HallSnapshot?> =
         firebaseSyncRepository.listenToHall(roomId)
 
+    fun listenToHallNodes(roomId: String): Flow<List<SensorNodeSnapshot>> =
+        firebaseSyncRepository.listenToHallNodes(roomId)
+
+    suspend fun fetchHallNodes(roomId: String): List<SensorNodeSnapshot> =
+        firebaseSyncRepository.fetchHallNodes(roomId)
+
     fun hallScheduleFlow(hallLabel: String): Flow<Array<IntArray>> =
         firebaseSyncRepository.hallScheduleFlow(hallLabel)
 
