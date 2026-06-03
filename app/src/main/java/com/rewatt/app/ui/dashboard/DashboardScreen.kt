@@ -130,6 +130,7 @@ import com.rewatt.app.telemetry.toOccupancyDecision
 import com.rewatt.app.ui.ModeSelectionDialog
 import com.rewatt.app.ui.SetupGuideDialog
 import java.util.Calendar
+import kotlin.math.ceil
 import kotlin.math.min
 
 private enum class ReWattTab(val label: String, val icon: ImageVector) {
@@ -365,6 +366,12 @@ fun DashboardScreen(
         if (currentUserRole == UserRole.Admin && selectedTab == ReWattTab.Capture) {
             selectedTab = ReWattTab.Live
         }
+        // Sensor mode hides Live & Analytic, so redirect off them to Capture.
+        if (currentUserRole == UserRole.Sensor &&
+            (selectedTab == ReWattTab.Live || selectedTab == ReWattTab.Analytic)
+        ) {
+            selectedTab = ReWattTab.Capture
+        }
     }
 
     val latestTelemetry = uiState.sensorState.latestTelemetry
@@ -435,7 +442,11 @@ fun DashboardScreen(
         bottomBar = {
             NavigationBar {
                 val visibleTabs = ReWattTab.values().filter { tab ->
-                    !(tab == ReWattTab.Capture && currentUserRole == UserRole.Admin)
+                    when (currentUserRole) {
+                        UserRole.Admin -> tab != ReWattTab.Capture
+                        UserRole.Sensor -> tab != ReWattTab.Live && tab != ReWattTab.Analytic
+                        else -> true
+                    }
                 }
                 visibleTabs.forEach { tab ->
                     NavigationBarItem(
@@ -667,7 +678,7 @@ private fun OverviewContent(
     val displayHumidity = if (isAdmin && hallSnapshot?.humidityPercent != null) hallSnapshot.humidityPercent else telemetry?.humidityPercent?.toDouble()
     val displayTopSound = if (isAdmin) hallSnapshot?.primaryActivity else perceptionState.soundDetections.firstOrNull()?.label
 
-    val nowAction = remember(uiState.nowMillis, displayPersonCount, displayTempC, analysis?.occupancyHint, selectedHall, hallMeanSchedules) {
+    val nowAction = remember(uiState.nowMillis, displayPersonCount, displayTempC, displayHumidity, analysis?.occupancyHint, selectedHall, hallMeanSchedules) {
         deriveNowAction(
             nowMillis = uiState.nowMillis,
             personCount = displayPersonCount,
@@ -675,6 +686,7 @@ private fun OverviewContent(
             occupancyHint = analysis?.occupancyHint,
             hall = selectedHall,
             schedule = hallMeanSchedules[selectedHall.label],
+            humidityPercent = displayHumidity,
         )
     }
     val sessionEndTime = remember(uiState.nowMillis, selectedHall, hallMeanSchedules) {
@@ -1643,7 +1655,7 @@ private fun ActionPage(
     }
 
     val isToday = previewDayOffset == 0
-    val nowActions = remember(previewMillis, isToday, perceptionState.personCount, telemetry?.temperatureC, analysis?.occupancyHint, hallMeanSchedules) {
+    val nowActions = remember(previewMillis, isToday, perceptionState.personCount, telemetry?.temperatureC, telemetry?.humidityPercent, analysis?.occupancyHint, hallMeanSchedules) {
         Hall.values().map { hall ->
             hall to deriveNowAction(
                 nowMillis = previewMillis,
@@ -1652,6 +1664,7 @@ private fun ActionPage(
                 occupancyHint = if (isToday) analysis?.occupancyHint else null,
                 hall = hall,
                 schedule = hallMeanSchedules[hall.label],
+                humidityPercent = if (isToday) telemetry?.humidityPercent?.toDouble() else null,
             )
         }
     }
@@ -3794,6 +3807,34 @@ private fun Long?.ageLabel(nowMillis: Long): String =
         "Captured ${ageSeconds}s ago"
     } ?: "Waiting for capture"
 
+/** Comfort threshold below which the hall feels too cold — the AC is over-cooling and wasting energy. */
+private const val THI_TOO_COLD = 21.0
+
+/** Temperature-Humidity Index: THI = 0.8*T + (RH*T)/500, with T in °C and RH in %. */
+private fun computeThi(temperatureC: Double, humidityPercent: Double): Double =
+    0.8 * temperatureC + (humidityPercent * temperatureC) / 500.0
+
+/**
+ * Solve the THI formula for the temperature that lands exactly on [THI_TOO_COLD] at the current
+ * humidity, then round UP to the next whole °C so the result stays at or above the comfort
+ * threshold. This is the AC setpoint we suggest raising to when the hall is too cold.
+ */
+private fun suggestedComfortTemp(humidityPercent: Double): Int =
+    ceil(THI_TOO_COLD / (0.8 + humidityPercent / 500.0)).toInt()
+
+/**
+ * If the hall is occupied and the THI is below [THI_TOO_COLD], returns the "raise the AC setpoint"
+ * action (prioritized over generic comfort actions). Requires both temperature and humidity from
+ * the sensor; returns null when either is missing or the room is comfortable.
+ */
+private fun tooColdAction(temperatureC: Float?, humidityPercent: Double?): Pair<String, String>? {
+    if (temperatureC == null || humidityPercent == null) return null
+    val thi = computeThi(temperatureC.toDouble(), humidityPercent)
+    if (thi >= THI_TOO_COLD) return null
+    return "Set AC to ${suggestedComfortTemp(humidityPercent)}°C" to
+        "Too cold (THI %.1f) — raise setpoint to save energy".format(thi)
+}
+
 private fun deriveNowAction(
     nowMillis: Long,
     personCount: Int,
@@ -3801,11 +3842,18 @@ private fun deriveNowAction(
     occupancyHint: String?,
     hall: Hall = Hall.Hall1,
     schedule: Array<IntArray>? = null,
+    humidityPercent: Double? = null,
 ): Pair<String, String> {
     val cal = Calendar.getInstance().apply { timeInMillis = nowMillis }
     val dow = (cal.get(Calendar.DAY_OF_WEEK) - Calendar.MONDAY + 7) % 7
     val h = cal.get(Calendar.HOUR_OF_DAY)
     val m = cal.get(Calendar.MINUTE)
+
+    // Highest priority: a too-cold hall that is occupied RIGHT NOW wastes energy. Occupancy here is
+    // the live YOLO person count (the detection driven by the mmWave-triggered capture), never the
+    // predicted schedule — so this fires identically for accounts with and without history, the
+    // moment YOLO reports someone present. Temperature, humidity and occupancy are all current data.
+    if (personCount > 0) tooColdAction(temperatureC, humidityPercent)?.let { return it }
 
     // Data-driven: derive the action from the account's real occupancy grid when available.
     val hasData = schedule?.any { row -> row.any { v -> v > 0 } } == true
@@ -3824,8 +3872,6 @@ private fun deriveNowAction(
         }
         if (temperatureC != null && temperatureC > 27f)
             return "Increase AC cooling" to "Temperature is %.1f°C".format(temperatureC)
-        if (temperatureC != null && temperatureC < 22f)
-            return "Reduce AC cooling" to "Temperature is %.1f°C — too cold".format(temperatureC)
         return "Maintain current settings" to "Class in session (~$expected expected)"
     }
 
@@ -3843,8 +3889,6 @@ private fun deriveNowAction(
         return "Keep AC on" to "Unexpected occupancy ($personCount people detected)"
     if (temperatureC != null && temperatureC > 27f && personCount > 0)
         return "Increase AC cooling" to "Temperature is %.1f°C".format(temperatureC)
-    if (temperatureC != null && temperatureC < 22f && personCount > 0)
-        return "Reduce AC cooling" to "Temperature is %.1f°C — too cold".format(temperatureC)
 
     return if (personCount > 0)
         "Maintain current settings" to "Normal class session in progress"
@@ -3870,6 +3914,7 @@ private fun acLightStateLabel(action: String): String = when {
     action.contains("Turn off", ignoreCase = true) -> "OFF"
     action.contains("Increase", ignoreCase = true) -> "COOL +"
     action.contains("Reduce", ignoreCase = true) -> "COOL -"
+    action.startsWith("Set AC", ignoreCase = true) -> "COOL -"
     else -> "ON"
 }
 

@@ -5,6 +5,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Location
+import android.location.LocationManager
 import androidx.core.content.ContextCompat
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
@@ -18,6 +19,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Resolves the device location (GPS via FusedLocationProviderClient) and fetches outdoor weather
@@ -85,11 +87,47 @@ class WeatherRepository(
 
     @SuppressLint("MissingPermission") // permission is verified by hasLocationPermission() before calling.
     private suspend fun resolveLocation(): Location? {
-        fusedClient.lastLocation.await()?.let { return it }
+        // 1. Fast path: cached last-known location. Bounded by a timeout so a stuck Play Services
+        //    call can never hang the whole weather fetch (the previous code had no timeout here).
+        val last = withTimeoutOrNull(LAST_LOCATION_TIMEOUT_MS) {
+            runCatching { fusedClient.lastLocation.await() }.getOrNull()
+        }
+        if (last != null) return last
+
+        // 2. Play Services returned no cached fix — fall back to the platform LocationManager's
+        //    last-known location, which often still holds a recent GPS fix (confirmed via
+        //    `dumpsys location`) even when FusedLocationProviderClient.lastLocation is null.
+        platformLastKnownLocation()?.let { return it }
+
+        // 3. No cached fix anywhere: request an active one. PRIORITY_HIGH_ACCURACY uses GPS, which is the
+        //    only provider enabled on some devices; bounded by a timeout so we fail fast instead
+        //    of hanging forever when no fix is obtainable (e.g. indoors).
         val cancellation = CancellationTokenSource()
-        return fusedClient
-            .getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, cancellation.token)
-            .await()
+        val current = withTimeoutOrNull(CURRENT_LOCATION_TIMEOUT_MS) {
+            runCatching {
+                fusedClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, cancellation.token).await()
+            }.getOrNull()
+        }
+        if (current == null) cancellation.cancel()
+        return current
+    }
+
+    /** Most recent last-known location across the platform providers (gps/network/passive). */
+    @SuppressLint("MissingPermission") // permission is verified by hasLocationPermission() before calling.
+    private fun platformLastKnownLocation(): Location? {
+        val lm = appContext.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return null
+        return listOf(
+            LocationManager.GPS_PROVIDER,
+            LocationManager.NETWORK_PROVIDER,
+            LocationManager.PASSIVE_PROVIDER,
+        )
+            .mapNotNull { provider -> runCatching { lm.getLastKnownLocation(provider) }.getOrNull() }
+            .maxByOrNull { it.time }
+    }
+
+    companion object {
+        private const val LAST_LOCATION_TIMEOUT_MS = 4_000L
+        private const val CURRENT_LOCATION_TIMEOUT_MS = 20_000L
     }
 }
 

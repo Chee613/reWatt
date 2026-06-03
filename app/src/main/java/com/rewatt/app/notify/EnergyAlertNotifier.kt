@@ -9,17 +9,25 @@ import com.rewatt.app.data.UserRole
  * [EnergyAlertService] to display it as a non-swipeable foreground-service notification.
  *
  * **Every capture** that detects an empty room with the lights/AC still on will trigger the
- * alert. The **Done** and **Snooze** buttons only dismiss the current alert; if the next
- * capture still detects wasteful conditions, the alert will fire again immediately.
+ * alert. **Done** dismisses the current alert; if the next capture still detects wasteful
+ * conditions, the alert fires again immediately. **Snooze** dismisses the current alert *and*
+ * suppresses all new alerts for [SNOOZE_DURATION_MILLIS] (5 minutes), even if the room stays
+ * wasteful, so the operator gets time to actually walk over and switch things off.
  */
 object EnergyAlertNotifier {
     const val ACTION_DONE = "com.rewatt.app.action.ENERGY_DONE"
     const val ACTION_SNOOZE = "com.rewatt.app.action.ENERGY_SNOOZE"
 
+    /** How long Snooze suppresses new alerts. */
+    const val SNOOZE_DURATION_MILLIS = 5 * 60 * 1000L
+
+    private const val PREFS_NAME = "rewatt_energy_alert"
+    private const val KEY_SNOOZE_UNTIL = "snooze_until_millis"
+
     /**
      * Evaluate the latest capture: an empty room with the lights still on is wasteful.
      * Shows the alert every time wasteful conditions are detected, and clears it when
-     * conditions are no longer wasteful.
+     * conditions are no longer wasteful — unless a Snooze window is still active.
      */
     fun onPerception(context: Context, personCount: Int, lightsOn: Boolean?) {
         // Sensor-mode edge devices must stay silent. Read the locally-cached APP_MODE
@@ -37,7 +45,11 @@ object EnergyAlertNotifier {
             stop(context)
             return
         }
-        // Always show the alert when wasteful — no suppression.
+        // Suppress while the operator's Snooze window is still active.
+        if (isSnoozed(context)) {
+            stop(context)
+            return
+        }
         show(context)
     }
 
@@ -46,7 +58,19 @@ object EnergyAlertNotifier {
     }
 
     fun onSnooze(context: Context) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putLong(KEY_SNOOZE_UNTIL, System.currentTimeMillis() + SNOOZE_DURATION_MILLIS)
+            .apply()
         stop(context)
+    }
+
+    /** True while a Snooze window started by [onSnooze] is still in effect. */
+    private fun isSnoozed(context: Context): Boolean {
+        val snoozeUntil = context
+            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getLong(KEY_SNOOZE_UNTIL, 0L)
+        return System.currentTimeMillis() < snoozeUntil
     }
 
     /** Start the foreground service whose notification cannot be swiped away. */
