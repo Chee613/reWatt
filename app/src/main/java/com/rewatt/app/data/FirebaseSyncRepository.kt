@@ -8,6 +8,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.DocumentSnapshot
+import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.SetOptions
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
@@ -321,24 +322,40 @@ class FirebaseSyncRepository(
         awaitClose { listener.remove() }
     }
 
-    fun hallScheduleFlow(hallLabel: String): Flow<Array<IntArray>> = callbackFlow {
-        val uid = FirebaseAuth.getInstance().currentUser?.uid
-        if (uid == null) {
-            trySend(Array(7) { IntArray(24) { 0 } })
-            awaitClose { }
-            return@callbackFlow
-        }
-        val cutoffMs = System.currentTimeMillis() - 30L * 24 * 3600 * 1000
-        val listener = FirebaseFirestore.getInstance()
-            .collection("rewatt_users").document(uid)
-            .collection("rooms").document(hallLabel)
-            .collection("telemetry")
-            .whereGreaterThan("perceptionCapturedAt", cutoffMs)
-            .addSnapshotListener { snapshot, _ ->
-                trySend(aggregateSchedule(snapshot?.documents.orEmpty()))
+    /**
+     * Auth-aware telemetry listener. Re-attaches when Firebase Auth restores the session,
+     * so a cold-start race (uid not ready yet) no longer leaves the flow permanently empty.
+     */
+    private fun <T> authedTelemetryFlow(
+        hallLabel: String,
+        empty: T,
+        aggregate: (List<DocumentSnapshot>) -> T,
+    ): Flow<T> = callbackFlow {
+        val auth = FirebaseAuth.getInstance()
+        var reg: ListenerRegistration? = null
+        val authListener = FirebaseAuth.AuthStateListener { fa ->
+            reg?.remove(); reg = null
+            val uid = fa.currentUser?.uid
+            if (uid == null) {
+                trySend(empty)
+            } else {
+                val cutoffMs = System.currentTimeMillis() - 30L * 24 * 3600 * 1000
+                reg = FirebaseFirestore.getInstance()
+                    .collection("rewatt_users").document(uid)
+                    .collection("rooms").document(hallLabel)
+                    .collection("telemetry")
+                    .whereGreaterThan("perceptionCapturedAt", cutoffMs)
+                    .addSnapshotListener { snapshot, _ ->
+                        trySend(aggregate(snapshot?.documents.orEmpty()))
+                    }
             }
-        awaitClose { listener.remove() }
+        }
+        auth.addAuthStateListener(authListener)
+        awaitClose { auth.removeAuthStateListener(authListener); reg?.remove() }
     }
+
+    fun hallScheduleFlow(hallLabel: String): Flow<Array<IntArray>> =
+        authedTelemetryFlow(hallLabel, Array(7) { IntArray(24) { 0 } }) { aggregateSchedule(it) }
 
     private fun aggregateSchedule(docs: List<DocumentSnapshot>): Array<IntArray> {
         val sums   = Array(7) { IntArray(24) { 0 } }
@@ -372,24 +389,8 @@ class FirebaseSyncRepository(
      * Class Schedule to display the exact expected occupants on each block while staying aligned
      * with the heatmap (the heatmap's level is just this mean bucketed into 1-40 / 41-80 / 81+).
      */
-    fun hallMeanScheduleFlow(hallLabel: String): Flow<Array<IntArray>> = callbackFlow {
-        val uid = FirebaseAuth.getInstance().currentUser?.uid
-        if (uid == null) {
-            trySend(Array(7) { IntArray(24) { 0 } })
-            awaitClose { }
-            return@callbackFlow
-        }
-        val cutoffMs = System.currentTimeMillis() - 30L * 24 * 3600 * 1000
-        val listener = FirebaseFirestore.getInstance()
-            .collection("rewatt_users").document(uid)
-            .collection("rooms").document(hallLabel)
-            .collection("telemetry")
-            .whereGreaterThan("perceptionCapturedAt", cutoffMs)
-            .addSnapshotListener { snapshot, _ ->
-                trySend(aggregateMeanSchedule(snapshot?.documents.orEmpty()))
-            }
-        awaitClose { listener.remove() }
-    }
+    fun hallMeanScheduleFlow(hallLabel: String): Flow<Array<IntArray>> =
+        authedTelemetryFlow(hallLabel, Array(7) { IntArray(24) { 0 } }) { aggregateMeanSchedule(it) }
 
     private fun aggregateMeanSchedule(docs: List<DocumentSnapshot>): Array<IntArray> {
         val sums   = Array(7) { IntArray(24) { 0 } }
@@ -417,24 +418,8 @@ class FirebaseSyncRepository(
      * Lets the Class Schedule detect session start/end at the real 10-min granularity
      * instead of snapping everything to whole hours.
      */
-    fun hallMinuteScheduleFlow(hallLabel: String): Flow<Array<IntArray>> = callbackFlow {
-        val uid = FirebaseAuth.getInstance().currentUser?.uid
-        if (uid == null) {
-            trySend(Array(7) { IntArray(144) { 0 } })
-            awaitClose { }
-            return@callbackFlow
-        }
-        val cutoffMs = System.currentTimeMillis() - 30L * 24 * 3600 * 1000
-        val listener = FirebaseFirestore.getInstance()
-            .collection("rewatt_users").document(uid)
-            .collection("rooms").document(hallLabel)
-            .collection("telemetry")
-            .whereGreaterThan("perceptionCapturedAt", cutoffMs)
-            .addSnapshotListener { snapshot, _ ->
-                trySend(aggregateMinuteSchedule(snapshot?.documents.orEmpty()))
-            }
-        awaitClose { listener.remove() }
-    }
+    fun hallMinuteScheduleFlow(hallLabel: String): Flow<Array<IntArray>> =
+        authedTelemetryFlow(hallLabel, Array(7) { IntArray(144) { 0 } }) { aggregateMinuteSchedule(it) }
 
     private fun aggregateMinuteSchedule(docs: List<DocumentSnapshot>): Array<IntArray> {
         val sums   = Array(7) { IntArray(144) { 0 } }
