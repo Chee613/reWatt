@@ -482,6 +482,7 @@ fun DashboardScreen(
                     hallMeanSchedules = hallMeanSchedules,
                     hallMinuteSchedules = hallMinuteSchedules,
                     learnedSchedules = learnedSchedules,
+                    userEmail = userEmail,
                 )
 
                 ReWattTab.Capture -> CapturePage(
@@ -1040,6 +1041,7 @@ private fun AnalyticPage(
     hallMeanSchedules: Map<String, Array<IntArray>> = emptyMap(),
     hallMinuteSchedules: Map<String, Array<IntArray>> = emptyMap(),
     learnedSchedules: Map<String, List<List<LearnedSegment>>> = emptyMap(),
+    userEmail: String = "",
 ) {
     var isAction by rememberSaveable { mutableStateOf(true) }
 
@@ -1074,6 +1076,7 @@ private fun AnalyticPage(
                     hall = selectedHall,
                     learnedDays = learnedSchedules[selectedHall.label],
                     minuteSchedule = hallMinuteSchedules[selectedHall.label],
+                    showFallbackEstimate = userEmail.equals("tjh3281@gmail.com", ignoreCase = true),
                 )
                 WeeklyOccupancyCard(
                     hall = selectedHall,
@@ -2038,7 +2041,7 @@ private fun CapturePage(
         )
         AudioCompactCard(
             state = state,
-            modifier = Modifier.height(260.dp),
+            modifier = Modifier.fillMaxWidth(),
         )
         SensorLiveDataCard(telemetry = telemetry)
         if (currentUserRole == UserRole.Sensor && spaceName != null) {
@@ -2649,6 +2652,7 @@ private fun ClassScheduleCard(
     hall: Hall,
     learnedDays: List<List<LearnedSegment>>?,
     minuteSchedule: Array<IntArray>? = null,
+    showFallbackEstimate: Boolean = false,
 ) {
     val gridStartMin = CLASS_GRID_START_HOUR * 60
     val gridEndMin   = CLASS_GRID_END_HOUR   * 60
@@ -2660,6 +2664,30 @@ private fun ClassScheduleCard(
     // session edges (not snapped to whole hours). A "session" is a contiguous run of occupied
     // 10-min bins (mean > 0); empty bins (breaks / overnight / weekend) split them.
     val hasHeatmapData = minuteSchedule?.any { row -> row.any { v -> v > 0 } } == true
+
+    // No data yet AND not the demo account → show an empty "collecting data" state, NOT the
+    // hardcoded FSKTM estimate. The estimate is only a demo fallback for the FSKTM account.
+    if (!hasHeatmapData && !showFallbackEstimate) {
+        InfoCard(modifier = Modifier.fillMaxWidth()) {
+            Text("Class Schedule", fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(12.dp))
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text("No class data yet", fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "The class schedule will appear once the sensor has collected enough occupancy data for this hall.",
+                    fontSize = 12.sp,
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+        }
+        return
+    }
+
     val isEstimated = !hasHeatmapData
     val displayDays: List<List<LearnedSegment>> = if (hasHeatmapData) {
         List(7) { dow ->
