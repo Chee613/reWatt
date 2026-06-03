@@ -12,6 +12,7 @@ import com.rewatt.app.data.GeminiEnergyAdvisor
 import com.rewatt.app.data.LearnedSegment
 import com.rewatt.app.data.RecentCapture
 import com.rewatt.app.data.HallSnapshot
+import com.rewatt.app.data.SensorNodeSnapshot
 import com.rewatt.app.data.OccupancyForecastProvider
 import com.rewatt.app.data.SensorDashboardState
 import com.rewatt.app.data.TelemetryRepository
@@ -30,6 +31,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
@@ -64,6 +66,12 @@ class DashboardViewModel(
     private val _learnedSchedules = MutableStateFlow<Map<String, List<List<LearnedSegment>>>>(emptyMap())
     val learnedSchedules: StateFlow<Map<String, List<List<LearnedSegment>>>> = _learnedSchedules
 
+    // Venue-wide sensor fleet (Admin Manage tab): merged live nodes across all halls.
+    private val _sensorFleet = MutableStateFlow<Map<String, List<SensorNodeSnapshot>>>(emptyMap())
+    val sensorFleet: StateFlow<List<SensorNodeSnapshot>> = _sensorFleet
+        .map { byHall -> byHall.values.flatten() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), emptyList())
+
     val recentCaptures: StateFlow<List<RecentCapture>> =
         repository.recentCapturesFlow
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), emptyList())
@@ -77,7 +85,32 @@ class DashboardViewModel(
         listenToAllHallMeanSchedules()
         listenToAllHallMinuteSchedules()
         listenToAllLearnedSchedules()
+        listenToAllHallNodes()
         startAutoEnergyAdvice()
+    }
+
+    private fun listenToAllHallNodes() {
+        listOf("Hall 1", "Hall 2", "Hall 3", "Hall 4").forEach { hall ->
+            viewModelScope.launch {
+                repository.listenToHallNodes(hall).collect { nodes ->
+                    _sensorFleet.update { current -> current + (hall to nodes) }
+                }
+            }
+        }
+    }
+
+    /**
+     * Force a one-time pull of the latest node docs across all halls. Called when the
+     * Admin opens the Manage tab so the freshest stored data shows immediately, rather
+     * than waiting for the next 10-minute capture sync.
+     */
+    fun refreshSensorFleet() {
+        listOf("Hall 1", "Hall 2", "Hall 3", "Hall 4").forEach { hall ->
+            viewModelScope.launch {
+                val nodes = repository.fetchHallNodes(hall)
+                _sensorFleet.update { current -> current + (hall to nodes) }
+            }
+        }
     }
 
     /**

@@ -186,6 +186,7 @@ class MainActivity : ComponentActivity() {
                     val learnedSchedules by viewModel.learnedSchedules.collectAsStateWithLifecycle()
                     val recentCaptures by viewModel.recentCaptures.collectAsStateWithLifecycle()
                     val wasteSummary by viewModel.wasteSummary.collectAsStateWithLifecycle()
+                    val sensorFleet by viewModel.sensorFleet.collectAsStateWithLifecycle()
                     val authedUser = (authState as? AuthState.Authenticated)?.user
                     DashboardScreen(
                         uiState = uiState.value,
@@ -217,6 +218,8 @@ class MainActivity : ComponentActivity() {
                         learnedSchedules = learnedSchedules,
                         recentCaptures = recentCaptures,
                         wasteSummary = wasteSummary,
+                        sensorFleet = sensorFleet,
+                        onRefreshFleet = viewModel::refreshSensorFleet,
                         onHallSelect = viewModel::selectHall,
                         onModeSelected = { role ->
                             authViewModel.setMode(role)

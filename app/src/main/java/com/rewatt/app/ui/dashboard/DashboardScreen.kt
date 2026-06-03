@@ -27,13 +27,21 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BarChart
+import androidx.compose.material.icons.outlined.BatteryAlert
+import androidx.compose.material.icons.outlined.BatteryFull
 import androidx.compose.material.icons.outlined.CameraAlt
+import androidx.compose.material.icons.outlined.GraphicEq
+import androidx.compose.material.icons.outlined.Groups
+import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Sensors
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Thermostat
 import androidx.compose.material.icons.outlined.Usb
 import androidx.compose.material.icons.outlined.Warning
+import androidx.compose.material.icons.outlined.Wifi
+import androidx.compose.material.icons.outlined.WifiOff
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.AlertDialog
@@ -49,6 +57,8 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -88,6 +98,7 @@ import com.rewatt.app.data.MalaysiaHolidays
 import com.rewatt.app.data.RecentCapture
 import androidx.compose.ui.platform.LocalContext
 import com.rewatt.app.data.SensorDashboardState
+import com.rewatt.app.data.SensorNodeSnapshot
 import com.rewatt.app.data.WeatherState
 import com.rewatt.app.data.WeatherStatus
 import com.rewatt.app.perception.AudioCaptureController
@@ -128,6 +139,180 @@ private enum class ReWattTab(val label: String, val icon: ImageVector) {
     Setting("Setting",  Icons.Outlined.Settings),
 }
 
+/** Sub-tabs shown at the top of the LIVE page (Manage is Admin-only). */
+private enum class LiveSubTab(val label: String) {
+    Overview("Overview"),
+    Manage("Manage"),
+}
+
+/** A node is considered online if it has reported within the last 15 minutes. */
+private const val NODE_ONLINE_WINDOW_MILLIS = 15 * 60_000L
+
+/** Fleet view: a vertical list of every tracking sensor node across the venue. */
+@Composable
+private fun ManageContent(
+    nodes: List<SensorNodeSnapshot>,
+    nowMillis: Long,
+) {
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        item {
+            Text(
+                text = "Sensor fleet",
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp,
+            )
+        }
+        if (nodes.isEmpty()) {
+            item {
+                Text(
+                    text = "No sensors reporting yet.",
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 13.sp,
+                )
+            }
+        } else {
+            items(nodes, key = { it.roomId + "/" + it.nodeId }) { node ->
+                val online = node.lastUpdatedAt != null &&
+                    nowMillis - node.lastUpdatedAt < NODE_ONLINE_WINDOW_MILLIS
+                SensorNodeCard(node = node, online = online)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SensorNodeCard(node: SensorNodeSnapshot, online: Boolean) {
+    val colorScheme = androidx.compose.material3.MaterialTheme.colorScheme
+    val accent = if (online) colorScheme.primary else colorScheme.error
+    val batteryMissing = node.batteryPercent == null || node.batteryPercent == 0
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = colorScheme.surface),
+        border = BorderStroke(1.dp, accent.copy(alpha = if (online) 0.4f else 1f)),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            // ── Header: sensor name + connectivity pill ──
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Outlined.Sensors,
+                        contentDescription = null,
+                        tint = accent,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = node.roomId,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                    )
+                }
+                StatusPill(online = online, accent = accent)
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            if (!online) {
+                NodeInfoRow(
+                    icon = Icons.Outlined.WifiOff,
+                    text = "Offline / Connection Lost",
+                    tint = colorScheme.error,
+                )
+            } else {
+                NodeInfoRow(
+                    icon = Icons.Outlined.Groups,
+                    text = if (node.personCount > 0) {
+                        "Occupied · ${node.personCount} ${if (node.personCount == 1) "person" else "people"}"
+                    } else {
+                        "Empty"
+                    },
+                )
+                node.lightsOn?.let { on ->
+                    NodeInfoRow(
+                        icon = Icons.Outlined.Lightbulb,
+                        text = "Lights ${if (on) "ON" else "OFF"}",
+                    )
+                }
+                node.temperatureC?.let { temp ->
+                    val humidity = node.humidityPercent?.let { " · ${it.toInt()}% RH" } ?: ""
+                    NodeInfoRow(
+                        icon = Icons.Outlined.Thermostat,
+                        text = "${"%.1f".format(temp)}°C$humidity",
+                    )
+                }
+                node.primaryActivity?.takeIf { it.isNotBlank() }?.let { activity ->
+                    NodeInfoRow(icon = Icons.Outlined.GraphicEq, text = activity)
+                }
+            }
+
+            // Battery is shown even when offline (last-known reading).
+            NodeInfoRow(
+                icon = if (batteryMissing) Icons.Outlined.BatteryAlert else Icons.Outlined.BatteryFull,
+                text = "Battery ${node.batteryPercent ?: "--"}%",
+                tint = if (batteryMissing) colorScheme.error else null,
+            )
+        }
+    }
+}
+
+/** A single icon + label row used inside [SensorNodeCard]. */
+@Composable
+private fun NodeInfoRow(
+    icon: ImageVector,
+    text: String,
+    tint: Color? = null,
+) {
+    val color = tint ?: androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
+    Row(
+        modifier = Modifier.padding(vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = color,
+            modifier = Modifier.size(16.dp),
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(text = text, color = color, fontSize = 13.sp)
+    }
+}
+
+@Composable
+private fun StatusPill(online: Boolean, accent: Color) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(accent.copy(alpha = 0.12f))
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = if (online) Icons.Outlined.Wifi else Icons.Outlined.WifiOff,
+            contentDescription = null,
+            tint = accent,
+            modifier = Modifier.size(14.dp),
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            text = if (online) "Online" else "Offline",
+            color = accent,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DashboardScreen(
@@ -157,6 +342,8 @@ fun DashboardScreen(
     learnedSchedules: Map<String, List<List<LearnedSegment>>> = emptyMap(),
     recentCaptures: List<RecentCapture> = emptyList(),
     wasteSummary: EnergyWasteSummary? = null,
+    sensorFleet: List<SensorNodeSnapshot> = emptyList(),
+    onRefreshFleet: () -> Unit = {},
     onHallSelect: (String) -> Unit = {},
     onModeSelected: (UserRole) -> Unit = {},
     onRenameSpace: (String) -> Unit = {},
@@ -281,6 +468,9 @@ fun DashboardScreen(
                     hallSnapshot = hallSnapshot,
                     wasteSummary = wasteSummary,
                     hallMeanSchedules = hallMeanSchedules,
+                    sensorFleet = sensorFleet,
+                    nowMillis = uiState.nowMillis,
+                    onRefreshFleet = onRefreshFleet,
                 )
 
                 ReWattTab.Analytic -> AnalyticPage(
@@ -389,6 +579,69 @@ internal fun ReWattLogoBadge(modifier: Modifier = Modifier) {
 
 @Composable
 private fun LivePage(
+    uiState: DashboardUiState,
+    perceptionState: PerceptionUiState,
+    selectedHall: Hall,
+    onHallChange: (Hall) -> Unit,
+    onStartCapture: () -> Unit,
+    onRefreshWeather: () -> Unit = {},
+    onRequestEnergyAdvice: () -> Unit = {},
+    currentUserRole: UserRole? = null,
+    spaceName: String? = null,
+    hallSnapshot: HallSnapshot? = null,
+    wasteSummary: EnergyWasteSummary? = null,
+    hallMeanSchedules: Map<String, Array<IntArray>> = emptyMap(),
+    sensorFleet: List<SensorNodeSnapshot> = emptyList(),
+    nowMillis: Long = System.currentTimeMillis(),
+    onRefreshFleet: () -> Unit = {},
+) {
+    @Composable
+    fun overview() = OverviewContent(
+        uiState = uiState,
+        perceptionState = perceptionState,
+        selectedHall = selectedHall,
+        onHallChange = onHallChange,
+        onStartCapture = onStartCapture,
+        onRefreshWeather = onRefreshWeather,
+        onRequestEnergyAdvice = onRequestEnergyAdvice,
+        currentUserRole = currentUserRole,
+        spaceName = spaceName,
+        hallSnapshot = hallSnapshot,
+        wasteSummary = wasteSummary,
+        hallMeanSchedules = hallMeanSchedules,
+    )
+
+    // The Manage fleet view is Admin-only; everyone else sees the Overview directly.
+    if (currentUserRole != UserRole.Admin) {
+        overview()
+        return
+    }
+
+    var subTab by rememberSaveable { mutableStateOf(LiveSubTab.Overview) }
+    Column(modifier = Modifier.fillMaxSize()) {
+        TabRow(selectedTabIndex = subTab.ordinal) {
+            LiveSubTab.values().forEach { tab ->
+                Tab(
+                    selected = subTab == tab,
+                    onClick = { subTab = tab },
+                    text = { Text(tab.label) },
+                )
+            }
+        }
+        when (subTab) {
+            LiveSubTab.Overview -> overview()
+            LiveSubTab.Manage -> {
+                // Force-fetch the latest stored node data each time Manage opens, so the
+                // admin sees the freshest values without waiting for the next capture sync.
+                LaunchedEffect(Unit) { onRefreshFleet() }
+                ManageContent(nodes = sensorFleet, nowMillis = nowMillis)
+            }
+        }
+    }
+}
+
+@Composable
+private fun OverviewContent(
     uiState: DashboardUiState,
     perceptionState: PerceptionUiState,
     selectedHall: Hall,
@@ -3016,17 +3269,6 @@ private fun AudioCompactCard(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        state.soundDetections.take(3).forEach { detection ->
-            DetectionRow(
-                label = if (detection.indicatesHumanPresence) {
-                    detection.label
-                } else {
-                    "${detection.label} (support)"
-                },
-                confidence = detection.confidence,
-                highlight = detection.indicatesHumanPresence,
-            )
-        }
     }
 }
 
