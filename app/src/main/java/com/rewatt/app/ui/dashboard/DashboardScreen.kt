@@ -825,6 +825,7 @@ private fun AnalyticPage(
                 WeeklyOccupancyCard(
                     hall = selectedHall,
                     firestoreSchedule = hallSchedules[selectedHall.label],
+                    minuteSchedule = hallMinuteSchedules[selectedHall.label],
                 )
             }
         }
@@ -970,11 +971,32 @@ private fun buildWeeklySchedule(hall: Hall): Array<IntArray> {
 }
 
 @Composable
-private fun WeeklyOccupancyCard(hall: Hall, firestoreSchedule: Array<IntArray>? = null) {
+private fun WeeklyOccupancyCard(
+    hall: Hall,
+    firestoreSchedule: Array<IntArray>? = null,
+    minuteSchedule: Array<IntArray>? = null,
+) {
     val hasData = firestoreSchedule?.any { row -> row.any { v -> v != 0 } } == true
     val schedule = if (hasData) firestoreSchedule!! else remember(hall) { buildWeeklySchedule(hall) }
     val dayBreaks = if (hasData) emptyMap() else (hallDayBreaks[hall] ?: emptyMap())
     var selectedDay by remember { mutableStateOf<Int?>(null) }
+
+    // 30-minute mean-occupancy grid (48 cells/day) for the heatmap. Built from the 10-min
+    // bins when available; otherwise derived from the hourly levels so it still renders.
+    val mean30: Array<IntArray> = remember(minuteSchedule, schedule) {
+        val hasMinute = minuteSchedule != null && minuteSchedule.any { r -> r.any { it > 0 } }
+        if (hasMinute) {
+            Array(7) { d ->
+                IntArray(48) { half ->
+                    val b0 = half * 3
+                    val total = (0..2).sumOf { minuteSchedule!![d].getOrElse(b0 + it) { 0 } }
+                    total / 3   // mean over the three 10-min bins (missing counts as 0)
+                }
+            }
+        } else {
+            Array(7) { d -> IntArray(48) { half -> levelToCount(schedule[d].getOrElse(half / 2) { 0 }) } }
+        }
+    }
 
     InfoCard(modifier = Modifier.fillMaxWidth()) {
         Text("Weekly occupancy pattern", fontWeight = FontWeight.SemiBold)
@@ -998,7 +1020,7 @@ private fun WeeklyOccupancyCard(hall: Hall, firestoreSchedule: Array<IntArray>? 
             OccupancyHeatmapLegend()
             Spacer(Modifier.height(10.dp))
             WeeklyHeatmapGrid(
-                schedule = schedule,
+                schedule = mean30,
                 selectedDay = selectedDay,
                 onDayClick = { day -> selectedDay = if (selectedDay == day) null else day },
             )
@@ -1012,24 +1034,49 @@ private fun WeeklyOccupancyCard(hall: Hall, firestoreSchedule: Array<IntArray>? 
                 val day = selectedDay ?: 0
                 Column {
                     Spacer(Modifier.height(12.dp))
-                    DailyOccupancyChart(dayIndex = day, schedule = schedule, dayBreaks = dayBreaks, hall = hall)
+                    DailyOccupancyChart(
+                        dayIndex = day, schedule = schedule, dayBreaks = dayBreaks, hall = hall,
+                        half30 = mean30[day],
+                    )
                 }
             }
         }
     }
 }
 
+/** Representative headcount for a 0-3 occupancy level (cold-start fallback only). */
+private fun levelToCount(level: Int): Int = when (level) {
+    1 -> 25
+    2 -> 60
+    3 -> 120
+    else -> 0
+}
+
+/** 6-step blue gradient spreading the 0-300 occupancy range so differences are visible. */
+private fun heatColorForCount(c: Int): Color = when {
+    c <= 0   -> Color.Transparent
+    c < 50   -> Color(0xFFBBDEFB) // 1-49
+    c < 100  -> Color(0xFF90CAF9) // 50-99
+    c < 150  -> Color(0xFF64B5F6) // 100-149
+    c < 200  -> Color(0xFF42A5F5) // 150-199
+    c < 250  -> Color(0xFF1E88E5) // 200-249
+    else     -> Color(0xFF0D47A1) // 250+
+}
+
 @Composable
 private fun OccupancyHeatmapLegend() {
     val emptyColor = androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant
     Row(
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        HeatmapLegendItem(emptyColor,        "Empty")
-        HeatmapLegendItem(Color(0xFF90B4D8), "1-40")
-        HeatmapLegendItem(Color(0xFF4A90D9), "41-80")
-        HeatmapLegendItem(Color(0xFF1565C0), "81+")
+        HeatmapLegendItem(emptyColor,        "0")
+        HeatmapLegendItem(Color(0xFFBBDEFB), "50")
+        HeatmapLegendItem(Color(0xFF90CAF9), "100")
+        HeatmapLegendItem(Color(0xFF64B5F6), "150")
+        HeatmapLegendItem(Color(0xFF42A5F5), "200")
+        HeatmapLegendItem(Color(0xFF1E88E5), "250")
+        HeatmapLegendItem(Color(0xFF0D47A1), "300")
     }
 }
 
@@ -1097,31 +1144,27 @@ private fun WeeklyHeatmapGrid(
 
 @Composable
 private fun HeatmapRow(
-    hourLevels: IntArray,
+    hourLevels: IntArray,   // 48 cells of 30-min mean occupancy counts
     modifier: Modifier = Modifier,
     rowHeight: androidx.compose.ui.unit.Dp = 26.dp,
 ) {
     val emptyColor = androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant
+    val cells = hourLevels.size.coerceAtLeast(1)
     Canvas(
         modifier = modifier
             .height(rowHeight)
             .clip(RoundedCornerShape(13.dp))
             .background(emptyColor),
     ) {
-        val cellW = size.width / 24f
-        val gap = 1.5f
-        hourLevels.forEachIndexed { hour, level ->
-            val color = when (level) {
-                1 -> Color(0xFF90B4D8)
-                2 -> Color(0xFF4A90D9)
-                3 -> Color(0xFF1565C0)
-                else -> return@forEachIndexed
-            }
+        val cellW = size.width / cells
+        val gap = 0.8f
+        hourLevels.forEachIndexed { idx, count ->
+            if (count <= 0) return@forEachIndexed
             drawRoundRect(
-                color = color,
-                topLeft = androidx.compose.ui.geometry.Offset(hour * cellW + gap / 2f, gap / 2f),
+                color = heatColorForCount(count),
+                topLeft = androidx.compose.ui.geometry.Offset(idx * cellW + gap / 2f, gap / 2f),
                 size = androidx.compose.ui.geometry.Size(cellW - gap, size.height - gap),
-                cornerRadius = androidx.compose.ui.geometry.CornerRadius(3f),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(2f),
             )
         }
     }
@@ -1151,13 +1194,24 @@ private fun DailyOccupancyChart(
     schedule: Array<IntArray>,
     dayBreaks: Map<Int, List<TR>>,
     hall: Hall,
+    half30: IntArray? = null,   // 48 cells of 30-min mean occupancy
 ) {
     val fullDayNames = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
     val emptyColor = androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant
     val refLineColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f)
     val breaks = dayBreaks[dayIndex] ?: emptyList()
-    val occupancy = remember(hall, dayIndex) { buildHourlyOccupancy(schedule[dayIndex], hall, dayIndex) }
-    val peak = occupancy.max()
+
+    // 48-cell 30-min day; fall back to expanding hourly levels when no real data.
+    val occ48 = half30 ?: remember(hall, dayIndex) {
+        val hourly = buildHourlyOccupancy(schedule[dayIndex], hall, dayIndex)
+        IntArray(48) { hourly[it / 2] }
+    }
+    val firstBin = CLASS_GRID_START_HOUR * 2   // 16 → 08:00
+    val lastBin  = CLASS_GRID_END_HOUR * 2 - 1  // 37 → 18:30 slot
+    val numBins = lastBin - firstBin + 1        // 22 half-hour bars
+    val peak = (firstBin..lastBin).maxOf { occ48.getOrElse(it) { 0 } }
+
+    fun binLabel(bin: Int) = "%02d:%02d".format((bin * 30) / 60, (bin * 30) % 60)
 
     val breakLabel = if (breaks.isEmpty()) {
         if (dayIndex >= 5) "No classes — weekend" else "No breaks scheduled"
@@ -1167,10 +1221,7 @@ private fun DailyOccupancyChart(
         }
     }
 
-    var selectedHour by remember(dayIndex, hall) { mutableStateOf<Int?>(null) }
-    val firstHour = 7
-    val lastHour = 18
-    val numHours = lastHour - firstHour + 1  // 12 bars (07:00–18:59)
+    var selectedBin by remember(dayIndex, hall) { mutableStateOf<Int?>(null) }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -1200,7 +1251,7 @@ private fun DailyOccupancyChart(
                     .width(26.dp),
                 verticalArrangement = Arrangement.SpaceBetween,
             ) {
-                listOf("120", "80", "40", "0").forEach { label ->
+                listOf("300", "200", "100", "0").forEach { label ->
                     Text(
                         text = label,
                         fontSize = 8.sp,
@@ -1216,17 +1267,17 @@ private fun DailyOccupancyChart(
                     .background(emptyColor)
                     .pointerInput(dayIndex, hall) {
                         detectTapGestures { offset ->
-                            val barW = size.width / numHours.toFloat()
-                            val tapped = firstHour + (offset.x / barW).toInt().coerceIn(0, numHours - 1)
-                            selectedHour = if (selectedHour == tapped) null else tapped
+                            val barW = size.width / numBins.toFloat()
+                            val tapped = firstBin + (offset.x / barW).toInt().coerceIn(0, numBins - 1)
+                            selectedBin = if (selectedBin == tapped) null else tapped
                         }
                     },
             ) {
-                val maxCount = 120f
-                val barW = size.width / numHours.toFloat()
-                val gap = 1.5f
-                // Reference lines at 40 and 80
-                listOf(40f, 80f).forEach { count ->
+                val maxCount = 300f
+                val barW = size.width / numBins.toFloat()
+                val gap = 1f
+                // Reference lines at 100 and 200
+                listOf(100f, 200f).forEach { count ->
                     val y = size.height * (1f - count / maxCount)
                     drawLine(
                         color = refLineColor,
@@ -1236,50 +1287,41 @@ private fun DailyOccupancyChart(
                     )
                 }
 
-                // Draw bars for visible hours only (firstHour..lastHour)
-                for (hour in firstHour..lastHour) {
-                    val count = occupancy[hour]
+                // Draw a bar per 30-min bin in the 08:00–19:00 window
+                for (bin in firstBin..lastBin) {
+                    val count = occ48.getOrElse(bin) { 0 }
                     if (count == 0) continue
-                    val isSelected = selectedHour == hour
+                    val isSelected = selectedBin == bin
                     val barHeight = size.height * (count / maxCount)
-                    val x = (hour - firstHour) * barW
-                    val color = if (isSelected) when {
-                        count > 80 -> Color(0xFF512DA8)   // dark purple  ≈ 0xFF1565C0
-                        count > 40 -> Color(0xFF7E57C2)   // medium purple ≈ 0xFF4A90D9
-                        else       -> Color(0xFFB39DDB)   // light purple  ≈ 0xFF90B4D8
-                    } else when {
-                        count > 80 -> Color(0xFF1565C0)
-                        count > 40 -> Color(0xFF4A90D9)
-                        else       -> Color(0xFF90B4D8)
-                    }
+                    val x = (bin - firstBin) * barW
+                    val color = if (isSelected) Color(0xFF7E57C2) else heatColorForCount(count)
                     drawRoundRect(
                         color = color,
                         topLeft = androidx.compose.ui.geometry.Offset(x = x + gap, y = size.height - barHeight),
                         size = androidx.compose.ui.geometry.Size(width = barW - gap * 2, height = barHeight),
-                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(4f),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(2f),
                     )
                 }
 
-                // Stroke outline on selected column
-                val selHour = selectedHour ?: return@Canvas
-                if (selHour in firstHour..lastHour) {
-                    val x = (selHour - firstHour) * barW
+                val selBin = selectedBin ?: return@Canvas
+                if (selBin in firstBin..lastBin) {
+                    val x = (selBin - firstBin) * barW
                     drawRoundRect(
                         color = Color(0xFF7E57C2).copy(alpha = 0.55f),
                         topLeft = androidx.compose.ui.geometry.Offset(x = x + gap, y = 0f),
                         size = androidx.compose.ui.geometry.Size(width = barW - gap * 2, height = size.height),
-                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(4f),
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(2f),
                         style = Stroke(width = 1.5f),
                     )
                 }
             }
         }
-        // Zoomed axis: labels only for the visible 07–18 window
+        // Hour axis across the 08–19 window
         Row(
             modifier = Modifier.fillMaxWidth().padding(end = 20.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            listOf("07", "09", "11", "13", "15", "17", "18").forEach { label ->
+            listOf("08", "10", "12", "14", "16", "18", "19").forEach { label ->
                 Text(
                     text = label,
                     fontSize = 9.sp,
@@ -1287,14 +1329,14 @@ private fun DailyOccupancyChart(
                 )
             }
         }
-        val selHour = selectedHour
+        val selBin = selectedBin
         AnimatedVisibility(
-            visible = selHour != null,
+            visible = selBin != null,
             enter = fadeIn() + expandVertically(),
             exit = fadeOut() + shrinkVertically(),
         ) {
-            if (selHour != null) {
-                val selCount = occupancy[selHour]
+            if (selBin != null) {
+                val selCount = occ48.getOrElse(selBin) { 0 }
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1305,7 +1347,7 @@ private fun DailyOccupancyChart(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = "%02d:00 – %02d:00".format(selHour, selHour + 1),
+                        text = "${binLabel(selBin)} – ${binLabel(selBin + 1)}",
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 12.sp,
                         color = androidx.compose.material3.MaterialTheme.colorScheme.onPrimaryContainer,
@@ -2565,22 +2607,11 @@ private fun ClassScheduleCard(
                                 val leftDp  = hourWidth * ((startMin - gridStartMin) / 60f)
                                 val widthDp = hourWidth * ((endMin - startMin) / 60f)
 
-                                // Color bucket follows the SAME thresholds as the heatmap so the
-                                // two views align; the exact expected occupants is shown as a number.
+                                // Same blue gradient as the heatmap / daily pattern, keyed on the
+                                // session's average expected occupants.
                                 val expected = seg.predictedOccupancy
-                                val heatLevel = when {
-                                    expected >= 81 -> 3
-                                    expected >= 41 -> 2
-                                    expected >= 1  -> 1
-                                    else           -> 0
-                                }
-                                val blockColor = if (isEstimated) Color(0xFFFFE082) else when (heatLevel) {
-                                    3    -> Color(0xFF1565C0) // 81+   dark blue
-                                    2    -> Color(0xFF4A90D9) // 41-80 medium blue
-                                    1    -> Color(0xFF90B4D8) // 1-40  light blue
-                                    else -> Color(0xFFFFE082) // no data — pale yellow
-                                }
-                                val textColor = if (heatLevel >= 2) Color.White else Color(0xFF5D4037)
+                                val blockColor = if (isEstimated) Color(0xFFFFE082) else heatColorForCount(expected)
+                                val textColor = if (expected >= 150) Color.White else Color(0xFF0D2B5E)
                                 val occupancyLabel = if (isEstimated) "~$expected" else "$expected ppl"
                                 val startLabel = minuteLabel(startMin)
                                 val endLabel   = minuteLabel(endMin)
