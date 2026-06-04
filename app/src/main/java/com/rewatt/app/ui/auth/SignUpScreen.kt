@@ -43,6 +43,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rewatt.app.R
 
@@ -78,9 +79,9 @@ fun SignUpScreen(
             contentScale = ContentScale.Crop,
         )
         Spacer(Modifier.height(16.dp))
-        Text("Create Account", fontWeight = FontWeight.Bold, fontSize = 28.sp)
+        Text(stringResource(R.string.auth_create_account), fontWeight = FontWeight.Bold, fontSize = 28.sp)
         Text(
-            "Join ReWatt",
+            stringResource(R.string.auth_join),
             fontSize = 14.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -89,7 +90,7 @@ fun SignUpScreen(
         OutlinedTextField(
             value = email,
             onValueChange = { email = it },
-            label = { Text("Email") },
+            label = { Text(stringResource(R.string.auth_email)) },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
@@ -99,8 +100,8 @@ fun SignUpScreen(
         OutlinedTextField(
             value = username,
             onValueChange = { username = it },
-            label = { Text("Building") },
-            placeholder = { Text("e.g. fsktm, foe, fass") },
+            label = { Text(stringResource(R.string.auth_building)) },
+            placeholder = { Text(stringResource(R.string.auth_building_hint)) },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
@@ -110,7 +111,7 @@ fun SignUpScreen(
         OutlinedTextField(
             value = password,
             onValueChange = { password = it },
-            label = { Text("Password") },
+            label = { Text(stringResource(R.string.auth_password)) },
             visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             singleLine = true,
@@ -129,7 +130,7 @@ fun SignUpScreen(
         OutlinedTextField(
             value = confirmPassword,
             onValueChange = { confirmPassword = it },
-            label = { Text("Confirm Password") },
+            label = { Text(stringResource(R.string.auth_confirm_password)) },
             visualTransformation = if (confirmPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             singleLine = true,
@@ -137,7 +138,7 @@ fun SignUpScreen(
             enabled = !isLoading,
             isError = passwordMismatch,
             supportingText = if (passwordMismatch) {
-                { Text("Passwords do not match") }
+                { Text(stringResource(R.string.auth_passwords_no_match)) }
             } else {
                 null
             },
@@ -174,12 +175,12 @@ fun SignUpScreen(
             if (isLoading) {
                 CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
             } else {
-                Text("Create Account")
+                Text(stringResource(R.string.auth_create_account))
             }
         }
         Spacer(Modifier.height(12.dp))
         TextButton(onClick = onNavigateToLogin, enabled = !isLoading) {
-            Text("Already have an account? Sign In")
+            Text(stringResource(R.string.auth_have_account))
         }
     }
 

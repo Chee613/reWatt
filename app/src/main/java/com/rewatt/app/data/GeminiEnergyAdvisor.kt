@@ -54,7 +54,7 @@ class GeminiEnergyAdvisor(
 ) {
     fun isConfigured(): Boolean = apiKey.isNotBlank()
 
-    suspend fun advise(input: EnergyAdviceInput): EnergyAdvice =
+    suspend fun advise(input: EnergyAdviceInput, language: String = "English"): EnergyAdvice =
         withContext(Dispatchers.IO) {
             require(isConfigured()) { "Gemini API key is missing." }
 
@@ -70,7 +70,7 @@ class GeminiEnergyAdvisor(
 
             try {
                 connection.outputStream.use { output ->
-                    output.write(buildRequestBody(input).toByteArray(Charsets.UTF_8))
+                    output.write(buildRequestBody(input, language).toByteArray(Charsets.UTF_8))
                 }
 
                 val responseCode = connection.responseCode
@@ -94,7 +94,7 @@ class GeminiEnergyAdvisor(
         const val MODEL_ID = "gemini-2.5-flash"
         private const val GEMINI_ENDPOINT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
-        fun buildRequestBody(input: EnergyAdviceInput): String =
+        fun buildRequestBody(input: EnergyAdviceInput, language: String = "English"): String =
             JSONObject()
                 .put(
                     "contents",
@@ -103,7 +103,7 @@ class GeminiEnergyAdvisor(
                             .put("role", "user")
                             .put(
                                 "parts",
-                                JSONArray().put(JSONObject().put("text", buildPrompt(input))),
+                                JSONArray().put(JSONObject().put("text", buildPrompt(input, language))),
                             ),
                     ),
                 )
@@ -115,7 +115,7 @@ class GeminiEnergyAdvisor(
                 )
                 .toString()
 
-        fun buildPrompt(input: EnergyAdviceInput): String =
+        fun buildPrompt(input: EnergyAdviceInput, language: String = "English"): String =
             listOf(
                 "You are an HVAC energy-optimization assistant for a tropical-climate lecture hall.",
                 "The air-conditioner only COOLS (never heats). Goal: minimize energy use while keeping",
@@ -148,6 +148,7 @@ class GeminiEnergyAdvisor(
                 "targetSetpointC (number, e.g. 24, or null),",
                 "reason (one concise sentence),",
                 "confidence (0.0 to 1.0).",
+                "Write the acAction and reason field values in $language. Keep the JSON keys in English.",
             ).joinToString("\n")
 
         fun parseGenerateContentResponse(responseBody: String): EnergyAdvice {

@@ -247,7 +247,7 @@ class DashboardViewModel(
                 occupancy = occupancy,
                 conditionText = weatherInfo?.conditionText,
             )
-            runCatching { energyAdvisor.advise(input) }
+            runCatching { energyAdvisor.advise(input, com.rewatt.app.core.LocaleManager.promptLanguageName()) }
                 .onSuccess { advice: EnergyAdvice ->
                     energyAdvice.value = EnergyAdviceState(
                         status = EnergyAdviceStatus.Complete,

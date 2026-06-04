@@ -4,7 +4,7 @@ import android.app.KeyguardManager
 import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
-import androidx.activity.ComponentActivity
+import androidx.appcompat.app.AppCompatActivity
 import java.lang.ref.WeakReference
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -47,7 +47,7 @@ import com.rewatt.app.R
  * Shows over the lock screen and turns the screen on, just like an incoming
  * phone call.
  */
-class EnergyAlertActivity : ComponentActivity() {
+class EnergyAlertActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

@@ -85,6 +85,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rewatt.app.BuildConfig
 import com.rewatt.app.R
+import androidx.compose.ui.res.stringResource
 import android.provider.Settings
 import com.google.firebase.auth.FirebaseAuth
 import com.rewatt.app.data.ActivityAnalysisStatus
@@ -133,17 +134,17 @@ import java.util.Calendar
 import kotlin.math.ceil
 import kotlin.math.min
 
-private enum class ReWattTab(val label: String, val icon: ImageVector) {
-    Live("LIVE",      Icons.Outlined.Sensors),
-    Analytic("Analytic", Icons.Outlined.BarChart),
-    Capture("Capture",  Icons.Outlined.CameraAlt),
-    Setting("Setting",  Icons.Outlined.Settings),
+private enum class ReWattTab(val labelRes: Int, val icon: ImageVector) {
+    Live(R.string.nav_live, Icons.Outlined.Sensors),
+    Analytic(R.string.nav_analytic, Icons.Outlined.BarChart),
+    Capture(R.string.nav_capture, Icons.Outlined.CameraAlt),
+    Setting(R.string.nav_setting, Icons.Outlined.Settings),
 }
 
 /** Sub-tabs shown at the top of the LIVE page (Manage is Admin-only). */
-private enum class LiveSubTab(val label: String) {
-    Overview("Overview"),
-    Manage("Manage"),
+private enum class LiveSubTab(val labelRes: Int) {
+    Overview(R.string.subtab_overview),
+    Manage(R.string.subtab_manage),
 }
 
 /** A node is considered online if it has reported within the last 15 minutes. */
@@ -449,8 +450,8 @@ fun DashboardScreen(
                     NavigationBarItem(
                         selected = selectedTab == tab,
                         onClick = { selectedTab = tab },
-                        icon = { Icon(imageVector = tab.icon, contentDescription = tab.label) },
-                        label = { Text(tab.label) },
+                        icon = { Icon(imageVector = tab.icon, contentDescription = stringResource(tab.labelRes)) },
+                        label = { Text(stringResource(tab.labelRes)) },
                     )
                 }
             }
@@ -633,7 +634,7 @@ private fun LivePage(
                 Tab(
                     selected = subTab == tab,
                     onClick = { subTab = tab },
-                    text = { Text(tab.label) },
+                    text = { Text(stringResource(tab.labelRes)) },
                 )
             }
         }
@@ -737,26 +738,26 @@ private fun OverviewContent(
                 modifier = Modifier.weight(1f),
             )
             MetricCard(
-                title = "AC & Lights",
-                value = acLightStateLabel(nowAction.first),
+                title = stringResource(R.string.m_ac_lights),
+                value = acLightStateLabel(nowAction.acState),
                 modifier = Modifier.weight(1f),
             )
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             MetricCard(
-                title = "Temperature",
+                title = stringResource(R.string.m_temperature),
                 value = displayTempC?.let { "%.1f °C".format(it) } ?: "--",
                 modifier = Modifier.weight(1f),
             )
             MetricCard(
-                title = "Humidity",
+                title = stringResource(R.string.m_humidity),
                 value = displayHumidity?.let { "%.1f %%".format(it) } ?: "--",
                 modifier = Modifier.weight(1f),
             )
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             MetricCard(
-                title = "Session ends",
+                title = stringResource(R.string.m_session_ends),
                 value = sessionEndTime,
                 modifier = Modifier.weight(1f),
             )
@@ -764,7 +765,7 @@ private fun OverviewContent(
 
         // ── Activity section ─────────────────────────────────────────────────
         Spacer(Modifier.height(4.dp))
-        Text("ACTIVITY", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        Text(stringResource(R.string.dash_activity), fontWeight = FontWeight.Bold, fontSize = 16.sp)
         InfoCard {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -786,9 +787,9 @@ private fun OverviewContent(
                         )
                     }
                     Spacer(Modifier.height(8.dp))
-                    Text(nowAction.first, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    Text(nowAction.label(), fontWeight = FontWeight.Bold, fontSize = 18.sp)
                     Text(
-                        nowAction.second,
+                        nowAction.reason(),
                         fontSize = 13.sp,
                         color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -805,7 +806,7 @@ private fun OverviewContent(
                     onClick = onStartCapture,
                     modifier = Modifier.padding(start = 12.dp),
                 ) {
-                    Text(if (perceptionState.isRunning) "Open" else "Capture")
+                    Text(if (perceptionState.isRunning) stringResource(R.string.btn_open) else stringResource(R.string.btn_capture))
                 }
             }
         }
@@ -825,33 +826,33 @@ private fun WeatherCard(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("OUTDOOR WEATHER", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            Text(stringResource(R.string.weather_title), fontWeight = FontWeight.Bold, fontSize = 13.sp)
             OutlinedButton(onClick = onRefreshWeather) {
-                Text(if (weather.status == WeatherStatus.Loading) "Loading…" else "Refresh")
+                Text(if (weather.status == WeatherStatus.Loading) stringResource(R.string.btn_loading) else stringResource(R.string.btn_refresh))
             }
         }
         Spacer(Modifier.height(8.dp))
         val info = weather.info
         if (info != null) {
             Text(
-                text = info.conditionText ?: "Current conditions",
+                text = info.conditionText ?: stringResource(R.string.weather_current_conditions),
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 16.sp,
             )
             Spacer(Modifier.height(6.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 MetricCard(
-                    title = "Outdoor temp",
+                    title = stringResource(R.string.weather_outdoor_temp),
                     value = info.temperatureC?.let { "%.1f °C".format(it) } ?: "--",
                     modifier = Modifier.weight(1f),
                 )
                 MetricCard(
-                    title = "Outdoor RH",
+                    title = stringResource(R.string.weather_outdoor_rh),
                     value = info.humidityPercent?.let { "%.0f %%".format(it) } ?: "--",
                     modifier = Modifier.weight(1f),
                 )
                 MetricCard(
-                    title = "Δ vs indoor",
+                    title = stringResource(R.string.weather_delta_indoor),
                     value = deltaT?.let { "%+.1f °C".format(it) } ?: "--",
                     modifier = Modifier.weight(1f),
                 )
@@ -878,7 +879,7 @@ private fun EnergyAdviceCard(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text("AC ENERGY SUGGESTION", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                Text(stringResource(R.string.ac_suggestion_title), fontWeight = FontWeight.Bold, fontSize = 13.sp)
                 Text(
                     text = "Powered by Gemini",
                     fontSize = 11.sp,
@@ -889,7 +890,7 @@ private fun EnergyAdviceCard(
                 onClick = onRequestEnergyAdvice,
                 enabled = state.status != EnergyAdviceStatus.Pending,
             ) {
-                Text(if (state.status == EnergyAdviceStatus.Pending) "Thinking…" else "Suggest action")
+                Text(if (state.status == EnergyAdviceStatus.Pending) stringResource(R.string.btn_thinking) else stringResource(R.string.btn_suggest_action))
             }
         }
 
@@ -921,7 +922,7 @@ private fun EnergyAdviceCard(
 private fun EnergyWasteCard(summary: EnergyWasteSummary) {
     InfoCard {
         Column {
-            Text("YESTERDAY'S WASTED ENERGY", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            Text(stringResource(R.string.waste_title), fontWeight = FontWeight.Bold, fontSize = 13.sp)
             Text(
                 text = "Powered by Gemini" + summary.dateLabel.takeIf { it.isNotBlank() }?.let { "  ·  $it" }.orEmpty(),
                 fontSize = 11.sp,
@@ -1102,8 +1103,8 @@ private fun ActionDataToggle(
             .background(androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant)
             .padding(3.dp),
     ) {
-        SegmentButton("Action", isAction,  onAction, Modifier.weight(1f))
-        SegmentButton("Data",   !isAction, onData,   Modifier.weight(1f))
+        SegmentButton(stringResource(R.string.toggle_action), isAction,  onAction, Modifier.weight(1f))
+        SegmentButton(stringResource(R.string.toggle_data),   !isAction, onData,   Modifier.weight(1f))
     }
 }
 
@@ -1662,7 +1663,7 @@ private fun ActionPage(
     var dismissedIds by rememberSaveable { mutableStateOf(setOf<String>()) }
     var nowDismissed by rememberSaveable { mutableStateOf(false) }
 
-    LaunchedEffect(nowActions.joinToString { it.second.first }) { nowDismissed = false }
+    LaunchedEffect(nowActions.joinToString { "${it.second.labelRes}:${it.second.reasonArgs}" }) { nowDismissed = false }
     LaunchedEffect(previewDayOffset) { dismissedIds = emptySet() }
 
     if (showEmptyState) {
@@ -1777,7 +1778,7 @@ private fun NowCard(title: String, reason: String, onDone: () -> Unit) {
 
 @Composable
 private fun AllHallsNowCard(
-    nowActions: List<Pair<Hall, Pair<String, String>>>,
+    nowActions: List<Pair<Hall, NowAction>>,
     onDone: () -> Unit,
 ) {
     Card(
@@ -1828,13 +1829,13 @@ private fun AllHallsNowCard(
                     )
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = action.first,
+                            text = action.label(),
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
                             color = androidx.compose.material3.MaterialTheme.colorScheme.onPrimaryContainer,
                         )
                         Text(
-                            text = action.second,
+                            text = action.reason(),
                             fontSize = 11.sp,
                             color = androidx.compose.material3.MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f),
                         )
@@ -2013,7 +2014,7 @@ private fun CapturePage(
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             MetricCard(
-                title = "Camera",
+                title = stringResource(R.string.m_camera),
                 value = if (state.cameraPermissionGranted) "Allowed" else "Need access",
                 modifier = Modifier.weight(1f),
                 warning = !state.cameraPermissionGranted,
@@ -2213,7 +2214,7 @@ private fun CaptureHistoryRow(capture: RecentCapture) {
 private fun LivePerceptionSummary(perceptionState: PerceptionUiState) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         MetricCard(
-            title = "People detected",
+            title = stringResource(R.string.m_people_detected),
             value = perceptionState.personCount.toString(),
             modifier = Modifier.weight(1f),
         )
@@ -2224,18 +2225,18 @@ private fun LivePerceptionSummary(perceptionState: PerceptionUiState) {
 private fun CaptureDetectionSummary(state: PerceptionUiState) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         MetricCard(
-            title = "People detected",
+            title = stringResource(R.string.m_people_detected),
             value = state.personCount.toString(),
             modifier = Modifier.fillMaxWidth(),
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             MetricCard(
-                title = "Room light",
+                title = stringResource(R.string.m_room_light),
                 value = state.lightsStateLabel(),
                 modifier = Modifier.weight(1f),
             )
             MetricCard(
-                title = "Exposure",
+                title = stringResource(R.string.m_exposure),
                 value = state.exposureValueLabel(),
                 modifier = Modifier.weight(1f),
             )
@@ -2411,11 +2412,11 @@ private fun SettingPage(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("Settings", fontWeight = FontWeight.Bold, fontSize = 24.sp)
+        Text(stringResource(R.string.settings_title), fontWeight = FontWeight.Bold, fontSize = 24.sp)
 
         // Setup Guide section — Sensor only
         if (currentUserRole != UserRole.Admin) {
-            Text("Device Setup", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+            Text(stringResource(R.string.settings_device_setup), fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
             InfoCard {
                 Row(
                     modifier = Modifier
@@ -2450,7 +2451,7 @@ private fun SettingPage(
 
         // Your Space section — Sensor only
         if (currentUserRole == UserRole.Sensor) {
-            Text("Your Space", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+            Text(stringResource(R.string.settings_your_space), fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
             InfoCard {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -2473,7 +2474,7 @@ private fun SettingPage(
         }
 
         // Profile section
-        Text("Profile", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+        Text(stringResource(R.string.settings_profile), fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
         InfoCard {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(
@@ -2516,7 +2517,7 @@ private fun SettingPage(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            "Phone Mode",
+                            stringResource(R.string.settings_phone_mode),
                             fontSize = 12.sp,
                             color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -2539,7 +2540,7 @@ private fun SettingPage(
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !isDeletingAccount,
                 ) {
-                    Text("Sign Out")
+                    Text(stringResource(R.string.btn_sign_out))
                 }
                 OutlinedButton(
                     onClick = { showDeleteConfirm = true },
@@ -2556,7 +2557,7 @@ private fun SettingPage(
                     if (isDeletingAccount) {
                         CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
                     } else {
-                        Text("Delete Account")
+                        Text(stringResource(R.string.btn_delete_account))
                     }
                 }
                 if (deleteAccountError != null) {
@@ -2565,21 +2566,42 @@ private fun SettingPage(
                         color = androidx.compose.material3.MaterialTheme.colorScheme.error,
                         fontSize = 12.sp,
                     )
-                    TextButton(onClick = onClearDeleteError) { Text("Dismiss", fontSize = 12.sp) }
+                    TextButton(onClick = onClearDeleteError) { Text(stringResource(R.string.btn_dismiss), fontSize = 12.sp) }
+                }
+            }
+        }
+
+        // Language preference — applies to the whole app + Gemini suggestions (all roles)
+        Text(stringResource(R.string.settings_language), fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+        InfoCard {
+            val isMalay = com.rewatt.app.core.LocaleManager.currentTag() == com.rewatt.app.core.LocaleManager.MALAY
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (isMalay) {
+                    OutlinedButton(
+                        onClick = { com.rewatt.app.core.LocaleManager.setLanguage(com.rewatt.app.core.LocaleManager.ENGLISH) },
+                        modifier = Modifier.weight(1f),
+                    ) { Text("English") }
+                    Button(onClick = {}, enabled = false, modifier = Modifier.weight(1f)) { Text("Bahasa Melayu") }
+                } else {
+                    Button(onClick = {}, enabled = false, modifier = Modifier.weight(1f)) { Text("English") }
+                    OutlinedButton(
+                        onClick = { com.rewatt.app.core.LocaleManager.setLanguage(com.rewatt.app.core.LocaleManager.MALAY) },
+                        modifier = Modifier.weight(1f),
+                    ) { Text("Bahasa Melayu") }
                 }
             }
         }
 
         // Connection and System Status sections — Sensor only
         if (currentUserRole != UserRole.Admin) {
-            Text("Connection", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+            Text(stringResource(R.string.settings_connection), fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
             ConnectionCard(
                 state = uiState.sensorState,
                 freshness = uiState.packetFreshness,
                 onScanUsb = onScanUsb,
             )
 
-            Text("System status", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+            Text(stringResource(R.string.settings_system_status), fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
             StatusSummaryCard(
                 sensorState = uiState.sensorState,
                 freshness = uiState.packetFreshness,
@@ -3040,7 +3062,7 @@ private fun TelemetryMetricGrid(telemetry: RadarTelemetry?) {
                 modifier = Modifier.weight(1f),
             )
             MetricCard(
-                title = "Humidity",
+                title = stringResource(R.string.m_humidity),
                 value = telemetry?.humidityPercent?.let { "%.1f %%".format(it) } ?: "--",
                 modifier = Modifier.weight(1f),
             )
@@ -3435,12 +3457,12 @@ private fun SensorLiveDataCard(telemetry: RadarTelemetry?) {
         Spacer(Modifier.height(6.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             MetricCard(
-                title = "Temperature",
+                title = stringResource(R.string.m_temperature),
                 value = telemetry?.temperatureC?.let { "%.1f °C".format(it) } ?: "--",
                 modifier = Modifier.weight(1f),
             )
             MetricCard(
-                title = "Humidity",
+                title = stringResource(R.string.m_humidity),
                 value = telemetry?.humidityPercent?.let { "%.1f %%".format(it) } ?: "--",
                 modifier = Modifier.weight(1f),
             )
@@ -3769,17 +3791,44 @@ private fun computeThi(temperatureC: Double, humidityPercent: Double): Double =
 private fun suggestedComfortTemp(humidityPercent: Double): Int =
     ceil(THI_TOO_COLD / (0.8 + humidityPercent / 500.0)).toInt()
 
+/** AC/Lights status chip state. Kept as a stable key so it doesn't depend on translated text. */
+private enum class AcState { OFF, COOL_PLUS, COOL_MINUS, ON }
+
+/**
+ * A NOW-block recommendation as language-independent data: the AC chip state plus string-resource
+ * IDs (and format args) for the action label and reason. The composable resolves the IDs to the
+ * user's selected language; logic (e.g. the AC chip) keys off [acState], never translated text.
+ */
+private data class NowAction(
+    val acState: AcState,
+    val labelRes: Int,
+    val reasonRes: Int,
+    val labelArgs: List<Any> = emptyList(),
+    val reasonArgs: List<Any> = emptyList(),
+)
+
+@Composable
+private fun NowAction.label(): String = stringResource(labelRes, *labelArgs.toTypedArray())
+
+@Composable
+private fun NowAction.reason(): String = stringResource(reasonRes, *reasonArgs.toTypedArray())
+
 /**
  * If the hall is occupied and the THI is below [THI_TOO_COLD], returns the "raise the AC setpoint"
  * action (prioritized over generic comfort actions). Requires both temperature and humidity from
  * the sensor; returns null when either is missing or the room is comfortable.
  */
-private fun tooColdAction(temperatureC: Float?, humidityPercent: Double?): Pair<String, String>? {
+private fun tooColdAction(temperatureC: Float?, humidityPercent: Double?): NowAction? {
     if (temperatureC == null || humidityPercent == null) return null
     val thi = computeThi(temperatureC.toDouble(), humidityPercent)
     if (thi >= THI_TOO_COLD) return null
-    return "Set AC to ${suggestedComfortTemp(humidityPercent)}°C" to
-        "Too cold (THI %.1f) — raise setpoint to save energy".format(thi)
+    return NowAction(
+        acState = AcState.COOL_MINUS,
+        labelRes = R.string.now_label_set_ac,
+        labelArgs = listOf(suggestedComfortTemp(humidityPercent)),
+        reasonRes = R.string.now_reason_too_cold,
+        reasonArgs = listOf(thi),
+    )
 }
 
 private fun deriveNowAction(
@@ -3790,11 +3839,24 @@ private fun deriveNowAction(
     hall: Hall = Hall.Hall1,
     schedule: Array<IntArray>? = null,
     humidityPercent: Double? = null,
-): Pair<String, String> {
+): NowAction {
     val cal = Calendar.getInstance().apply { timeInMillis = nowMillis }
     val dow = (cal.get(Calendar.DAY_OF_WEEK) - Calendar.MONDAY + 7) % 7
     val h = cal.get(Calendar.HOUR_OF_DAY)
     val m = cal.get(Calendar.MINUTE)
+
+    fun keepAcOnUnexpected() = NowAction(
+        acState = AcState.ON,
+        labelRes = R.string.now_label_keep_ac_on,
+        reasonRes = R.string.now_reason_unexpected_occupancy,
+        reasonArgs = listOf(personCount),
+    )
+    fun increaseCooling(temp: Float) = NowAction(
+        acState = AcState.COOL_PLUS,
+        labelRes = R.string.now_label_increase_cooling,
+        reasonRes = R.string.now_reason_temperature,
+        reasonArgs = listOf(temp),
+    )
 
     // Highest priority: a too-cold hall that is occupied RIGHT NOW wastes energy. Occupancy here is
     // the live YOLO person count (the detection driven by the mmWave-triggered capture), never the
@@ -3808,39 +3870,35 @@ private fun deriveNowAction(
         val row = schedule!!.getOrNull(dow)
         val expected = row?.getOrElse(h) { 0 } ?: 0
         val occupiedNow = expected > 0
-        if (!occupiedNow && personCount > 2)
-            return "Keep AC on" to "Unexpected occupancy ($personCount people detected)"
+        if (!occupiedNow && personCount > 2) return keepAcOnUnexpected()
         if (!occupiedNow) {
             val resumeH = ((h + 1)..23).firstOrNull { (row?.getOrElse(it) { 0 } ?: 0) > 0 }
             return if (resumeH != null)
-                "Turn off AC & lights" to "No class until %02d:00".format(resumeH)
+                NowAction(AcState.OFF, R.string.now_label_turn_off_ac_lights, R.string.now_reason_no_class_until, reasonArgs = listOf(resumeH))
             else
-                "Turn off all systems" to "No more classes today"
+                NowAction(AcState.OFF, R.string.now_label_turn_off_all, R.string.now_reason_no_more_classes)
         }
-        if (temperatureC != null && temperatureC > 27f)
-            return "Increase AC cooling" to "Temperature is %.1f°C".format(temperatureC)
-        return "Maintain current settings" to "Class in session (~$expected expected)"
+        if (temperatureC != null && temperatureC > 27f) return increaseCooling(temperatureC)
+        return NowAction(AcState.ON, R.string.now_label_maintain, R.string.now_reason_class_in_session, reasonArgs = listOf(expected))
     }
 
     // Fallback: hardcoded timetable (used only before any occupancy data exists)
     val dayBreaks = hallDayBreaks[hall] ?: emptyMap()
-    if (dow >= 5) return "Turn off all systems" to "Weekend — no classes scheduled"
-    if (inRange(h, m, timetableOvernight)) return "Turn off all systems" to "Overnight — no classes until 07:30"
+    if (dow >= 5) return NowAction(AcState.OFF, R.string.now_label_turn_off_all, R.string.now_reason_weekend)
+    if (inRange(h, m, timetableOvernight)) return NowAction(AcState.OFF, R.string.now_label_turn_off_all, R.string.now_reason_overnight)
 
     for (br in dayBreaks[dow] ?: emptyList()) {
         if (inRange(h, m, br))
-            return "Turn off AC & lights" to "Break period until %02d:%02d".format(br.eh, br.em)
+            return NowAction(AcState.OFF, R.string.now_label_turn_off_ac_lights, R.string.now_reason_break_until, reasonArgs = listOf(br.eh, br.em))
     }
 
-    if ((occupancyHint == "likely_empty" || occupancyHint == "unclear") && personCount > 2)
-        return "Keep AC on" to "Unexpected occupancy ($personCount people detected)"
-    if (temperatureC != null && temperatureC > 27f && personCount > 0)
-        return "Increase AC cooling" to "Temperature is %.1f°C".format(temperatureC)
+    if ((occupancyHint == "likely_empty" || occupancyHint == "unclear") && personCount > 2) return keepAcOnUnexpected()
+    if (temperatureC != null && temperatureC > 27f && personCount > 0) return increaseCooling(temperatureC)
 
     return if (personCount > 0)
-        "Maintain current settings" to "Normal class session in progress"
+        NowAction(AcState.ON, R.string.now_label_maintain, R.string.now_reason_normal_session)
     else
-        "No immediate action needed" to "Room appears empty"
+        NowAction(AcState.ON, R.string.now_label_no_action, R.string.now_reason_room_empty)
 }
 
 // Maps level array → realistic per-hour occupancy counts (0-120).
@@ -3857,12 +3915,11 @@ private fun buildHourlyOccupancy(levels: IntArray, hall: Hall, dayIndex: Int): I
         }
     }
 
-private fun acLightStateLabel(action: String): String = when {
-    action.contains("Turn off", ignoreCase = true) -> "OFF"
-    action.contains("Increase", ignoreCase = true) -> "COOL +"
-    action.contains("Reduce", ignoreCase = true) -> "COOL -"
-    action.startsWith("Set AC", ignoreCase = true) -> "COOL -"
-    else -> "ON"
+private fun acLightStateLabel(state: AcState): String = when (state) {
+    AcState.OFF -> "OFF"
+    AcState.COOL_PLUS -> "COOL +"
+    AcState.COOL_MINUS -> "COOL -"
+    AcState.ON -> "ON"
 }
 
 private fun deriveSessionEndTime(nowMillis: Long, hall: Hall = Hall.Hall1, schedule: Array<IntArray>? = null): String {

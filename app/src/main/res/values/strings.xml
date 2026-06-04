@@ -12,5 +12,96 @@
     <string name="energy_alert_text">No one is here but the lights/AC are on. Please switch them off to save energy.</string>
     <string name="energy_alert_done">Done</string>
     <string name="energy_alert_snooze">Snooze 5 min</string>
+
+    <!-- Bottom navigation + sub-tabs -->
+    <string name="nav_live">LIVE</string>
+    <string name="nav_analytic">Analytic</string>
+    <string name="nav_capture">Capture</string>
+    <string name="nav_setting">Setting</string>
+    <string name="subtab_overview">Overview</string>
+    <string name="subtab_manage">Manage</string>
+    <string name="toggle_action">Action</string>
+    <string name="toggle_data">Data</string>
+
+    <!-- Section headers -->
+    <string name="dash_activity">ACTIVITY</string>
+    <string name="weather_title">OUTDOOR WEATHER</string>
+    <string name="ac_suggestion_title">AC ENERGY SUGGESTION</string>
+    <string name="waste_title">YESTERDAY\'S WASTED ENERGY</string>
+
+    <!-- Settings -->
+    <string name="settings_language">Language</string>
+    <string name="settings_title">Settings</string>
+    <string name="settings_device_setup">Device Setup</string>
+    <string name="settings_your_space">Your Space</string>
+    <string name="settings_profile">Profile</string>
+    <string name="settings_phone_mode">Phone Mode</string>
+    <string name="settings_connection">Connection</string>
+    <string name="settings_system_status">System status</string>
+
+    <!-- Metric card titles -->
+    <string name="m_ac_lights">AC &amp; Lights</string>
+    <string name="m_temperature">Temperature</string>
+    <string name="m_humidity">Humidity</string>
+    <string name="m_session_ends">Session ends</string>
+    <string name="m_top_sound">Top sound</string>
+    <string name="m_camera">Camera</string>
+    <string name="m_mic">Mic</string>
+    <string name="m_people_detected">People detected</string>
+    <string name="m_room_light">Room light</string>
+    <string name="m_exposure">Exposure</string>
+
+    <!-- Weather card -->
+    <string name="weather_current_conditions">Current conditions</string>
+    <string name="weather_outdoor_temp">Outdoor temp</string>
+    <string name="weather_outdoor_rh">Outdoor RH</string>
+    <string name="weather_delta_indoor">Δ vs indoor</string>
+
+    <!-- Buttons -->
+    <string name="btn_capture">Capture</string>
+    <string name="btn_open">Open</string>
+    <string name="btn_refresh">Refresh</string>
+    <string name="btn_loading">Loading…</string>
+    <string name="btn_sign_out">Sign Out</string>
+    <string name="btn_delete_account">Delete Account</string>
+    <string name="btn_dismiss">Dismiss</string>
+    <string name="btn_suggest_action">Suggest action</string>
+    <string name="btn_thinking">Thinking…</string>
+
+    <!-- Auth -->
+    <string name="auth_tagline_signin">Sign in to continue</string>
+    <string name="auth_email">Email</string>
+    <string name="auth_password">Password</string>
+    <string name="auth_sign_in">Sign In</string>
+    <string name="auth_no_account">Don\'t have an account? Sign Up</string>
+    <string name="auth_create_account">Create Account</string>
+    <string name="auth_confirm_password">Confirm Password</string>
+    <string name="auth_passwords_no_match">Passwords do not match</string>
+    <string name="auth_have_account">Already have an account? Sign In</string>
+    <string name="auth_join">Join ReWatt</string>
+    <string name="auth_building">Building</string>
+    <string name="auth_building_hint">e.g. fsktm, foe, fass</string>
+
+    <!-- NOW-block action labels -->
+    <string name="now_label_keep_ac_on">Keep AC on</string>
+    <string name="now_label_turn_off_ac_lights">Turn off AC &amp; lights</string>
+    <string name="now_label_turn_off_all">Turn off all systems</string>
+    <string name="now_label_set_ac">Set AC to %1$d°C</string>
+    <string name="now_label_increase_cooling">Increase AC cooling</string>
+    <string name="now_label_maintain">Maintain current settings</string>
+    <string name="now_label_no_action">No immediate action needed</string>
+
+    <!-- NOW-block action reasons -->
+    <string name="now_reason_unexpected_occupancy">Unexpected occupancy (%1$d people detected)</string>
+    <string name="now_reason_no_class_until">No class until %1$02d:00</string>
+    <string name="now_reason_no_more_classes">No more classes today</string>
+    <string name="now_reason_too_cold">Too cold (THI %1$.1f) — raise setpoint to save energy</string>
+    <string name="now_reason_temperature">Temperature is %1$.1f°C</string>
+    <string name="now_reason_class_in_session">Class in session (~%1$d expected)</string>
+    <string name="now_reason_weekend">Weekend — no classes scheduled</string>
+    <string name="now_reason_overnight">Overnight — no classes until 07:30</string>
+    <string name="now_reason_break_until">Break period until %1$02d:%2$02d</string>
+    <string name="now_reason_normal_session">Normal class session in progress</string>
+    <string name="now_reason_room_empty">Room appears empty</string>
 </resources>
 
