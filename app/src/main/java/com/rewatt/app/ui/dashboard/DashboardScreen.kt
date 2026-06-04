@@ -994,6 +994,11 @@ private fun AnalyticPage(
     userEmail: String = "",
 ) {
     var isAction by rememberSaveable { mutableStateOf(true) }
+    // Demo (fsktm) account has no live sensor schedule, so the Class Schedule, Weekly/Daily
+    // occupancy and Action timeline are all derived from the SAME canonical class-schedule
+    // sessions (hardcoded hallDayBreaks) instead of three separate Firestore collections that
+    // would disagree. The History week tabs are untouched.
+    val isDemo = userEmail.equals("tjh3281@gmail.com", ignoreCase = true)
 
     Column(
         modifier = Modifier
@@ -1013,6 +1018,8 @@ private fun AnalyticPage(
                 modifier = Modifier.weight(1f),
                 hallSchedules = hallSchedules,
                 hallMeanSchedules = hallMeanSchedules,
+                hallMinuteSchedules = hallMinuteSchedules,
+                isDemo = isDemo,
             )
         } else {
             Column(
@@ -1026,12 +1033,18 @@ private fun AnalyticPage(
                     hall = selectedHall,
                     learnedDays = learnedSchedules[selectedHall.label],
                     minuteSchedule = hallMinuteSchedules[selectedHall.label],
-                    showFallbackEstimate = userEmail.equals("tjh3281@gmail.com", ignoreCase = true),
+                    showFallbackEstimate = isDemo,
                 )
                 WeeklyOccupancyCard(
                     hall = selectedHall,
-                    firestoreSchedule = hallSchedules[selectedHall.label],
-                    minuteSchedule = hallMinuteSchedules[selectedHall.label],
+                    // Demo: drive the heatmap + daily chart from the SAME canonical class-schedule
+                    // grid as the Class Schedule above, so occupied/empty windows line up exactly.
+                    firestoreSchedule = if (isDemo) null else hallSchedules[selectedHall.label],
+                    minuteSchedule = if (isDemo) {
+                        canonicalMinuteGrid(selectedHall, hallMinuteSchedules[selectedHall.label])
+                    } else {
+                        hallMinuteSchedules[selectedHall.label]
+                    },
                 )
                 WeeklyHistoryCard(
                     hall = selectedHall,
@@ -1096,7 +1109,7 @@ private fun SegmentButton(
 
 // ── Timetable primitives (shared by heatmap + action engine) ─────────────────
 
-private enum class Hall(val label: String) {
+internal enum class Hall(val label: String) {
     Hall1("DK1"),
     Hall2("DK2"),
     Hall3("MM8"),
@@ -1140,7 +1153,7 @@ private val hallDayBreaks: Map<Hall, Map<Int, List<TR>>> = mapOf(
     ),
 )
 
-private data class TimetableNotification(
+internal data class TimetableNotification(
     val id: String,
     val timeLabel: String,
     val title: String,
@@ -1714,9 +1727,12 @@ private fun ActionPage(
     modifier: Modifier = Modifier,
     hallSchedules: Map<String, Array<IntArray>> = emptyMap(),
     hallMeanSchedules: Map<String, Array<IntArray>> = emptyMap(),
+    hallMinuteSchedules: Map<String, Array<IntArray>> = emptyMap(),
+    isDemo: Boolean = false,
 ) {
     val hasAnySensorHistory = hallMeanSchedules.values.any { s -> s.any { row -> row.any { v -> v != 0 } } }
-    val showEmptyState = hallMeanSchedules.isNotEmpty() && !hasAnySensorHistory
+    // Demo always has the canonical class-schedule to draw from, so never show the empty state.
+    val showEmptyState = !isDemo && hallMeanSchedules.isNotEmpty() && !hasAnySensorHistory
 
     val telemetry = uiState.sensorState.latestTelemetry
     val analysis = uiState.sensorState.activityAnalysisState.analysis
@@ -1731,22 +1747,37 @@ private fun ActionPage(
     }
 
     val isToday = previewDayOffset == 0
-    val nowActions = remember(previewMillis, isToday, perceptionState.personCount, telemetry?.temperatureC, telemetry?.humidityPercent, analysis?.occupancyHint, hallMeanSchedules) {
+    val nowActions = remember(previewMillis, isToday, perceptionState.personCount, telemetry?.temperatureC, telemetry?.humidityPercent, analysis?.occupancyHint, hallMeanSchedules, hallMinuteSchedules) {
         Hall.values().map { hall ->
-            hall to deriveNowAction(
-                nowMillis = previewMillis,
-                personCount = if (isToday) perceptionState.personCount else 0,
-                temperatureC = if (isToday) telemetry?.temperatureC else null,
-                occupancyHint = if (isToday) analysis?.occupancyHint else null,
-                hall = hall,
-                schedule = hallMeanSchedules[hall.label],
-                humidityPercent = if (isToday) telemetry?.humidityPercent?.toDouble() else null,
-            )
+            hall to if (isDemo) {
+                deriveNowActionFromSessions(
+                    nowMillis = previewMillis,
+                    personCount = if (isToday) perceptionState.personCount else 0,
+                    temperatureC = if (isToday) telemetry?.temperatureC else null,
+                    hall = hall,
+                    humidityPercent = if (isToday) telemetry?.humidityPercent?.toDouble() else null,
+                    minuteSchedule = hallMinuteSchedules[hall.label],
+                )
+            } else {
+                deriveNowAction(
+                    nowMillis = previewMillis,
+                    personCount = if (isToday) perceptionState.personCount else 0,
+                    temperatureC = if (isToday) telemetry?.temperatureC else null,
+                    occupancyHint = if (isToday) analysis?.occupancyHint else null,
+                    hall = hall,
+                    schedule = hallMeanSchedules[hall.label],
+                    humidityPercent = if (isToday) telemetry?.humidityPercent?.toDouble() else null,
+                )
+            }
         }
     }
 
-    val dayNotifications = remember(previewDayOffset, uiState.nowMillis, hallMeanSchedules) {
-        buildAllHallsDayNotifications(previewDayOffset, uiState.nowMillis, hallMeanSchedules)
+    val dayNotifications = remember(previewDayOffset, uiState.nowMillis, hallMeanSchedules, hallMinuteSchedules, isDemo) {
+        if (isDemo) {
+            buildAllHallsSessionNotifications(previewDayOffset, uiState.nowMillis, hallMinuteSchedules)
+        } else {
+            buildAllHallsDayNotifications(previewDayOffset, uiState.nowMillis, hallMeanSchedules)
+        }
     }
     var dismissedIds by rememberSaveable { mutableStateOf(setOf<String>()) }
     var nowDismissed by rememberSaveable { mutableStateOf(false) }
@@ -2792,44 +2823,19 @@ private fun ClassScheduleCard(
             sessions
         }
     } else {
-        // Cold-start (no sensor data yet): hardcoded hallDayBreaks estimate
-        val breaks = hallDayBreaks[hall] ?: emptyMap()
+        // Cold-start (no sensor data yet): hardcoded hallDayBreaks estimate, derived from the single
+        // canonical session source so the Weekly/Daily occupancy and Action timeline (which read the
+        // same classScheduleSessions) line up exactly with this card.
         List(7) { dow ->
-            val dayBreaks = breaks[dow] ?: emptyList()
-            if (dow >= 5) emptyList() // no Sat/Sun in hardcoded
-            else {
-                val activeRanges = mutableListOf<IntRange>()
-                var rangeStart: Int? = null
-                for (minuteOfDay in (gridStartMin until gridEndMin)) {
-                    val h = minuteOfDay / 60; val m = minuteOfDay % 60
-                    val inBreak = inRange(h, m, timetableOvernight) ||
-                        dayBreaks.any { inRange(h, m, it) }
-                    if (!inBreak) {
-                        if (rangeStart == null) rangeStart = minuteOfDay
-                    } else {
-                        rangeStart?.let { start ->
-                            activeRanges.add(start until minuteOfDay)
-                            rangeStart = null
-                        }
-                    }
-                }
-                rangeStart?.let { start -> activeRanges.add(start until gridEndMin) }
-                val merged = mutableListOf<IntRange>()
-                for (r in activeRanges) {
-                    if (merged.isNotEmpty() && r.first - merged.last().last <= 30)
-                        merged[merged.lastIndex] = merged.last().first..r.last
-                    else merged.add(r)
-                }
-                merged.map { r ->
-                    LearnedSegment(
-                        startMinuteOfDay = r.first,
-                        endMinuteOfDay = r.last,
-                        predictedOccupancy = 60,
-                        occupancyLevel = "medium",
-                        weeksSeen = 0,
-                        lastSeenMillis = 0L,
-                    )
-                }
+            classScheduleSessions(hall, dow).map { r ->
+                LearnedSegment(
+                    startMinuteOfDay = r.first,
+                    endMinuteOfDay = r.last,
+                    predictedOccupancy = 60,
+                    occupancyLevel = "medium",
+                    weeksSeen = 0,
+                    lastSeenMillis = 0L,
+                )
             }
         }
     }
@@ -3777,14 +3783,14 @@ private fun suggestedComfortTemp(humidityPercent: Double): Int =
     ceil(THI_TOO_COLD / (0.8 + humidityPercent / 500.0)).toInt()
 
 /** AC/Lights status chip state. Kept as a stable key so it doesn't depend on translated text. */
-private enum class AcState { OFF, COOL_PLUS, COOL_MINUS, ON }
+internal enum class AcState { OFF, COOL_PLUS, COOL_MINUS, ON }
 
 /**
  * A NOW-block recommendation as language-independent data: the AC chip state plus string-resource
  * IDs (and format args) for the action label and reason. The composable resolves the IDs to the
  * user's selected language; logic (e.g. the AC chip) keys off [acState], never translated text.
  */
-private data class NowAction(
+internal data class NowAction(
     val acState: AcState,
     val labelRes: Int,
     val reasonRes: Int,
@@ -4023,6 +4029,196 @@ private fun buildAllHallsDayNotifications(
                 id = "${hall.name}-${n.id}",
                 reason = "${hall.label} — ${n.reason}",
             )
+        }
+    }.sortedBy { it.timeLabel }
+
+// ── Canonical class schedule (single source for Class Schedule + Weekly/Daily occupancy + Action) ──
+//
+// For the demo (fsktm) account there is no live sensor schedule, so all four views derive from these
+// minute-accurate sessions built from the hardcoded hallDayBreaks — the exact same logic the Class
+// Schedule card uses — guaranteeing identical class/break times everywhere. History weeks are separate.
+
+/** Merged class sessions (minute-of-day ranges) for [hall] on weekday [dow]; empty on weekends. */
+private fun classScheduleSessions(hall: Hall, dow: Int): List<IntRange> {
+    if (dow >= 5) return emptyList()
+    val gridStartMin = CLASS_GRID_START_HOUR * 60
+    val gridEndMin = CLASS_GRID_END_HOUR * 60
+    val dayBreaks = (hallDayBreaks[hall] ?: emptyMap())[dow] ?: emptyList()
+    val activeRanges = mutableListOf<IntRange>()
+    var rangeStart: Int? = null
+    for (minuteOfDay in gridStartMin until gridEndMin) {
+        val h = minuteOfDay / 60; val m = minuteOfDay % 60
+        val inBreak = inRange(h, m, timetableOvernight) || dayBreaks.any { inRange(h, m, it) }
+        if (!inBreak) {
+            if (rangeStart == null) rangeStart = minuteOfDay
+        } else {
+            rangeStart?.let { start -> activeRanges.add(start until minuteOfDay); rangeStart = null }
+        }
+    }
+    rangeStart?.let { start -> activeRanges.add(start until gridEndMin) }
+    val merged = mutableListOf<IntRange>()
+    for (r in activeRanges) {
+        if (merged.isNotEmpty() && r.first - merged.last().last <= 30)
+            merged[merged.lastIndex] = merged.last().first..r.last
+        else merged.add(r)
+    }
+    return merged
+}
+
+/**
+ * Representative occupancy count for a session hour. Varies by time of day (morning ramp / midday
+ * peak / evening wind-down) with a deterministic per-hall/day jitter, mirroring [buildHourlyOccupancy]
+ * so the heatmap keeps a natural gradient while the occupied/empty TIMES stay class-schedule exact.
+ */
+private fun occupancyForHour(hall: Hall, dayIndex: Int, hour: Int): Int {
+    val v = ((hour + 1) * (hall.ordinal + 2) * (dayIndex + 3)) % 19   // 0-18
+    return when {
+        hour in 8..9 -> 44 + v   // 44-62  (moderate)
+        hour >= 17   -> 12 + v   // 12-30  (wind-down)
+        else         -> 82 + v   // 82-100 (peak)
+    }
+}
+
+/**
+ * Canonical 10-min-bin occupancy grid (7×144) for the demo account: real [minuteSchedule] when it
+ * has data, otherwise filled from [classScheduleSessions] with the [occupancyForHour] gradient (zero
+ * exactly during breaks/overnight/weekend). Fed to the Weekly heatmap + Daily chart.
+ */
+private fun canonicalMinuteGrid(hall: Hall, minuteSchedule: Array<IntArray>?): Array<IntArray> {
+    if (minuteSchedule?.any { row -> row.any { it > 0 } } == true) return minuteSchedule
+    return Array(7) { d ->
+        val grid = IntArray(144) { 0 }
+        for (s in classScheduleSessions(hall, d)) {
+            val startBin = s.first / 10
+            val endBin = (s.last + 1) / 10
+            for (b in startBin until endBin) grid[b] = occupancyForHour(hall, d, (b * 10) / 60)
+        }
+        grid
+    }
+}
+
+/**
+ * Class sessions (minute-of-day ranges, end-exclusive = `.last + 1`) for [hall] on [dow], from the
+ * SAME source the Class Schedule card uses: the real 10-min [minuteSchedule] when it has data
+ * (contiguous mean>0 runs over the 08:00–19:00 grid), otherwise the hardcoded [classScheduleSessions]
+ * fallback. This is the single source the Class Schedule, Weekly/Daily occupancy and Action timeline
+ * all share, so per-space times line up exactly.
+ */
+private fun sessionsForDay(hall: Hall, dow: Int, minuteSchedule: Array<IntArray>?): List<IntRange> {
+    val hasData = minuteSchedule?.any { row -> row.any { v -> v > 0 } } == true
+    if (hasData) {
+        val bins = minuteSchedule!!.getOrNull(dow) ?: return emptyList()
+        val startBin = CLASS_GRID_START_HOUR * 6
+        val endBin = CLASS_GRID_END_HOUR * 6
+        val out = mutableListOf<IntRange>()
+        var runStart = -1
+        for (b in startBin until endBin) {
+            val mean = bins.getOrElse(b) { 0 }
+            if (mean > 0) {
+                if (runStart < 0) runStart = b
+            } else if (runStart >= 0) {
+                out.add((runStart * 10) until (b * 10)); runStart = -1
+            }
+        }
+        if (runStart >= 0) out.add((runStart * 10) until (endBin * 10))
+        return out
+    }
+    return classScheduleSessions(hall, dow)
+}
+
+/** Occupancy count at [minOfDay]: the real 10-min bin mean when available, else the hourly gradient. */
+private fun occupancyAt(hall: Hall, dow: Int, minOfDay: Int, minuteSchedule: Array<IntArray>?): Int {
+    val hasData = minuteSchedule?.any { row -> row.any { v -> v > 0 } } == true
+    return if (hasData) {
+        minuteSchedule!!.getOrNull(dow)?.getOrElse(minOfDay / 10) { 0 } ?: 0
+    } else {
+        occupancyForHour(hall, dow, minOfDay / 60)
+    }
+}
+
+/** NOW recommendation from the shared class sessions (demo account), matching the Class Schedule. */
+internal fun deriveNowActionFromSessions(
+    nowMillis: Long,
+    personCount: Int,
+    temperatureC: Float?,
+    hall: Hall,
+    humidityPercent: Double?,
+    minuteSchedule: Array<IntArray>?,
+): NowAction {
+    val cal = Calendar.getInstance().apply { timeInMillis = nowMillis }
+    val dow = (cal.get(Calendar.DAY_OF_WEEK) - Calendar.MONDAY + 7) % 7
+    val minOfDay = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
+
+    // Live YOLO occupancy still wins (same as the sensor-data path).
+    if (personCount > 0) tooColdAction(temperatureC, humidityPercent)?.let { return it }
+
+    val sessions = sessionsForDay(hall, dow, minuteSchedule)
+    val occupiedNow = sessions.any { minOfDay in it.first..it.last }
+    if (!occupiedNow) {
+        if (personCount > 2) return NowAction(
+            AcState.ON, R.string.now_label_keep_ac_on, R.string.now_reason_unexpected_occupancy,
+            reasonArgs = listOf(personCount),
+        )
+        val nextStart = sessions.map { it.first }.filter { it > minOfDay }.minOrNull()
+        return if (nextStart != null)
+            NowAction(AcState.OFF, R.string.now_label_turn_off_ac_lights, R.string.now_reason_no_class_until, reasonArgs = listOf(nextStart / 60))
+        else
+            NowAction(AcState.OFF, R.string.now_label_turn_off_all, R.string.now_reason_no_more_classes)
+    }
+    if (temperatureC != null && temperatureC > 27f) return NowAction(
+        AcState.COOL_PLUS, R.string.now_label_increase_cooling, R.string.now_reason_temperature,
+        reasonArgs = listOf(temperatureC),
+    )
+    return NowAction(
+        AcState.ON, R.string.now_label_maintain, R.string.now_reason_class_in_session,
+        reasonArgs = listOf(occupancyAt(hall, dow, minOfDay, minuteSchedule)),
+    )
+}
+
+/** Minute-accurate day timeline from the shared class sessions (demo account). */
+internal fun buildSessionDayNotifications(dayOffset: Int, nowMillis: Long, hall: Hall, minuteSchedule: Array<IntArray>?): List<TimetableNotification> {
+    val cal = Calendar.getInstance().apply {
+        timeInMillis = nowMillis
+        add(Calendar.DAY_OF_YEAR, dayOffset)
+    }
+    val dow = (cal.get(Calendar.DAY_OF_WEEK) - Calendar.MONDAY + 7) % 7
+    val dayName = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")[dow]
+    val sessions = sessionsForDay(hall, dow, minuteSchedule)
+    if (sessions.isEmpty()) return listOf(
+        TimetableNotification(
+            "$dayName-noclass", "--", "No classes today",
+            if (dow >= 5) "Weekend — all systems off" else "No classes scheduled ($dayName)",
+        ),
+    )
+    val result = mutableListOf<TimetableNotification>()
+    fun add(min: Int, id: String, title: String, reason: String) {
+        result.add(TimetableNotification("$dayName-$id", "%02d:%02d".format(min / 60, min % 60), title, reason))
+    }
+    val firstStart = sessions.first().first
+    add(firstStart, "startup", "System startup check", "First class at %02d:%02d ($dayName)".format(firstStart / 60, firstStart % 60))
+    for (i in 0 until sessions.size - 1) {
+        val breakStart = sessions[i].last + 1   // exclusive end of this session
+        val resume = sessions[i + 1].first
+        add(breakStart, "break$i-off", "Turn off AC & lights", "Break starts at %02d:%02d ($dayName)".format(breakStart / 60, breakStart % 60))
+        val preMin = resume - 30
+        if (preMin > breakStart) {
+            add(preMin, "break$i-precool", "Pre-cool room to 23°C", "Class resumes at %02d:%02d ($dayName)".format(resume / 60, resume % 60))
+        }
+    }
+    val lastEnd = sessions.last().last + 1
+    add(lastEnd, "shutdown", "Turn off all systems", "No more classes today ($dayName)")
+    return result.sortedBy { it.timeLabel }
+}
+
+/** Demo timeline across all halls, prefixed with each hall label (same shape as the sensor-data path). */
+internal fun buildAllHallsSessionNotifications(
+    dayOffset: Int,
+    nowMillis: Long,
+    hallMinuteSchedules: Map<String, Array<IntArray>>,
+): List<TimetableNotification> =
+    Hall.values().flatMap { hall ->
+        buildSessionDayNotifications(dayOffset, nowMillis, hall, hallMinuteSchedules[hall.label]).map { n ->
+            n.copy(id = "${hall.name}-${n.id}", reason = "${hall.label} — ${n.reason}")
         }
     }.sortedBy { it.timeLabel }
 
