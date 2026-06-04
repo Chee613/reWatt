@@ -156,6 +156,7 @@
     <string name="setup_s6_body">Semuanya sedia. reWatt kini akan memerhati bilik dan membantu mengurus tenaga secara automatik. Anda boleh kembali ke panduan ini bila-bila masa dari tab Tetapan.</string>
     <string name="setup_complete">Persediaan selesai</string>
     <string name="setup_complete_desc">Ketik Selesai untuk mula menggunakan reWatt.</string>
+    <string name="setup_camera_needed">Kebenaran kamera diperlukan untuk menunjukkan paparan langsung</string>
 
     <!-- Capture tab -->
     <string name="capture_your_space">Ruang yang dipantau anda</string>
