@@ -210,8 +210,8 @@
 
     <!-- Weather card -->
     <string name="weather_current_conditions">Current conditions</string>
-    <string name="weather_outdoor_temp">Outdoor temp</string>
-    <string name="weather_outdoor_rh">Outdoor RH</string>
+    <string name="weather_outdoor_temp">Temp</string>
+    <string name="weather_outdoor_rh">Humidity</string>
     <string name="weather_delta_indoor">Δ vs indoor</string>
 
     <!-- Buttons -->

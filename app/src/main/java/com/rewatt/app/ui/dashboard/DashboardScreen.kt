@@ -4,6 +4,14 @@ import android.graphics.Bitmap
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.draw.rotate
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -111,6 +119,8 @@ import com.rewatt.app.telemetry.PacketFreshness
 import com.rewatt.app.telemetry.RadarTelemetry
 import com.rewatt.app.usb.UsbConnectionStatus
 import androidx.compose.animation.AnimatedVisibility
+import com.rewatt.app.ui.theme.EaseOutStrong
+import com.rewatt.app.ui.theme.pressScale
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -325,6 +335,8 @@ fun DashboardScreen(
     onDebugCapture: () -> Unit = {},
     onRefreshWeather: () -> Unit = {},
     onRequestEnergyAdvice: () -> Unit = {},
+    onRefreshWaste: () -> Unit = {},
+    wasteRefreshing: Boolean = false,
     userEmail: String,
     userDisplayName: String?,
     onSignOut: () -> Unit,
@@ -422,13 +434,33 @@ fun DashboardScreen(
                         Spacer(Modifier.width(10.dp))
                         Column {
                             Text("REWATT", fontWeight = FontWeight.Bold)
-                            Text(
-                                text = userDisplayName?.takeIf { it.isNotBlank() } ?: userEmail,
-                                fontSize = 12.sp,
-                                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                            )
+                            val modeLabel = when (currentUserRole) {
+                                UserRole.Admin -> "Admin"
+                                UserRole.Sensor -> "Sensor"
+                                else -> null
+                            }
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                Text(
+                                    text = userDisplayName?.takeIf { it.isNotBlank() } ?: userEmail,
+                                    fontSize = 12.sp,
+                                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false),
+                                )
+                                if (modeLabel != null) {
+                                    Text(
+                                        text = "($modeLabel)",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = androidx.compose.material3.MaterialTheme.colorScheme.primary,
+                                        maxLines = 1,
+                                    )
+                                }
+                            }
                         }
                     }
                 },
@@ -472,6 +504,8 @@ fun DashboardScreen(
                     onStartCapture = { requestCapture(CaptureStartSource.Manual) },
                     onRefreshWeather = onRefreshWeather,
                     onRequestEnergyAdvice = onRequestEnergyAdvice,
+                    onRefreshWaste = onRefreshWaste,
+                    wasteRefreshing = wasteRefreshing,
                     currentUserRole = currentUserRole,
                     spaceName = spaceName,
                     hallSnapshot = hallSnapshot,
@@ -596,6 +630,8 @@ private fun LivePage(
     onStartCapture: () -> Unit,
     onRefreshWeather: () -> Unit = {},
     onRequestEnergyAdvice: () -> Unit = {},
+    onRefreshWaste: () -> Unit = {},
+    wasteRefreshing: Boolean = false,
     currentUserRole: UserRole? = null,
     spaceName: String? = null,
     hallSnapshot: HallSnapshot? = null,
@@ -614,6 +650,8 @@ private fun LivePage(
         onStartCapture = onStartCapture,
         onRefreshWeather = onRefreshWeather,
         onRequestEnergyAdvice = onRequestEnergyAdvice,
+        onRefreshWaste = onRefreshWaste,
+        wasteRefreshing = wasteRefreshing,
         currentUserRole = currentUserRole,
         spaceName = spaceName,
         hallSnapshot = hallSnapshot,
@@ -659,6 +697,8 @@ private fun OverviewContent(
     onStartCapture: () -> Unit,
     onRefreshWeather: () -> Unit = {},
     onRequestEnergyAdvice: () -> Unit = {},
+    onRefreshWaste: () -> Unit = {},
+    wasteRefreshing: Boolean = false,
     currentUserRole: UserRole? = null,
     spaceName: String? = null,
     hallSnapshot: HallSnapshot? = null,
@@ -715,14 +755,16 @@ private fun OverviewContent(
             onRefreshWeather = onRefreshWeather,
         )
 
-        // ── Gemini AC energy suggestion ───────────────────────────────────────
-        EnergyAdviceCard(
-            state = energyAdvice,
-            onRequestEnergyAdvice = onRequestEnergyAdvice,
-        )
-
-        // ── Yesterday's wasted-energy summary ─────────────────────────────────
-        wasteSummary?.let { EnergyWasteCard(summary = it) }
+        // ── Gemini insights: AC suggestion + yesterday's wasted energy, framed together ───────
+        GeminiFrame {
+            EnergyAdviceCard(
+                state = energyAdvice,
+                onRequestEnergyAdvice = onRequestEnergyAdvice,
+            )
+            wasteSummary?.let {
+                EnergyWasteCard(summary = it, onRefresh = onRefreshWaste, refreshing = wasteRefreshing)
+            }
+        }
 
         // ── 6-card grid ──────────────────────────────────────────────────────
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -736,11 +778,13 @@ private fun OverviewContent(
                     else -> "--"
                 },
                 modifier = Modifier.weight(1f),
+                leadingEmoji = "👥",
             )
             MetricCard(
                 title = stringResource(R.string.m_ac_lights),
                 value = acLightStateLabel(nowAction.acState),
                 modifier = Modifier.weight(1f),
+                leadingEmoji = "❄️",
             )
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -748,11 +792,13 @@ private fun OverviewContent(
                 title = stringResource(R.string.m_temperature),
                 value = displayTempC?.let { "%.1f °C".format(it) } ?: "--",
                 modifier = Modifier.weight(1f),
+                leadingEmoji = "🌡️",
             )
             MetricCard(
                 title = stringResource(R.string.m_humidity),
                 value = displayHumidity?.let { "%.1f %%".format(it) } ?: "--",
                 modifier = Modifier.weight(1f),
+                leadingEmoji = "💧",
             )
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -760,6 +806,7 @@ private fun OverviewContent(
                 title = stringResource(R.string.m_session_ends),
                 value = sessionEndTime,
                 modifier = Modifier.weight(1f),
+                leadingEmoji = "⏱️",
             )
         }
 
@@ -827,19 +874,56 @@ private fun WeatherCard(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(stringResource(R.string.weather_title), fontWeight = FontWeight.Bold, fontSize = 13.sp)
-            OutlinedButton(onClick = onRefreshWeather) {
-                Text(if (weather.status == WeatherStatus.Loading) stringResource(R.string.btn_loading) else stringResource(R.string.btn_refresh))
+            // Subtle inline refresh: a circular arrow that spins while loading instead of a big pill.
+            val spin = rememberInfiniteTransition(label = "wxSpin").animateFloat(
+                initialValue = 0f,
+                targetValue = 360f,
+                animationSpec = infiniteRepeatable(tween(900, easing = LinearEasing)),
+                label = "wxRot",
+            ).value
+            val rotation = if (weather.status == WeatherStatus.Loading) spin else 0f
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .clickable(
+                        enabled = weather.status != WeatherStatus.Loading,
+                        onClick = onRefreshWeather,
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "↻",
+                    fontSize = 18.sp,
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.rotate(rotation),
+                )
             }
         }
         Spacer(Modifier.height(8.dp))
         val info = weather.info
         if (info != null) {
-            Text(
-                text = info.conditionText ?: stringResource(R.string.weather_current_conditions),
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 16.sp,
-            )
+            // Weather state at a glance: a dynamic emoji next to the condition text.
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(weatherEmoji(info.conditionType, info.conditionText), fontSize = 30.sp)
+                Text(
+                    text = info.conditionText ?: stringResource(R.string.weather_current_conditions),
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 16.sp,
+                )
+            }
             Spacer(Modifier.height(6.dp))
+            // Color-code the indoor/outdoor delta: warm when hotter outside (AC strain),
+            // cool when cooler outside (free-cooling opportunity).
+            val deltaColor = when {
+                deltaT == null -> Color.Unspecified
+                deltaT >= 0.5 -> Color(0xFFE2683C)
+                deltaT <= -0.5 -> Color(0xFF2E9E6B)
+                else -> Color.Unspecified
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 MetricCard(
                     title = stringResource(R.string.weather_outdoor_temp),
@@ -855,6 +939,7 @@ private fun WeatherCard(
                     title = stringResource(R.string.weather_delta_indoor),
                     value = deltaT?.let { "%+.1f °C".format(it) } ?: "--",
                     modifier = Modifier.weight(1f),
+                    valueColor = deltaColor,
                 )
             }
         } else {
@@ -864,6 +949,39 @@ private fun WeatherCard(
                 color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    }
+}
+
+/**
+ * Pick a weather emoji that tracks the actual weather. Prefers the Google Weather API's stable English
+ * [conditionType] enum (e.g. CLOUDY, RAIN, THUNDERSTORM) so it stays correct even when [conditionText]
+ * is localized (e.g. Malay "Mendung"); falls back to text keywords, then a neutral icon.
+ */
+private fun weatherEmoji(conditionType: String?, conditionText: String? = null): String {
+    val t = (conditionType ?: "").uppercase()
+    val byType = when {
+        t.isBlank() -> null
+        "THUNDER" in t -> "⛈️"
+        "RAIN" in t || "SHOWER" in t || "DRIZZLE" in t -> "🌧️"
+        "SNOW" in t || "HAIL" in t || "SLEET" in t || "BLIZZARD" in t -> "❄️"
+        "FOG" in t || "HAZE" in t || "MIST" in t || "SMOKE" in t -> "🌫️"
+        "WIND" in t -> "💨"
+        "PARTLY" in t || "MOSTLY_CLEAR" in t -> "🌤️"
+        "CLOUD" in t -> "☁️"
+        "CLEAR" in t || "SUNNY" in t -> "☀️"
+        else -> null
+    }
+    if (byType != null) return byType
+    val c = (conditionText ?: "").lowercase()
+    return when {
+        "thunder" in c || "storm" in c -> "⛈️"
+        "rain" in c || "drizzle" in c || "shower" in c -> "🌧️"
+        "snow" in c || "sleet" in c || "ice" in c -> "❄️"
+        "fog" in c || "mist" in c || "haze" in c || "smoke" in c -> "🌫️"
+        "partly" in c || "few" in c || "scattered" in c -> "🌤️"
+        "cloud" in c || "overcast" in c -> "☁️"
+        "clear" in c || "sun" in c -> "☀️"
+        else -> "🌡️"
     }
 }
 
@@ -889,8 +1007,27 @@ private fun EnergyAdviceCard(
             Button(
                 onClick = onRequestEnergyAdvice,
                 enabled = state.status != EnergyAdviceStatus.Pending,
+                shape = RoundedCornerShape(16.dp),
+                elevation = null,
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color.Transparent,
+                    disabledContainerColor = Color.Transparent,
+                    contentColor = Color.White,
+                    disabledContentColor = Color.White.copy(alpha = 0.7f),
+                ),
+                // Match the Gemini gradient of the surrounding frame; compact size.
+                modifier = Modifier
+                    .height(34.dp)
+                    .background(
+                        Brush.linearGradient(GeminiGradient),
+                        RoundedCornerShape(16.dp),
+                    ),
             ) {
-                Text(if (state.status == EnergyAdviceStatus.Pending) stringResource(R.string.btn_thinking) else stringResource(R.string.btn_suggest_action))
+                Text(
+                    text = if (state.status == EnergyAdviceStatus.Pending) stringResource(R.string.btn_thinking) else stringResource(R.string.btn_suggest_action),
+                    fontSize = 12.sp,
+                )
             }
         }
 
@@ -918,11 +1055,45 @@ private fun EnergyAdviceCard(
     }
 }
 
+/** Red used for the wasted-energy headline figures, so the cost always reads as a warning. */
+private val WasteRed = Color(0xFFD32F2F)
+
 @Composable
-private fun EnergyWasteCard(summary: EnergyWasteSummary) {
+private fun EnergyWasteCard(
+    summary: EnergyWasteSummary,
+    onRefresh: () -> Unit = {},
+    refreshing: Boolean = false,
+) {
     InfoCard {
         Column {
-            Text(stringResource(R.string.waste_title), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(stringResource(R.string.waste_title), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                // Manual recompute via Gemini; the arrow spins while a refresh is in flight.
+                val spin = rememberInfiniteTransition(label = "wasteSpin").animateFloat(
+                    initialValue = 0f,
+                    targetValue = 360f,
+                    animationSpec = infiniteRepeatable(tween(900, easing = LinearEasing)),
+                    label = "wasteRot",
+                ).value
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .clickable(enabled = !refreshing, onClick = onRefresh),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "↻",
+                        fontSize = 18.sp,
+                        color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.rotate(if (refreshing) spin else 0f),
+                    )
+                }
+            }
             Text(
                 text = "Powered by Gemini" + summary.dateLabel.takeIf { it.isNotBlank() }?.let { "  ·  $it" }.orEmpty(),
                 fontSize = 11.sp,
@@ -933,11 +1104,21 @@ private fun EnergyWasteCard(summary: EnergyWasteSummary) {
                 Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                     Column {
-                        Text("%.2f kWh".format(summary.wastedKwh), fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                        Text(
+                            "%.2f kWh".format(summary.wastedKwh),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 20.sp,
+                            color = WasteRed,
+                        )
                         Text("wasted", fontSize = 11.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Column {
-                        Text("RM %.2f".format(summary.costRm), fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                        Text(
+                            "RM %.2f".format(summary.costRm),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 20.sp,
+                            color = WasteRed,
+                        )
                         Text("est. cost", fontSize = 11.sp, color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
@@ -1083,24 +1264,32 @@ private fun SegmentButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    // Animate the pill's fill + label colours so selection glides instead of snapping.
+    val bg = androidx.compose.animation.animateColorAsState(
+        targetValue = if (selected) androidx.compose.material3.MaterialTheme.colorScheme.primary
+        else Color.Transparent,
+        animationSpec = androidx.compose.animation.core.tween(220, easing = EaseOutStrong),
+        label = "segBg",
+    ).value
+    val fg = androidx.compose.animation.animateColorAsState(
+        targetValue = if (selected) androidx.compose.material3.MaterialTheme.colorScheme.onPrimary
+        else androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+        animationSpec = androidx.compose.animation.core.tween(220, easing = EaseOutStrong),
+        label = "segFg",
+    ).value
     Box(
         modifier = modifier
+            .pressScale(interaction)
             .clip(RoundedCornerShape(50))
-            .background(
-                if (selected) androidx.compose.material3.MaterialTheme.colorScheme.primary
-                else Color.Transparent,
-            )
-            .clickable(onClick = onClick)
+            .background(bg)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(vertical = 10.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = text,
-            color = if (selected) {
-                androidx.compose.material3.MaterialTheme.colorScheme.onPrimary
-            } else {
-                androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
-            },
+            color = fg,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
             fontSize = 14.sp,
         )
@@ -1366,13 +1555,22 @@ private fun WeeklyHistoryCard(
             }
         }
         Spacer(Modifier.height(8.dp))
-        val weekSchedule = remember(minuteSchedule, weekTab) {
+        val weekSchedule = remember(minuteSchedule, weekTab, hall) {
             if (weekTab == 2) {
                 // 24/5–30/5: no real data. Dummy bins only on the holiday days so the grid still
                 // renders (those days are hidden behind the public-holiday banner anyway).
                 Array(7) { d -> IntArray(144) { b -> if (d in setOf(1, 2, 3) && b == 60) 1 else 0 } }
             } else {
-                minuteSchedule?.let { varyWeekSchedule(it, weekTab) }
+                minuteSchedule?.let { base ->
+                    val varied = varyWeekSchedule(base, weekTab)
+                    // DK1 / 10–16 May / Monday's first class was an outlier — make it identical to
+                    // the 17–23 May week's Monday first class.
+                    if (hall == Hall.Hall1 && weekTab == 0) {
+                        matchMondayFirstClassToWeek(base, varied, weekIndex = 1)
+                    } else {
+                        varied
+                    }
+                }
             }
         }
         ClassScheduleCard(
@@ -1388,6 +1586,38 @@ private fun WeeklyHistoryCard(
             },
         )
     }
+}
+
+/**
+ * Make Monday's first class in [varied] identical to the Monday first class of week [weekIndex]
+ * (same time span + occupancy), to tame the DK1 / 10–16 May outlier without touching any other day,
+ * week or hall.
+ */
+private fun matchMondayFirstClassToWeek(
+    base: Array<IntArray>,
+    varied: Array<IntArray>,
+    weekIndex: Int,
+): Array<IntArray> {
+    val out = Array(varied.size) { varied[it].copyOf() }
+    val monday = out.getOrNull(0) ?: return out
+    val refMonday = varyWeekSchedule(base, weekIndex).getOrNull(0) ?: return out
+
+    // start, endInclusive, occupancy of the first contiguous occupied run in a day's row.
+    fun firstRun(row: IntArray): Triple<Int, Int, Int>? {
+        var s = -1
+        var e = -1
+        for (b in row.indices) {
+            if (row[b] > 0) { if (s < 0) s = b; e = b } else if (s >= 0) break
+        }
+        return if (s < 0) null else Triple(s, e, row[s])
+    }
+
+    val current = firstRun(monday) ?: return out
+    val reference = firstRun(refMonday) ?: return out
+    // Clear this week's first class, then stamp the reference week's (same bins + occupancy).
+    for (b in current.first..current.second) monday[b] = 0
+    for (b in reference.first..reference.second) monday[b] = reference.third
+    return out
 }
 
 /** Representative headcount for a 0-3 occupancy level (cold-start fallback only). */
@@ -1931,7 +2161,12 @@ private fun AllHallsNowCard(
                         color = androidx.compose.material3.MaterialTheme.colorScheme.onPrimary,
                     )
                 }
-                OutlinedButton(onClick = onDone) { Text("Done") }
+                val doneInteraction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                OutlinedButton(
+                    onClick = onDone,
+                    modifier = Modifier.pressScale(doneInteraction),
+                    interactionSource = doneInteraction,
+                ) { Text("Done") }
             }
             nowActions.forEach { (hall, action) ->
                 Row(
@@ -2072,9 +2307,13 @@ private fun NotificationBlock(
                         )
                     }
                 }
+                val doneInteraction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
                 OutlinedButton(
                     onClick = onDone,
-                    modifier = Modifier.padding(start = 8.dp),
+                    modifier = Modifier
+                        .padding(start = 8.dp)
+                        .pressScale(doneInteraction),
+                    interactionSource = doneInteraction,
                 ) {
                     Text("Done", fontSize = 12.sp)
                 }
@@ -3639,6 +3878,8 @@ private fun MetricCard(
     value: String,
     modifier: Modifier = Modifier,
     warning: Boolean = false,
+    valueColor: Color = Color.Unspecified,
+    leadingEmoji: String? = null,
 ) {
     Card(
         modifier = modifier,
@@ -3656,21 +3897,63 @@ private fun MetricCard(
                 .fillMaxWidth()
                 .padding(12.dp),
         ) {
-            Text(
-                text = title,
-                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 11.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                if (leadingEmoji != null) Text(leadingEmoji, fontSize = 13.sp)
+                Text(
+                    text = title,
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             Spacer(Modifier.height(4.dp))
             Text(
                 text = value,
                 fontWeight = FontWeight.Bold,
                 fontSize = 18.sp,
+                color = valueColor,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+        }
+    }
+}
+
+/** Gemini brand gradient (blue → purple → coral) used to mark Gemini-powered surfaces. */
+private val GeminiGradient = listOf(
+    Color(0xFF4285F4),
+    Color(0xFF9B72CB),
+    Color(0xFFD96570),
+)
+
+/**
+ * Wraps Gemini-powered cards in one bigger rounded box with a colourful gradient edge + a gradient
+ * "Gemini insights" header, so the AC suggestion and yesterday's waste read as one AI section.
+ */
+@Composable
+private fun GeminiFrame(content: @Composable ColumnScope.() -> Unit) {
+    val edge = Brush.linearGradient(GeminiGradient)
+    val tint = Brush.linearGradient(GeminiGradient.map { it.copy(alpha = 0.07f) })
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(tint)
+            .border(1.5.dp, edge, RoundedCornerShape(18.dp))
+            .padding(12.dp),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(
+                text = "✦  Gemini insights",
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp,
+                style = androidx.compose.ui.text.TextStyle(brush = edge),
+            )
+            content()
         }
     }
 }
