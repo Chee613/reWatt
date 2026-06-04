@@ -51,6 +51,158 @@
     <string name="m_room_light">Room light</string>
     <string name="m_exposure">Exposure</string>
 
+    <string name="m_occupancy">Occupancy</string>
+    <string name="occ_ppl">%1$d ppl</string>
+    <string name="occ_detected">Detected</string>
+    <string name="occ_empty">Empty</string>
+
+    <!-- AC/Lights chip states -->
+    <string name="ac_state_off">OFF</string>
+    <string name="ac_state_on">ON</string>
+    <string name="ac_state_cool_plus">COOL +</string>
+    <string name="ac_state_cool_minus">COOL -</string>
+
+    <!-- AC energy suggestion bullets -->
+    <string name="adv_start_ac">Start AC at %1$s</string>
+    <string name="adv_target_setpoint">Target setpoint %1$s °C</string>
+    <string name="adv_occupancy">Occupancy: %1$d people (%2$s)</string>
+    <string name="adv_reason">Reason: %1$s</string>
+    <string name="occlvl_occupied">occupied</string>
+    <string name="occlvl_likely_occupied">likely occupied</string>
+    <string name="occlvl_unclear">unclear</string>
+    <string name="occlvl_likely_empty">likely empty</string>
+
+    <!-- Action / Analytics -->
+    <string name="label_now">NOW</string>
+    <string name="sched_today_schedule">Today\'s schedule</string>
+    <string name="sched_full_day_schedule">Full day schedule</string>
+    <string name="day_yesterday">Yesterday</string>
+    <string name="day_today">Today</string>
+    <string name="day_tomorrow">Tomorrow</string>
+    <string name="day_plus2">+2 Days</string>
+
+    <!-- Weekly / daily occupancy -->
+    <string name="analytics_weekly_title">Weekly occupancy pattern</string>
+    <string name="analytics_no_history">No sensor history yet</string>
+    <string name="analytics_no_history_desc">Run the sensor to collect occupancy data for this hall.</string>
+    <string name="analytics_daily_pattern">%1$s — daily pattern</string>
+    <string name="analytics_peak">Peak: %1$d ppl</string>
+
+    <!-- Class schedule -->
+    <string name="sched_title">Class Schedule</string>
+    <string name="sched_no_data">No class data yet</string>
+    <string name="sched_no_data_desc">The class schedule will appear once the sensor has collected enough occupancy data for this hall.</string>
+    <string name="sched_estimated">estimated</string>
+    <string name="sched_from_data">from occupancy data</string>
+    <string name="sched_ph">PH</string>
+    <string name="sched_public_holiday">Public Holiday — No Classes</string>
+    <string name="sched_estimated_note">Showing estimated schedule — class detection will improve once sensor data spans 2+ weeks.</string>
+    <string name="sched_no_breaks">No breaks scheduled</string>
+    <string name="sched_weekend">No classes — weekend</string>
+    <string name="sched_break">Break %1$02d:%2$02d–%3$02d:%4$02d</string>
+
+    <string-array name="day_names_full">
+        <item>Monday</item><item>Tuesday</item><item>Wednesday</item><item>Thursday</item>
+        <item>Friday</item><item>Saturday</item><item>Sunday</item>
+    </string-array>
+    <string-array name="sched_day_labels">
+        <item>MON</item><item>TUE</item><item>WED</item><item>THU</item>
+        <item>FRI</item><item>SAT</item><item>SUN</item>
+    </string-array>
+
+    <!-- Setup guide -->
+    <string name="setup_title">Sensor Setup Guide</string>
+    <string name="setup_skip">Skip</string>
+    <string name="setup_back">Back</string>
+    <string name="setup_next">Next</string>
+    <string name="setup_done">Done</string>
+    <string name="setup_step_counter">%1$d / %2$d</string>
+    <string name="setup_s1_title">1. Allow Camera, Microphone &amp; Location</string>
+    <string name="setup_s1_body">reWatt uses the camera and microphone to detect who is in the room, and location to fetch outdoor weather for energy advice.</string>
+    <string name="setup_perm_camera">Camera</string>
+    <string name="setup_perm_microphone">Microphone</string>
+    <string name="setup_perm_location">Location</string>
+    <string name="setup_allowed">Allowed</string>
+    <string name="setup_not_allowed">Not allowed</string>
+    <string name="setup_allow_permissions">Allow Permissions</string>
+    <string name="setup_s2_title">2. Turn Off Battery Saver for reWatt</string>
+    <string name="setup_s2_body">Your phone may pause the app to save battery. Turn off Battery Optimization so reWatt keeps running at all times — even when the screen is off.</string>
+    <string name="setup_batt_off">Battery optimization is off — good!</string>
+    <string name="setup_batt_on">Battery optimization is ON — please turn it off</string>
+    <string name="setup_allow_always_on">Allow Always-On Access</string>
+    <string name="setup_s3_title">3. Mount the Sensor Phone</string>
+    <string name="setup_s3_body">Use the wall mount in the kit to attach this phone to the classroom wall or whiteboard. Point the camera toward the centre of the room.</string>
+    <string name="setup_mount_photo">Mount photo — coming soon</string>
+    <string name="setup_s3_tip1">Attach the mount at shoulder height or above.</string>
+    <string name="setup_s3_tip2">Make sure the camera faces the seating area.</string>
+    <string name="setup_s3_tip3">Keep the lens clear — no tape or cover over it.</string>
+    <string name="setup_s3_tip4">Plug in the charger so the phone stays powered.</string>
+    <string name="setup_s4_title">4. Check the Sensor View</string>
+    <string name="setup_s4_body">Ask the person with the Admin phone to open the Capture tab and choose your hall. They will confirm the camera can see the whole room clearly.</string>
+    <string name="setup_example_view">Example view — coming soon</string>
+    <string name="setup_s4_tip1">The full room should be visible — no blind spots.</string>
+    <string name="setup_s4_tip2">Avoid pointing at bright light sources.</string>
+    <string name="setup_s4_tip3">If the angle is wrong, re-adjust the mount and check again.</string>
+    <string name="setup_s5_title">5. Name Your Space</string>
+    <string name="setup_s5_body">Give this sensor a name and seating capacity — e.g. the room, hall or lab it monitors and how many people it holds. reWatt uses the capacity to estimate energy use.</string>
+    <string name="setup_space_name">Space name</string>
+    <string name="setup_space_name_hint">e.g. DK1, MM8, Lab 3</string>
+    <string name="setup_capacity">Capacity (pax)</string>
+    <string name="setup_capacity_hint">e.g. 300</string>
+    <string name="setup_s6_title">6. You\'re All Set!</string>
+    <string name="setup_s6_body">Everything is ready. reWatt will now watch the room and help manage energy automatically. You can come back to this guide anytime from the Settings tab.</string>
+    <string name="setup_complete">Setup complete</string>
+    <string name="setup_complete_desc">Tap Done to start using reWatt.</string>
+
+    <!-- Capture tab -->
+    <string name="capture_your_space">Your monitored space</string>
+    <string name="capture_interface">Capture interface</string>
+    <string name="capture_live_sensor">Live Sensor Data</string>
+    <string name="capture_need_access">Need access</string>
+    <string name="capture_upload">Upload</string>
+    <string name="capture_stop">Stop</string>
+    <string name="capture_start">Start</string>
+    <string name="capture_capture_now">Capture now</string>
+    <string name="capture_no_frame">No captured frame yet</string>
+    <string name="capture_recording">Recording audio…  %1$ds / %2$ds</string>
+    <string name="capture_people_detected">People detected</string>
+    <string name="sensor_environmental">Environmental (SHT30)</string>
+    <string name="sensor_radar">Radar (LD2412)</string>
+    <string name="sensor_presence">Presence</string>
+    <string name="sensor_clear">Clear</string>
+    <string name="sensor_distance">Distance</string>
+    <string name="sensor_temp">Temp</string>
+    <string name="sensor_radar_state">Radar State</string>
+    <string name="sensor_moving_target">Moving Target</string>
+    <string name="sensor_stationary_target">Stationary Target</string>
+    <string name="sensor_moving">Moving</string>
+    <string name="sensor_stationary">Stationary</string>
+    <string name="sensor_moving_energy">Moving Energy (≥%1$d = person)</string>
+    <string name="sensor_stationary_energy">Stationary Energy (≥%1$d = person)</string>
+    <string name="sensor_connect_otg">Connect sensor via OTG cable to see live data</string>
+    <string name="sensor_waiting_packet">Waiting for radar packet</string>
+    <string name="sensor_scan">Scan</string>
+    <string name="radar_no_target">No Target</string>
+    <string name="radar_moving">Moving</string>
+    <string name="radar_stationary">Stationary</string>
+    <string name="radar_both">Both</string>
+    <string name="verdict_occupied">OCCUPIED — someone is in the room</string>
+    <string name="verdict_empty">EMPTY — no one detected</string>
+    <string name="verdict_waiting">WAITING — no sensor data</string>
+    <string name="db_database">Database</string>
+    <string name="db_recent_captures">Recent Captures</string>
+    <string name="db_no_captures">No captures yet — start the sensor to begin.</string>
+    <string name="db_packet_health">Packet health</string>
+    <string name="db_firestore_sync">Firestore sync</string>
+    <string name="db_gemini_activity">Gemini activity</string>
+    <string name="sync_synced">Synced</string>
+    <string name="sync_syncing">Syncing…</string>
+    <string name="sync_failed">Failed</string>
+    <string name="sync_config_missing">Config missing</string>
+    <string name="sync_idle">Idle</string>
+    <string name="settings_setup_guide">Setup Guide</string>
+    <string name="settings_setup_guide_desc">Permissions, mount &amp; camera view</string>
+
     <!-- Weather card -->
     <string name="weather_current_conditions">Current conditions</string>
     <string name="weather_outdoor_temp">Outdoor temp</string>
