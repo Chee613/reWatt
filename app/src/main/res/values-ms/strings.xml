@@ -51,6 +51,158 @@
     <string name="m_room_light">Cahaya bilik</string>
     <string name="m_exposure">Pendedahan</string>
 
+    <string name="m_occupancy">Penghunian</string>
+    <string name="occ_ppl">%1$d orang</string>
+    <string name="occ_detected">Dikesan</string>
+    <string name="occ_empty">Kosong</string>
+
+    <!-- AC/Lights chip states -->
+    <string name="ac_state_off">MATI</string>
+    <string name="ac_state_on">HIDUP</string>
+    <string name="ac_state_cool_plus">SEJUK +</string>
+    <string name="ac_state_cool_minus">SEJUK -</string>
+
+    <!-- AC energy suggestion bullets -->
+    <string name="adv_start_ac">Hidupkan AC pada %1$s</string>
+    <string name="adv_target_setpoint">Suhu sasaran %1$s °C</string>
+    <string name="adv_occupancy">Penghunian: %1$d orang (%2$s)</string>
+    <string name="adv_reason">Sebab: %1$s</string>
+    <string name="occlvl_occupied">dihuni</string>
+    <string name="occlvl_likely_occupied">berkemungkinan dihuni</string>
+    <string name="occlvl_unclear">tidak jelas</string>
+    <string name="occlvl_likely_empty">berkemungkinan kosong</string>
+
+    <!-- Action / Analytics -->
+    <string name="label_now">SEKARANG</string>
+    <string name="sched_today_schedule">Jadual hari ini</string>
+    <string name="sched_full_day_schedule">Jadual sepanjang hari</string>
+    <string name="day_yesterday">Semalam</string>
+    <string name="day_today">Hari ini</string>
+    <string name="day_tomorrow">Esok</string>
+    <string name="day_plus2">+2 Hari</string>
+
+    <!-- Weekly / daily occupancy -->
+    <string name="analytics_weekly_title">Corak penghunian mingguan</string>
+    <string name="analytics_no_history">Tiada sejarah penderia lagi</string>
+    <string name="analytics_no_history_desc">Jalankan penderia untuk mengumpul data penghunian untuk dewan ini.</string>
+    <string name="analytics_daily_pattern">%1$s — corak harian</string>
+    <string name="analytics_peak">Puncak: %1$d orang</string>
+
+    <!-- Class schedule -->
+    <string name="sched_title">Jadual Kelas</string>
+    <string name="sched_no_data">Tiada data kelas lagi</string>
+    <string name="sched_no_data_desc">Jadual kelas akan muncul setelah penderia mengumpul data penghunian yang mencukupi untuk dewan ini.</string>
+    <string name="sched_estimated">anggaran</string>
+    <string name="sched_from_data">daripada data penghunian</string>
+    <string name="sched_ph">CK</string>
+    <string name="sched_public_holiday">Cuti Umum — Tiada Kelas</string>
+    <string name="sched_estimated_note">Memaparkan jadual anggaran — pengesanan kelas akan bertambah baik apabila data penderia melebihi 2 minggu.</string>
+    <string name="sched_no_breaks">Tiada rehat dijadualkan</string>
+    <string name="sched_weekend">Tiada kelas — hujung minggu</string>
+    <string name="sched_break">Rehat %1$02d:%2$02d–%3$02d:%4$02d</string>
+
+    <string-array name="day_names_full">
+        <item>Isnin</item><item>Selasa</item><item>Rabu</item><item>Khamis</item>
+        <item>Jumaat</item><item>Sabtu</item><item>Ahad</item>
+    </string-array>
+    <string-array name="sched_day_labels">
+        <item>ISN</item><item>SEL</item><item>RAB</item><item>KHA</item>
+        <item>JUM</item><item>SAB</item><item>AHD</item>
+    </string-array>
+
+    <!-- Setup guide -->
+    <string name="setup_title">Panduan Persediaan Penderia</string>
+    <string name="setup_skip">Langkau</string>
+    <string name="setup_back">Kembali</string>
+    <string name="setup_next">Seterusnya</string>
+    <string name="setup_done">Selesai</string>
+    <string name="setup_step_counter">%1$d / %2$d</string>
+    <string name="setup_s1_title">1. Benarkan Kamera, Mikrofon &amp; Lokasi</string>
+    <string name="setup_s1_body">reWatt menggunakan kamera dan mikrofon untuk mengesan siapa yang berada di dalam bilik, dan lokasi untuk mendapatkan cuaca luar bagi nasihat tenaga.</string>
+    <string name="setup_perm_camera">Kamera</string>
+    <string name="setup_perm_microphone">Mikrofon</string>
+    <string name="setup_perm_location">Lokasi</string>
+    <string name="setup_allowed">Dibenarkan</string>
+    <string name="setup_not_allowed">Tidak dibenarkan</string>
+    <string name="setup_allow_permissions">Benarkan Kebenaran</string>
+    <string name="setup_s2_title">2. Matikan Penjimat Bateri untuk reWatt</string>
+    <string name="setup_s2_body">Telefon anda mungkin menjeda aplikasi untuk menjimatkan bateri. Matikan Pengoptimuman Bateri supaya reWatt terus berjalan pada setiap masa — walaupun skrin dimatikan.</string>
+    <string name="setup_batt_off">Pengoptimuman bateri dimatikan — bagus!</string>
+    <string name="setup_batt_on">Pengoptimuman bateri HIDUP — sila matikannya</string>
+    <string name="setup_allow_always_on">Benarkan Akses Sentiasa Aktif</string>
+    <string name="setup_s3_title">3. Pasang Telefon Penderia</string>
+    <string name="setup_s3_body">Gunakan pelekap dinding dalam kit untuk memasang telefon ini pada dinding bilik darjah atau papan putih. Halakan kamera ke tengah bilik.</string>
+    <string name="setup_mount_photo">Foto pelekap — akan datang</string>
+    <string name="setup_s3_tip1">Pasang pelekap pada paras bahu atau lebih tinggi.</string>
+    <string name="setup_s3_tip2">Pastikan kamera menghadap kawasan tempat duduk.</string>
+    <string name="setup_s3_tip3">Pastikan lensa bersih — tiada pita atau penutup padanya.</string>
+    <string name="setup_s3_tip4">Pasangkan pengecas supaya telefon kekal berkuasa.</string>
+    <string name="setup_s4_title">4. Semak Paparan Penderia</string>
+    <string name="setup_s4_body">Minta orang dengan telefon Admin membuka tab Tangkap dan pilih dewan anda. Mereka akan mengesahkan kamera dapat melihat keseluruhan bilik dengan jelas.</string>
+    <string name="setup_example_view">Contoh paparan — akan datang</string>
+    <string name="setup_s4_tip1">Keseluruhan bilik patut kelihatan — tiada titik buta.</string>
+    <string name="setup_s4_tip2">Elakkan menghala ke sumber cahaya terang.</string>
+    <string name="setup_s4_tip3">Jika sudut salah, laraskan semula pelekap dan semak lagi.</string>
+    <string name="setup_s5_title">5. Namakan Ruang Anda</string>
+    <string name="setup_s5_body">Beri penderia ini nama dan kapasiti tempat duduk — cth. bilik, dewan atau makmal yang dipantau dan berapa ramai yang boleh dimuatkan. reWatt menggunakan kapasiti untuk menganggar penggunaan tenaga.</string>
+    <string name="setup_space_name">Nama ruang</string>
+    <string name="setup_space_name_hint">cth. DK1, MM8, Makmal 3</string>
+    <string name="setup_capacity">Kapasiti (pax)</string>
+    <string name="setup_capacity_hint">cth. 300</string>
+    <string name="setup_s6_title">6. Anda Sudah Sedia!</string>
+    <string name="setup_s6_body">Semuanya sedia. reWatt kini akan memerhati bilik dan membantu mengurus tenaga secara automatik. Anda boleh kembali ke panduan ini bila-bila masa dari tab Tetapan.</string>
+    <string name="setup_complete">Persediaan selesai</string>
+    <string name="setup_complete_desc">Ketik Selesai untuk mula menggunakan reWatt.</string>
+
+    <!-- Capture tab -->
+    <string name="capture_your_space">Ruang yang dipantau anda</string>
+    <string name="capture_interface">Antara muka tangkapan</string>
+    <string name="capture_live_sensor">Data Penderia Langsung</string>
+    <string name="capture_need_access">Perlu akses</string>
+    <string name="capture_upload">Muat naik</string>
+    <string name="capture_stop">Berhenti</string>
+    <string name="capture_start">Mula</string>
+    <string name="capture_capture_now">Tangkap sekarang</string>
+    <string name="capture_no_frame">Tiada bingkai ditangkap lagi</string>
+    <string name="capture_recording">Merakam audio…  %1$ds / %2$ds</string>
+    <string name="capture_people_detected">Orang dikesan</string>
+    <string name="sensor_environmental">Persekitaran (SHT30)</string>
+    <string name="sensor_radar">Radar (LD2412)</string>
+    <string name="sensor_presence">Kehadiran</string>
+    <string name="sensor_clear">Bersih</string>
+    <string name="sensor_distance">Jarak</string>
+    <string name="sensor_temp">Suhu</string>
+    <string name="sensor_radar_state">Keadaan Radar</string>
+    <string name="sensor_moving_target">Sasaran Bergerak</string>
+    <string name="sensor_stationary_target">Sasaran Pegun</string>
+    <string name="sensor_moving">Bergerak</string>
+    <string name="sensor_stationary">Pegun</string>
+    <string name="sensor_moving_energy">Tenaga Bergerak (≥%1$d = orang)</string>
+    <string name="sensor_stationary_energy">Tenaga Pegun (≥%1$d = orang)</string>
+    <string name="sensor_connect_otg">Sambung penderia melalui kabel OTG untuk melihat data langsung</string>
+    <string name="sensor_waiting_packet">Menunggu paket radar</string>
+    <string name="sensor_scan">Imbas</string>
+    <string name="radar_no_target">Tiada Sasaran</string>
+    <string name="radar_moving">Bergerak</string>
+    <string name="radar_stationary">Pegun</string>
+    <string name="radar_both">Kedua-dua</string>
+    <string name="verdict_occupied">DIHUNI — seseorang berada di dalam bilik</string>
+    <string name="verdict_empty">KOSONG — tiada sesiapa dikesan</string>
+    <string name="verdict_waiting">MENUNGGU — tiada data penderia</string>
+    <string name="db_database">Pangkalan Data</string>
+    <string name="db_recent_captures">Tangkapan Terkini</string>
+    <string name="db_no_captures">Tiada tangkapan lagi — mulakan penderia untuk bermula.</string>
+    <string name="db_packet_health">Kesihatan paket</string>
+    <string name="db_firestore_sync">Penyegerakan Firestore</string>
+    <string name="db_gemini_activity">Aktiviti Gemini</string>
+    <string name="sync_synced">Disegerak</string>
+    <string name="sync_syncing">Menyegerak…</string>
+    <string name="sync_failed">Gagal</string>
+    <string name="sync_config_missing">Konfigurasi hilang</string>
+    <string name="sync_idle">Melahu</string>
+    <string name="settings_setup_guide">Panduan Persediaan</string>
+    <string name="settings_setup_guide_desc">Kebenaran, pelekap &amp; paparan kamera</string>
+
     <!-- Weather card -->
     <string name="weather_current_conditions">Keadaan semasa</string>
     <string name="weather_outdoor_temp">Suhu luar</string>

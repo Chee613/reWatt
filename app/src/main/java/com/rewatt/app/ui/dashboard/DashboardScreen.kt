@@ -86,6 +86,7 @@ import androidx.compose.ui.unit.sp
 import com.rewatt.app.BuildConfig
 import com.rewatt.app.R
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.stringArrayResource
 import android.provider.Settings
 import com.google.firebase.auth.FirebaseAuth
 import com.rewatt.app.data.ActivityAnalysisStatus
@@ -727,12 +728,12 @@ private fun OverviewContent(
         // ── 6-card grid ──────────────────────────────────────────────────────
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             MetricCard(
-                title = "Occupancy",
+                title = stringResource(R.string.m_occupancy),
                 value = when {
-                    displayPersonCount > 0 -> "$displayPersonCount ppl"
-                    telemetry?.presence == true -> "Detected"
-                    isAdmin && hallSnapshot != null -> "Empty"
-                    telemetry != null -> "Empty"
+                    displayPersonCount > 0 -> stringResource(R.string.occ_ppl, displayPersonCount)
+                    telemetry?.presence == true -> stringResource(R.string.occ_detected)
+                    isAdmin && hallSnapshot != null -> stringResource(R.string.occ_empty)
+                    telemetry != null -> stringResource(R.string.occ_empty)
                     else -> "--"
                 },
                 modifier = Modifier.weight(1f),
@@ -780,7 +781,7 @@ private fun OverviewContent(
                             .padding(horizontal = 8.dp, vertical = 2.dp),
                     ) {
                         Text(
-                            "NOW",
+                            stringResource(R.string.label_now),
                             fontWeight = FontWeight.Bold,
                             fontSize = 11.sp,
                             color = androidx.compose.material3.MaterialTheme.colorScheme.onPrimary,
@@ -900,12 +901,12 @@ private fun EnergyAdviceCard(
             Text(advice.acAction, fontWeight = FontWeight.Bold, fontSize = 18.sp)
             Spacer(Modifier.height(6.dp))
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                advice.recommendedAcStartTime?.let { BulletPoint("Start AC at $it") }
-                advice.targetSetpointC?.let { BulletPoint("Target setpoint ${"%.0f".format(it)} °C") }
+                advice.recommendedAcStartTime?.let { BulletPoint(stringResource(R.string.adv_start_ac, it)) }
+                advice.targetSetpointC?.let { BulletPoint(stringResource(R.string.adv_target_setpoint, "%.0f".format(it))) }
                 state.occupancy?.let {
-                    BulletPoint("Occupancy: ${it.predictedOccupancy} people (${it.occupancyLevel})")
+                    BulletPoint(stringResource(R.string.adv_occupancy, it.predictedOccupancy, occupancyLevelLabel(it.occupancyLevel)))
                 }
-                BulletPoint("Reason: ${advice.reason}")
+                BulletPoint(stringResource(R.string.adv_reason, advice.reason))
             }
         } else {
             Spacer(Modifier.height(8.dp))
@@ -1247,7 +1248,7 @@ private fun WeeklyOccupancyCard(
     }
 
     InfoCard(modifier = Modifier.fillMaxWidth()) {
-        Text("Weekly occupancy pattern", fontWeight = FontWeight.SemiBold)
+        Text(stringResource(R.string.analytics_weekly_title), fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(6.dp))
         if (firestoreSchedule != null && !hasData) {
             Spacer(Modifier.height(12.dp))
@@ -1255,10 +1256,10 @@ private fun WeeklyOccupancyCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Text("No sensor history yet", fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.analytics_no_history), fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "Run the sensor to collect occupancy data for this hall.",
+                    text = stringResource(R.string.analytics_no_history_desc),
                     fontSize = 12.sp,
                     color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1444,7 +1445,7 @@ private fun DailyOccupancyChart(
     hall: Hall,
     half30: IntArray? = null,   // 48 cells of 30-min mean occupancy
 ) {
-    val fullDayNames = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+    val fullDayNames = stringArrayResource(R.array.day_names_full)
     val emptyColor = androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant
     val refLineColor = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f)
     val breaks = dayBreaks[dayIndex] ?: emptyList()
@@ -1461,11 +1462,14 @@ private fun DailyOccupancyChart(
 
     fun binLabel(bin: Int) = "%02d:%02d".format((bin * 30) / 60, (bin * 30) % 60)
 
+    val weekendLabel = stringResource(R.string.sched_weekend)
+    val noBreaksLabel = stringResource(R.string.sched_no_breaks)
+    val breakTemplate = stringResource(R.string.sched_break)
     val breakLabel = if (breaks.isEmpty()) {
-        if (dayIndex >= 5) "No classes — weekend" else "No breaks scheduled"
+        if (dayIndex >= 5) weekendLabel else noBreaksLabel
     } else {
         breaks.joinToString("  •  ") { br ->
-            "Break %02d:%02d–%02d:%02d".format(br.sh, br.sm, br.eh, br.em)
+            breakTemplate.format(br.sh, br.sm, br.eh, br.em)
         }
     }
 
@@ -1477,12 +1481,12 @@ private fun DailyOccupancyChart(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = "${fullDayNames[dayIndex]} — daily pattern",
+                text = stringResource(R.string.analytics_daily_pattern, fullDayNames[dayIndex]),
                 fontWeight = FontWeight.SemiBold,
                 fontSize = 13.sp,
             )
             Text(
-                text = "Peak: $peak ppl",
+                text = stringResource(R.string.analytics_peak, peak),
                 fontSize = 11.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = androidx.compose.material3.MaterialTheme.colorScheme.primary,
@@ -1699,7 +1703,7 @@ private fun ActionPage(
             onDayChange = { previewDayOffset = it },
         )
         Text(
-            text = if (isToday) "Today's schedule" else "Full day schedule",
+            text = if (isToday) stringResource(R.string.sched_today_schedule) else stringResource(R.string.sched_full_day_schedule),
             fontWeight = FontWeight.Bold,
             fontSize = 18.sp,
         )
@@ -1747,7 +1751,7 @@ private fun NowCard(title: String, reason: String, onDone: () -> Unit) {
                         .padding(horizontal = 8.dp, vertical = 2.dp),
                 ) {
                     Text(
-                        text = "NOW",
+                        text = stringResource(R.string.label_now),
                         fontWeight = FontWeight.Bold,
                         fontSize = 11.sp,
                         color = androidx.compose.material3.MaterialTheme.colorScheme.onPrimary,
@@ -1806,7 +1810,7 @@ private fun AllHallsNowCard(
                         .padding(horizontal = 8.dp, vertical = 2.dp),
                 ) {
                     Text(
-                        text = "NOW",
+                        text = stringResource(R.string.label_now),
                         fontWeight = FontWeight.Bold,
                         fontSize = 11.sp,
                         color = androidx.compose.material3.MaterialTheme.colorScheme.onPrimary,
@@ -1848,8 +1852,12 @@ private fun AllHallsNowCard(
 
 @Composable
 private fun TimePreviewControl(dayOffset: Int, nowMillis: Long, onDayChange: (Int) -> Unit) {
-    val dayOptions = remember(nowMillis) {
-        listOf(-1 to "Yesterday", 0 to "Today", 1 to "Tomorrow", 2 to "+2 Days").map { (offset, label) ->
+    val yesterdayLabel = stringResource(R.string.day_yesterday)
+    val todayLabel = stringResource(R.string.day_today)
+    val tomorrowLabel = stringResource(R.string.day_tomorrow)
+    val plus2Label = stringResource(R.string.day_plus2)
+    val dayOptions = remember(nowMillis, yesterdayLabel, todayLabel, tomorrowLabel, plus2Label) {
+        listOf(-1 to yesterdayLabel, 0 to todayLabel, 1 to tomorrowLabel, 2 to plus2Label).map { (offset, label) ->
             val cal = Calendar.getInstance().apply {
                 timeInMillis = nowMillis
                 add(Calendar.DAY_OF_YEAR, offset)
@@ -1857,7 +1865,7 @@ private fun TimePreviewControl(dayOffset: Int, nowMillis: Long, onDayChange: (In
             val dayNames = listOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
             val dayName = dayNames[cal.get(Calendar.DAY_OF_WEEK) - 1]
             val date = "%d/%d".format(cal.get(Calendar.DAY_OF_MONTH), cal.get(Calendar.MONTH) + 1)
-            Triple(offset, label, if (offset == 0) "Today" else "$dayName $date")
+            Triple(offset, label, if (offset == 0) todayLabel else "$dayName $date")
         }
     }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -1998,7 +2006,7 @@ private fun CapturePage(
         if (currentUserRole == UserRole.Sensor && spaceName != null) {
             Text(spaceName, fontWeight = FontWeight.Bold, fontSize = 18.sp)
             Text(
-                "Your monitored space",
+                stringResource(R.string.capture_your_space),
                 fontSize = 12.sp,
                 color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -2015,7 +2023,7 @@ private fun CapturePage(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             MetricCard(
                 title = stringResource(R.string.m_camera),
-                value = if (state.cameraPermissionGranted) "Allowed" else "Need access",
+                value = if (state.cameraPermissionGranted) stringResource(R.string.setup_allowed) else stringResource(R.string.capture_need_access),
                 modifier = Modifier.weight(1f),
                 warning = !state.cameraPermissionGranted,
             )
@@ -2054,7 +2062,7 @@ private fun DatabaseSection(
     val uid = remember { FirebaseAuth.getInstance().currentUser?.uid }
 
     InfoCard(modifier = Modifier.fillMaxWidth()) {
-        Text("Database", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+        Text(stringResource(R.string.db_database), fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
         Text(
             "$spaceName  ·  node $nodeId",
             fontSize = 12.sp,
@@ -2074,11 +2082,11 @@ private fun DatabaseSection(
 
         // Sync status row
         val (dotColor, statusLabel) = when (firebaseSyncState.status) {
-            FirebaseSyncStatus.Synced        -> Color(0xFF4CAF50) to "Synced"
-            FirebaseSyncStatus.Pending       -> Color(0xFFFFA000) to "Syncing…"
-            FirebaseSyncStatus.Failed        -> Color(0xFFF44336) to "Failed"
-            FirebaseSyncStatus.ConfigMissing -> Color(0xFFF44336) to "Config missing"
-            FirebaseSyncStatus.Idle          -> Color(0xFF9E9E9E) to "Idle"
+            FirebaseSyncStatus.Synced        -> Color(0xFF4CAF50) to stringResource(R.string.sync_synced)
+            FirebaseSyncStatus.Pending       -> Color(0xFFFFA000) to stringResource(R.string.sync_syncing)
+            FirebaseSyncStatus.Failed        -> Color(0xFFF44336) to stringResource(R.string.sync_failed)
+            FirebaseSyncStatus.ConfigMissing -> Color(0xFFF44336) to stringResource(R.string.sync_config_missing)
+            FirebaseSyncStatus.Idle          -> Color(0xFF9E9E9E) to stringResource(R.string.sync_idle)
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
@@ -2115,7 +2123,7 @@ private fun DatabaseSection(
 
         // Recent captures header
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Recent Captures", fontWeight = FontWeight.Medium, fontSize = 13.sp)
+            Text(stringResource(R.string.db_recent_captures), fontWeight = FontWeight.Medium, fontSize = 13.sp)
             Spacer(Modifier.weight(1f))
             Text(
                 "${recentCaptures.size} / 20  (this session)",
@@ -2127,7 +2135,7 @@ private fun DatabaseSection(
 
         if (recentCaptures.isEmpty()) {
             Text(
-                "No captures yet — start the sensor to begin.",
+                stringResource(R.string.db_no_captures),
                 fontSize = 12.sp,
                 color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -2261,7 +2269,7 @@ private fun CaptureHeader(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text("Capture interface", fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.capture_interface), fontWeight = FontWeight.SemiBold)
                 Text(
                     text = state.captureStatusLabel(),
                     color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
@@ -2273,18 +2281,18 @@ private fun CaptureHeader(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 if (showYoloUpload) {
                     OutlinedButton(onClick = onUploadYoloImage) {
-                        Text("Upload")
+                        Text(stringResource(R.string.capture_upload))
                     }
                 }
                 if (state.isRunning) {
                     OutlinedButton(onClick = onStopPerception) {
-                        Text("Stop")
+                        Text(stringResource(R.string.capture_stop))
                     }
                 } else {
                     Button(
                         onClick = { onStartPerception(CaptureStartSource.Manual) },
                     ) {
-                        Text("Start")
+                        Text(stringResource(R.string.capture_start))
                     }
                 }
             }
@@ -2297,7 +2305,7 @@ private fun CaptureHeader(
                 onClick = onDebugCapture,
                 enabled = state.isRunning,
             ) {
-                Text("Capture now")
+                Text(stringResource(R.string.capture_capture_now))
             }
         }
     }
@@ -2432,9 +2440,9 @@ private fun SettingPage(
                         modifier = Modifier.size(24.dp),
                     )
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Setup Guide", fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                        Text(stringResource(R.string.settings_setup_guide), fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
                         Text(
-                            "Permissions, mount & camera view",
+                            stringResource(R.string.settings_setup_guide_desc),
                             fontSize = 12.sp,
                             color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -2497,7 +2505,7 @@ private fun SettingPage(
                     }
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Building",
+                            text = stringResource(R.string.auth_building),
                             fontSize = 11.sp,
                             color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -2619,8 +2627,6 @@ private val CLASS_GRID_END_HOUR   = 19  // 19:00  → 11 hours (08:00–19:00), 
 private val CLASS_DAY_LABEL_WIDTH_DP = 36  // width of the pinned MON/TUE… column
 private val CLASS_ROW_HEIGHT_DP   = 92  // taller rows so all 3 stacked labels fit without clipping
 
-private val dayLabels = listOf("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")
-
 @Composable
 private fun ClassScheduleCard(
     hall: Hall,
@@ -2628,6 +2634,7 @@ private fun ClassScheduleCard(
     minuteSchedule: Array<IntArray>? = null,
     showFallbackEstimate: Boolean = false,
 ) {
+    val dayLabels = stringArrayResource(R.array.sched_day_labels)
     val gridStartMin = CLASS_GRID_START_HOUR * 60
     val gridEndMin   = CLASS_GRID_END_HOUR   * 60
     val totalHours   = CLASS_GRID_END_HOUR - CLASS_GRID_START_HOUR
@@ -2643,16 +2650,16 @@ private fun ClassScheduleCard(
     // hardcoded FSKTM estimate. The estimate is only a demo fallback for the FSKTM account.
     if (!hasHeatmapData && !showFallbackEstimate) {
         InfoCard(modifier = Modifier.fillMaxWidth()) {
-            Text("Class Schedule", fontWeight = FontWeight.SemiBold)
+            Text(stringResource(R.string.sched_title), fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(12.dp))
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Text("No class data yet", fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.sched_no_data), fontWeight = FontWeight.SemiBold)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "The class schedule will appear once the sensor has collected enough occupancy data for this hall.",
+                    text = stringResource(R.string.sched_no_data_desc),
                     fontSize = 12.sp,
                     color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -2739,9 +2746,9 @@ private fun ClassScheduleCard(
 
     InfoCard(modifier = Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Class Schedule", fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            Text(stringResource(R.string.sched_title), fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
             Text(
-                if (isEstimated) "estimated" else "from occupancy data",
+                if (isEstimated) stringResource(R.string.sched_estimated) else stringResource(R.string.sched_from_data),
                 fontSize = 11.sp,
                 color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -2777,7 +2784,7 @@ private fun ClassScheduleCard(
                             )
                             if (isTodayHoliday) {
                                 Text(
-                                    "PH",
+                                    stringResource(R.string.sched_ph),
                                     fontSize = 8.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color(0xFFBF360C),
@@ -2847,7 +2854,7 @@ private fun ClassScheduleCard(
                                     contentAlignment = Alignment.Center,
                                 ) {
                                     Text(
-                                        "Public Holiday — No Classes",
+                                        stringResource(R.string.sched_public_holiday),
                                         fontSize = 10.sp,
                                         color = Color(0xFFBF360C),
                                         fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
@@ -2867,7 +2874,7 @@ private fun ClassScheduleCard(
                                 val expected = seg.predictedOccupancy
                                 val blockColor = if (isEstimated) Color(0xFFFFE082) else heatColorForCount(expected)
                                 val textColor = if (expected >= 150) Color.White else Color(0xFF0D2B5E)
-                                val occupancyLabel = if (isEstimated) "~$expected" else "$expected ppl"
+                                val occupancyLabel = if (isEstimated) "~$expected" else stringResource(R.string.occ_ppl, expected)
                                 val startLabel = minuteLabel(startMin)
                                 val endLabel   = minuteLabel(endMin)
 
@@ -2914,7 +2921,7 @@ private fun ClassScheduleCard(
         if (isEstimated) {
             Spacer(Modifier.height(6.dp))
             Text(
-                "Showing estimated schedule — class detection will improve once sensor data spans 2+ weeks.",
+                stringResource(R.string.sched_estimated_note),
                 fontSize = 10.sp,
                 color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -3030,7 +3037,7 @@ private fun ConnectionCard(
                     modifier = Modifier.size(18.dp),
                 )
                 Spacer(Modifier.width(8.dp))
-                Text("Scan")
+                Text(stringResource(R.string.sensor_scan))
             }
         }
     }
@@ -3041,23 +3048,23 @@ private fun TelemetryMetricGrid(telemetry: RadarTelemetry?) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             MetricCard(
-                title = "Presence",
+                title = stringResource(R.string.sensor_presence),
                 value = when (telemetry?.presence) {
-                    true -> "Detected"
-                    false -> "Clear"
+                    true -> stringResource(R.string.occ_detected)
+                    false -> stringResource(R.string.sensor_clear)
                     null -> "--"
                 },
                 modifier = Modifier.weight(1f),
             )
             MetricCard(
-                title = "Distance",
+                title = stringResource(R.string.sensor_distance),
                 value = telemetry?.distanceCm?.let { "$it cm" } ?: "--",
                 modifier = Modifier.weight(1f),
             )
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             MetricCard(
-                title = "Temp",
+                title = stringResource(R.string.sensor_temp),
                 value = telemetry?.temperatureC?.let { "%.1f C".format(it) } ?: "--",
                 modifier = Modifier.weight(1f),
             )
@@ -3086,12 +3093,12 @@ private fun RadarEnergyCard(
             Text("LD2412", fontWeight = FontWeight.SemiBold)
         }
         Spacer(Modifier.height(10.dp))
-        EnergyBar(label = "Moving", value = telemetry?.movingEnergy)
+        EnergyBar(label = stringResource(R.string.sensor_moving), value = telemetry?.movingEnergy)
         Spacer(Modifier.height(10.dp))
-        EnergyBar(label = "Stationary", value = telemetry?.stationaryEnergy)
+        EnergyBar(label = stringResource(R.string.sensor_stationary), value = telemetry?.stationaryEnergy)
         Spacer(Modifier.height(10.dp))
         Text(
-            text = telemetry?.rawPacket ?: "Waiting for radar packet",
+            text = telemetry?.rawPacket ?: stringResource(R.string.sensor_waiting_packet),
             color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 12.sp,
             maxLines = 3,
@@ -3117,10 +3124,10 @@ private fun StatusSummaryCard(
                     modifier = Modifier.size(18.dp),
                 )
                 Spacer(Modifier.width(6.dp))
-                Text("Packet health", fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.db_packet_health), fontWeight = FontWeight.SemiBold)
             }
         } else {
-            Text("Packet health", fontWeight = FontWeight.SemiBold)
+            Text(stringResource(R.string.db_packet_health), fontWeight = FontWeight.SemiBold)
         }
         Text(
             text = freshness.label(sensorState.lastValidPacketAtMillis, nowMillis),
@@ -3147,7 +3154,7 @@ private fun FirebaseSyncStatusRow(sensorState: SensorDashboardState) {
         FirebaseSyncStatus.Failed -> androidx.compose.material3.MaterialTheme.colorScheme.error
     }
     Column {
-        Text("Firestore sync", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+        Text(stringResource(R.string.db_firestore_sync), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
         Text(
             text = syncState.message,
             color = color,
@@ -3169,7 +3176,7 @@ private fun ActivityAnalysisStatusRow(sensorState: SensorDashboardState) {
         ActivityAnalysisStatus.Failed -> androidx.compose.material3.MaterialTheme.colorScheme.error
     }
     Column {
-        Text("Gemini activity", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+        Text(stringResource(R.string.db_gemini_activity), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
         Text(
             text = analysisState.analysis?.let {
                 "${it.activity} (${(it.confidence * 100).toInt()}%)"
@@ -3289,7 +3296,7 @@ private fun AudioRecordingProgress(startedAtMillis: Long) {
 
     Column {
         Text(
-            text = "Recording audio…  ${elapsedSeconds.toInt()}s / ${totalSeconds}s",
+            text = stringResource(R.string.capture_recording, elapsedSeconds.toInt(), totalSeconds),
             fontSize = 12.sp,
             fontWeight = FontWeight.Medium,
             color = androidx.compose.material3.MaterialTheme.colorScheme.primary,
@@ -3318,7 +3325,7 @@ private fun FramePreview(
     ) {
         if (frame == null) {
             Text(
-                text = "No captured frame yet",
+                text = stringResource(R.string.capture_no_frame),
                 color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 12.sp,
             )
@@ -3420,10 +3427,10 @@ private fun SensorLiveDataCard(telemetry: RadarTelemetry?) {
     val decision = remember(telemetry) { telemetry?.toOccupancyDecision() }
 
     val stateLabel = when (telemetry?.radarState) {
-        0    -> "No Target"
-        1    -> "Moving"
-        2    -> "Stationary"
-        3    -> "Both"
+        0    -> stringResource(R.string.radar_no_target)
+        1    -> stringResource(R.string.radar_moving)
+        2    -> stringResource(R.string.radar_stationary)
+        3    -> stringResource(R.string.radar_both)
         else -> "--"
     }
 
@@ -3439,7 +3446,7 @@ private fun SensorLiveDataCard(telemetry: RadarTelemetry?) {
                 tint = androidx.compose.material3.MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(20.dp),
             )
-            Text("Live Sensor Data", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+            Text(stringResource(R.string.capture_live_sensor), fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
         }
         Spacer(Modifier.height(12.dp))
 
@@ -3449,7 +3456,7 @@ private fun SensorLiveDataCard(telemetry: RadarTelemetry?) {
 
         // ── 1 & 2: Environmental (SHT30) ─────────────────────────────────────
         Text(
-            "Environmental (SHT30)",
+            stringResource(R.string.sensor_environmental),
             fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
             color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
@@ -3471,7 +3478,7 @@ private fun SensorLiveDataCard(telemetry: RadarTelemetry?) {
 
         // ── 3-7: Radar (LD2412) ───────────────────────────────────────────────
         Text(
-            "Radar (LD2412)",
+            stringResource(R.string.sensor_radar),
             fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
             color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
@@ -3481,12 +3488,12 @@ private fun SensorLiveDataCard(telemetry: RadarTelemetry?) {
         // 3 — Radar State
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             MetricCard(
-                title = "Radar State",
+                title = stringResource(R.string.sensor_radar_state),
                 value = stateLabel,
                 modifier = Modifier.weight(1f),
             )
             MetricCard(
-                title = "Distance",
+                title = stringResource(R.string.sensor_distance),
                 value = telemetry?.distanceCm?.let { "$it cm" } ?: "--",
                 modifier = Modifier.weight(1f),
             )
@@ -3499,7 +3506,7 @@ private fun SensorLiveDataCard(telemetry: RadarTelemetry?) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("Moving Target", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            Text(stringResource(R.string.sensor_moving_target), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             Text(
                 text = telemetry?.movingDistanceCm?.let { "$it cm" } ?: "--",
                 fontWeight = FontWeight.Bold,
@@ -3509,7 +3516,7 @@ private fun SensorLiveDataCard(telemetry: RadarTelemetry?) {
         }
         Spacer(Modifier.height(4.dp))
         EnergyBar(
-            label = "Moving Energy (≥${OccupancyThreshold.MOVING_ENERGY_MIN} = person)",
+            label = stringResource(R.string.sensor_moving_energy, OccupancyThreshold.MOVING_ENERGY_MIN),
             value = telemetry?.movingEnergy,
             threshold = OccupancyThreshold.MOVING_ENERGY_MIN,
         )
@@ -3521,7 +3528,7 @@ private fun SensorLiveDataCard(telemetry: RadarTelemetry?) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("Stationary Target", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+            Text(stringResource(R.string.sensor_stationary_target), fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             Text(
                 text = telemetry?.stationaryDistanceCm?.let { "$it cm" } ?: "--",
                 fontWeight = FontWeight.Bold,
@@ -3531,7 +3538,7 @@ private fun SensorLiveDataCard(telemetry: RadarTelemetry?) {
         }
         Spacer(Modifier.height(4.dp))
         EnergyBar(
-            label = "Stationary Energy (≥${OccupancyThreshold.STATIONARY_ENERGY_MIN} = person)",
+            label = stringResource(R.string.sensor_stationary_energy, OccupancyThreshold.STATIONARY_ENERGY_MIN),
             value = telemetry?.stationaryEnergy,
             threshold = OccupancyThreshold.STATIONARY_ENERGY_MIN,
         )
@@ -3539,7 +3546,7 @@ private fun SensorLiveDataCard(telemetry: RadarTelemetry?) {
         if (telemetry == null) {
             Spacer(Modifier.height(8.dp))
             Text(
-                text = "Connect sensor via OTG cable to see live data",
+                text = stringResource(R.string.sensor_connect_otg),
                 color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 12.sp,
             )
@@ -3587,9 +3594,9 @@ private fun OccupancyVerdictBanner(decision: com.rewatt.app.telemetry.OccupancyD
                 )
                 Text(
                     text = when (occupied) {
-                        true  -> "OCCUPIED — someone is in the room"
-                        false -> "EMPTY — no one detected"
-                        null  -> "WAITING — no sensor data"
+                        true  -> stringResource(R.string.verdict_occupied)
+                        false -> stringResource(R.string.verdict_empty)
+                        null  -> stringResource(R.string.verdict_waiting)
                     },
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp,
@@ -3915,11 +3922,24 @@ private fun buildHourlyOccupancy(levels: IntArray, hall: Hall, dayIndex: Int): I
         }
     }
 
-private fun acLightStateLabel(state: AcState): String = when (state) {
-    AcState.OFF -> "OFF"
-    AcState.COOL_PLUS -> "COOL +"
-    AcState.COOL_MINUS -> "COOL -"
-    AcState.ON -> "ON"
+@Composable
+private fun acLightStateLabel(state: AcState): String = stringResource(
+    when (state) {
+        AcState.OFF -> R.string.ac_state_off
+        AcState.COOL_PLUS -> R.string.ac_state_cool_plus
+        AcState.COOL_MINUS -> R.string.ac_state_cool_minus
+        AcState.ON -> R.string.ac_state_on
+    }
+)
+
+/** Localized label for a forecast occupancy level; falls back to the raw value for unknown levels. */
+@Composable
+private fun occupancyLevelLabel(level: String): String = when (level) {
+    "occupied" -> stringResource(R.string.occlvl_occupied)
+    "likely_occupied" -> stringResource(R.string.occlvl_likely_occupied)
+    "unclear" -> stringResource(R.string.occlvl_unclear)
+    "likely_empty" -> stringResource(R.string.occlvl_likely_empty)
+    else -> level
 }
 
 private fun deriveSessionEndTime(nowMillis: Long, hall: Hall = Hall.Hall1, schedule: Array<IntArray>? = null): String {

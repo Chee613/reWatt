@@ -51,6 +51,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import com.rewatt.app.R
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -96,8 +98,8 @@ fun SetupGuideDialog(onDismiss: (spaceName: String?, capacity: Int?) -> Unit) {
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("Sensor Setup Guide", fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                    TextButton(onClick = { onDismiss(null, null) }) { Text("Skip") }
+                    Text(stringResource(R.string.setup_title), fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                    TextButton(onClick = { onDismiss(null, null) }) { Text(stringResource(R.string.setup_skip)) }
                 }
 
                 Spacer(Modifier.height(16.dp))
@@ -120,7 +122,7 @@ fun SetupGuideDialog(onDismiss: (spaceName: String?, capacity: Int?) -> Unit) {
                     }
                     Spacer(Modifier.weight(1f))
                     Text(
-                        "${step + 1} / $TOTAL_STEPS",
+                        stringResource(R.string.setup_step_counter, step + 1, TOTAL_STEPS),
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -161,7 +163,7 @@ fun SetupGuideDialog(onDismiss: (spaceName: String?, capacity: Int?) -> Unit) {
                         OutlinedButton(
                             onClick = { step-- },
                             modifier = Modifier.weight(1f),
-                        ) { Text("Back") }
+                        ) { Text(stringResource(R.string.setup_back)) }
                     } else {
                         Spacer(Modifier.weight(1f))
                     }
@@ -171,7 +173,7 @@ fun SetupGuideDialog(onDismiss: (spaceName: String?, capacity: Int?) -> Unit) {
                         },
                         modifier = Modifier.weight(1f),
                         enabled = !(step == 4 && spaceName.isBlank()),
-                    ) { Text(if (step == TOTAL_STEPS - 1) "Done" else "Next") }
+                    ) { Text(if (step == TOTAL_STEPS - 1) stringResource(R.string.setup_done) else stringResource(R.string.setup_next)) }
                 }
             }
         }
@@ -255,8 +257,8 @@ private fun PermissionsStep() {
     }
 
     StepHeader(
-        title = "1. Allow Camera, Microphone & Location",
-        body = "reWatt uses the camera and microphone to detect who is in the room, and location to fetch outdoor weather for energy advice.",
+        title = stringResource(R.string.setup_s1_title),
+        body = stringResource(R.string.setup_s1_body),
     )
 
     Card(
@@ -267,9 +269,9 @@ private fun PermissionsStep() {
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            PermissionRow(label = "Camera", granted = cameraGranted)
-            PermissionRow(label = "Microphone", granted = micGranted)
-            PermissionRow(label = "Location", granted = locationGranted)
+            PermissionRow(label = stringResource(R.string.setup_perm_camera), granted = cameraGranted)
+            PermissionRow(label = stringResource(R.string.setup_perm_microphone), granted = micGranted)
+            PermissionRow(label = stringResource(R.string.setup_perm_location), granted = locationGranted)
         }
     }
 
@@ -277,7 +279,7 @@ private fun PermissionsStep() {
         Button(
             onClick = { requestStep = REQUEST_CAMERA },
             modifier = Modifier.fillMaxWidth(),
-        ) { Text("Allow Permissions") }
+        ) { Text(stringResource(R.string.setup_allow_permissions)) }
     }
 }
 
@@ -296,7 +298,7 @@ private fun PermissionRow(label: String, granted: Boolean) {
         )
         Text(label, fontSize = 14.sp, modifier = Modifier.weight(1f))
         Text(
-            text = if (granted) "Allowed" else "Not allowed",
+            text = if (granted) stringResource(R.string.setup_allowed) else stringResource(R.string.setup_not_allowed),
             fontSize = 13.sp,
             color = if (granted) green else MaterialTheme.colorScheme.error,
         )
@@ -327,8 +329,8 @@ private fun BatteryStep() {
     val green = Color(0xFF2E7D32)
 
     StepHeader(
-        title = "2. Turn Off Battery Saver for reWatt",
-        body = "Your phone may pause the app to save battery. Turn off Battery Optimization so reWatt keeps running at all times — even when the screen is off.",
+        title = stringResource(R.string.setup_s2_title),
+        body = stringResource(R.string.setup_s2_body),
     )
 
     Card(
@@ -353,9 +355,9 @@ private fun BatteryStep() {
             )
             Text(
                 text = if (isIgnoring)
-                    "Battery optimization is off — good!"
+                    stringResource(R.string.setup_batt_off)
                 else
-                    "Battery optimization is ON — please turn it off",
+                    stringResource(R.string.setup_batt_on),
                 fontSize = 14.sp,
                 color = if (isIgnoring) green else MaterialTheme.colorScheme.onErrorContainer,
             )
@@ -375,18 +377,18 @@ private fun BatteryStep() {
                 }
             },
             modifier = Modifier.fillMaxWidth(),
-        ) { Text("Allow Always-On Access") }
+        ) { Text(stringResource(R.string.setup_allow_always_on)) }
     }
 }
 
 @Composable
 private fun MountStep() {
     StepHeader(
-        title = "3. Mount the Sensor Phone",
-        body = "Use the wall mount in the kit to attach this phone to the classroom wall or whiteboard. Point the camera toward the centre of the room.",
+        title = stringResource(R.string.setup_s3_title),
+        body = stringResource(R.string.setup_s3_body),
     )
 
-    ImagePlaceholder(caption = "Mount photo — coming soon")
+    ImagePlaceholder(caption = stringResource(R.string.setup_mount_photo))
 
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -396,10 +398,10 @@ private fun MountStep() {
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            BulletTip("Attach the mount at shoulder height or above.")
-            BulletTip("Make sure the camera faces the seating area.")
-            BulletTip("Keep the lens clear — no tape or cover over it.")
-            BulletTip("Plug in the charger so the phone stays powered.")
+            BulletTip(stringResource(R.string.setup_s3_tip1))
+            BulletTip(stringResource(R.string.setup_s3_tip2))
+            BulletTip(stringResource(R.string.setup_s3_tip3))
+            BulletTip(stringResource(R.string.setup_s3_tip4))
         }
     }
 }
@@ -407,11 +409,11 @@ private fun MountStep() {
 @Composable
 private fun VerifyViewStep() {
     StepHeader(
-        title = "4. Check the Sensor View",
-        body = "Ask the person with the Admin phone to open the Capture tab and choose your hall. They will confirm the camera can see the whole room clearly.",
+        title = stringResource(R.string.setup_s4_title),
+        body = stringResource(R.string.setup_s4_body),
     )
 
-    ImagePlaceholder(caption = "Example view — coming soon")
+    ImagePlaceholder(caption = stringResource(R.string.setup_example_view))
 
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -421,9 +423,9 @@ private fun VerifyViewStep() {
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            BulletTip("The full room should be visible — no blind spots.")
-            BulletTip("Avoid pointing at bright light sources.")
-            BulletTip("If the angle is wrong, re-adjust the mount and check again.")
+            BulletTip(stringResource(R.string.setup_s4_tip1))
+            BulletTip(stringResource(R.string.setup_s4_tip2))
+            BulletTip(stringResource(R.string.setup_s4_tip3))
         }
     }
 }
@@ -436,15 +438,15 @@ private fun NameYourSpaceStep(
     onCapacityChange: (String) -> Unit,
 ) {
     StepHeader(
-        title = "5. Name Your Space",
-        body = "Give this sensor a name and seating capacity — e.g. the room, hall or lab it monitors and how many people it holds. reWatt uses the capacity to estimate energy use.",
+        title = stringResource(R.string.setup_s5_title),
+        body = stringResource(R.string.setup_s5_body),
     )
 
     OutlinedTextField(
         value = spaceName,
         onValueChange = { if (it.length <= 40) onSpaceNameChange(it) },
-        label = { Text("Space name") },
-        placeholder = { Text("e.g. DK1, MM8, Lab 3") },
+        label = { Text(stringResource(R.string.setup_space_name)) },
+        placeholder = { Text(stringResource(R.string.setup_space_name_hint)) },
         singleLine = true,
         modifier = Modifier.fillMaxWidth(),
     )
@@ -452,8 +454,8 @@ private fun NameYourSpaceStep(
     OutlinedTextField(
         value = capacityText,
         onValueChange = { input -> onCapacityChange(input.filter { it.isDigit() }.take(5)) },
-        label = { Text("Capacity (pax)") },
-        placeholder = { Text("e.g. 300") },
+        label = { Text(stringResource(R.string.setup_capacity)) },
+        placeholder = { Text(stringResource(R.string.setup_capacity_hint)) },
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         modifier = Modifier.fillMaxWidth(),
@@ -463,8 +465,8 @@ private fun NameYourSpaceStep(
 @Composable
 private fun DoneStep() {
     StepHeader(
-        title = "6. You're All Set!",
-        body = "Everything is ready. reWatt will now watch the room and help manage energy automatically. You can come back to this guide anytime from the Settings tab.",
+        title = stringResource(R.string.setup_s6_title),
+        body = stringResource(R.string.setup_s6_body),
     )
 
     Card(
@@ -485,13 +487,13 @@ private fun DoneStep() {
                 modifier = Modifier.size(48.dp),
             )
             Text(
-                "Setup complete",
+                stringResource(R.string.setup_complete),
                 fontWeight = FontWeight.Bold,
                 fontSize = 16.sp,
                 color = MaterialTheme.colorScheme.onPrimaryContainer,
             )
             Text(
-                "Tap Done to start using reWatt.",
+                stringResource(R.string.setup_complete_desc),
                 fontSize = 13.sp,
                 color = MaterialTheme.colorScheme.onPrimaryContainer,
             )

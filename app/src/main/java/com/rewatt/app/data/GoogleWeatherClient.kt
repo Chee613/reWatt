@@ -31,6 +31,8 @@ class GoogleWeatherClient(
                 append("&location.latitude=").append(latitude)
                 append("&location.longitude=").append(longitude)
                 append("&unitsSystem=METRIC")
+                // Localize the human-readable condition text ("Cloudy" → "Mendung") to the app language.
+                append("&languageCode=").append(com.rewatt.app.core.LocaleManager.currentTag())
             }
 
             val connection = (URL(url).openConnection() as HttpURLConnection).apply {
