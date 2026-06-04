@@ -12,6 +12,7 @@ import com.rewatt.app.data.EnergyAdviceInput
 import com.rewatt.app.data.EnergyAdviceState
 import com.rewatt.app.data.EnergyAdviceStatus
 import com.rewatt.app.data.EnergyWasteSummary
+import com.rewatt.app.data.EnergyWasteWorker
 import com.rewatt.app.data.GeminiEnergyAdvisor
 import com.rewatt.app.data.LearnedSegment
 import com.rewatt.app.data.RecentCapture
@@ -25,6 +26,10 @@ import com.rewatt.app.data.WeatherState
 import com.rewatt.app.perception.millisUntilNextBoundary
 import com.rewatt.app.telemetry.PacketFreshness
 import com.rewatt.app.telemetry.TelemetryFreshness
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
@@ -33,6 +38,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
@@ -84,6 +90,32 @@ class DashboardViewModel(
     val wasteSummary: StateFlow<EnergyWasteSummary?> =
         repository.wasteSummaryFlow()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), null)
+
+    // True while a manual wasted-energy recompute is in flight (drives the card's spinning ↻).
+    private val _wasteRefreshing = MutableStateFlow(false)
+    val wasteRefreshing: StateFlow<Boolean> = _wasteRefreshing
+
+    /**
+     * Manually recompute yesterday's wasted energy: enqueue a one-time [EnergyWasteWorker] (which
+     * re-counts empty+lit samples and re-asks Gemini for kWh/RM, then writes Firestore). The card
+     * updates via [wasteSummary]; the spinner clears when a newer summary lands or after a timeout.
+     */
+    fun refreshWasteSummary() {
+        if (_wasteRefreshing.value) return
+        _wasteRefreshing.value = true
+        val before = wasteSummary.value?.generatedAtMillis ?: 0L
+        WorkManager.getInstance(appContext).enqueueUniqueWork(
+            "energy_waste_refresh",
+            ExistingWorkPolicy.REPLACE,
+            OneTimeWorkRequestBuilder<EnergyWasteWorker>().build(),
+        )
+        viewModelScope.launch {
+            withTimeoutOrNull(25_000L) {
+                repository.wasteSummaryFlow().first { (it?.generatedAtMillis ?: 0L) > before }
+            }
+            _wasteRefreshing.value = false
+        }
+    }
 
     // Escalation bookkeeping (admin): the current actionable signature, when it first appeared, and
     // the last signature we posted a notification for. Drive both the persistent notification and the
