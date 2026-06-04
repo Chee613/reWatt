@@ -83,6 +83,9 @@
 
     <!-- Weekly / daily occupancy -->
     <string name="analytics_weekly_title">Weekly occupancy pattern</string>
+    <string name="history_title">History</string>
+    <string name="history_empty">No history yet</string>
+    <string name="history_empty_desc">Weekly history will appear once the sensor has collected enough occupancy data for this space.</string>
     <string name="analytics_no_history">No sensor history yet</string>
     <string name="analytics_no_history_desc">Run the sensor to collect occupancy data for this hall.</string>
     <string name="analytics_daily_pattern">%1$s — daily pattern</string>

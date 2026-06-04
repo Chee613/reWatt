@@ -83,6 +83,9 @@
 
     <!-- Weekly / daily occupancy -->
     <string name="analytics_weekly_title">Corak penghunian mingguan</string>
+    <string name="history_title">Sejarah</string>
+    <string name="history_empty">Tiada sejarah lagi</string>
+    <string name="history_empty_desc">Sejarah mingguan akan muncul setelah penderia mengumpul data penghunian yang mencukupi untuk ruang ini.</string>
     <string name="analytics_no_history">Tiada sejarah penderia lagi</string>
     <string name="analytics_no_history_desc">Jalankan penderia untuk mengumpul data penghunian untuk dewan ini.</string>
     <string name="analytics_daily_pattern">%1$s — corak harian</string>
