@@ -17,7 +17,6 @@ import com.rewatt.app.R
 import com.rewatt.app.ReWattApplication
 import com.rewatt.app.data.PerceptionSyncSummary
 import com.rewatt.app.data.TelemetryRepository
-import com.rewatt.app.notify.EnergyAlertNotifier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -120,12 +119,9 @@ class CameraCaptureService : LifecycleService() {
                     )
                 }
                 publishPerceptionSummary(newState)
-                // Real-time waste prompt: empty room with the lights still on.
-                EnergyAlertNotifier.onPerception(
-                    context = applicationContext,
-                    personCount = newState.personCount,
-                    lightsOn = newState.lightsOn,
-                )
+                // NOTE: the full-screen energy-waste alert is no longer driven by raw sensor detection
+                // (empty + lights on). It now escalates from an un-Done "Turn off AC & lights"
+                // recommendation on the Admin side (see DashboardViewModel.notifyNowActions).
             },
             onError = { message -> stateHolder.update { it.copy(yoloMessage = message) } },
         ).also { it.attach(this) }

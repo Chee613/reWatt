@@ -54,10 +54,17 @@ class EnergyAlertActivity : AppCompatActivity() {
         currentInstance = WeakReference(this)
         showOverLockScreen()
 
+        // Dynamic per-escalation text (exact action + space), set by EnergyAlertNotifier.
+        val prefs = getSharedPreferences(EnergyAlertNotifier.PREFS_NAME, MODE_PRIVATE)
+        val alertTitle = prefs.getString(EnergyAlertNotifier.KEY_ALERT_TITLE, null)
+            ?: getString(R.string.energy_alert_title)
+        val alertMessage = prefs.getString(EnergyAlertNotifier.KEY_ALERT_TEXT, null)
+            ?: getString(R.string.energy_alert_text)
+
         setContent {
             EnergyAlertScreen(
-                title = getString(R.string.energy_alert_title),
-                message = getString(R.string.energy_alert_text),
+                title = alertTitle,
+                message = alertMessage,
                 onDone = {
                     EnergyAlertNotifier.onDone(applicationContext)
                     finish()

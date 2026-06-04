@@ -73,6 +73,7 @@ class MainActivity : AppCompatActivity() {
     private val viewModel: DashboardViewModel by viewModels {
         val graph = (application as ReWattApplication).appGraph
         DashboardViewModelFactory(
+            appContext = applicationContext,
             repository = graph.telemetryRepository,
             weatherRepository = graph.weatherRepository,
             occupancyForecastProvider = graph.occupancyForecastProvider,
