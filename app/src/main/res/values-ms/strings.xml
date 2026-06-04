@@ -12,6 +12,9 @@
     <string name="energy_alert_text">Tiada sesiapa di sini tetapi lampu/penyaman udara masih hidup. Sila matikannya untuk menjimatkan tenaga.</string>
     <string name="energy_alert_done">Selesai</string>
     <string name="energy_alert_snooze">Tunda 5 min</string>
+    <string name="now_action_notif_channel">Tindakan tenaga</string>
+    <string name="now_action_notif_title">Tindakan tenaga diperlukan</string>
+    <string name="scheduled_action_notif_channel">Tindakan berjadual</string>
 
     <!-- Bottom navigation + sub-tabs -->
     <string name="nav_live">LANGSUNG</string>

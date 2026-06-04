@@ -12,6 +12,9 @@
     <string name="energy_alert_text">No one is here but the lights/AC are on. Please switch them off to save energy.</string>
     <string name="energy_alert_done">Done</string>
     <string name="energy_alert_snooze">Snooze 5 min</string>
+    <string name="now_action_notif_channel">Energy actions</string>
+    <string name="now_action_notif_title">Energy action needed</string>
+    <string name="scheduled_action_notif_channel">Scheduled actions</string>
 
     <!-- Bottom navigation + sub-tabs -->
     <string name="nav_live">LIVE</string>

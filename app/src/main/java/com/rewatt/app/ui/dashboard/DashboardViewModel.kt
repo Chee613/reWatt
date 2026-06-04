@@ -1,9 +1,13 @@
 package com.rewatt.app.ui.dashboard
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.rewatt.app.data.EnergyAdvice
+import com.rewatt.app.notify.EnergyAlertNotifier
+import com.rewatt.app.notify.NowActionNotifier
+import com.rewatt.app.notify.ScheduledActionScheduler
 import com.rewatt.app.data.EnergyAdviceInput
 import com.rewatt.app.data.EnergyAdviceState
 import com.rewatt.app.data.EnergyAdviceStatus
@@ -38,6 +42,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 class DashboardViewModel(
+    private val appContext: Context,
     private val repository: TelemetryRepository,
     private val weatherRepository: WeatherRepository,
     private val occupancyForecastProvider: OccupancyForecastProvider,
@@ -80,13 +85,98 @@ class DashboardViewModel(
         repository.wasteSummaryFlow()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000L), null)
 
+    // Escalation bookkeeping (admin): the current actionable signature, when it first appeared, and
+    // the last signature we posted a notification for. Drive both the persistent notification and the
+    // "left un-Done too long" full-screen escalation.
+    private var lastNotifiedActionSig: String? = null
+    private var escActionableSig: String? = null
+    private var escPendingSince: Long = 0L
+
     init {
         listenToAllHallSchedules()
         listenToAllHallMeanSchedules()
         listenToAllHallMinuteSchedules()
         listenToAllLearnedSchedules()
         listenToAllHallNodes()
+        notifyNowActions()
+        scheduleTimelineNotifications()
         startAutoEnergyAdvice()
+    }
+
+    /**
+     * Admin: cache the per-hall schedule and (re)arm exact-time alarms so every Today's-Schedule row
+     * fires as a notification at its purple-box time — even when the app is later closed. Runs whenever
+     * the schedule changes (and on first emission, which for the fsktm demo uses the hardcoded fallback).
+     */
+    private fun scheduleTimelineNotifications() {
+        viewModelScope.launch {
+            _hallMinuteSchedules.collect { grids ->
+                ScheduledActionScheduler.updateSchedules(appContext, grids)
+            }
+        }
+    }
+
+    /**
+     * Admin: derive each hall's NOW action from the SAME shared schedule the Action tab uses plus the
+     * sensor's relayed live state (latest node snapshot), then:
+     *  1. post/refresh the persistent NOW-action notification (with Done) when the actionable set changes;
+     *  2. ESCALATE to the full-screen "lights still on, no people" alert when a *Turn off (empty room)*
+     *     recommendation has been left un-Done for [ESCALATION_MILLIS] — the alert shows the exact action
+     *     and space. Done (notification or full-screen) acknowledges and clears both.
+     * Sensor phones stay silent (gated inside [NowActionNotifier] / [EnergyAlertNotifier]).
+     */
+    private fun notifyNowActions() {
+        viewModelScope.launch {
+            combine(_hallMinuteSchedules, _sensorFleet, ticker) { schedules, fleet, now ->
+                Triple(schedules, fleet, now)
+            }.collect { (schedules, fleet, now) ->
+                val actions = Hall.values().map { hall ->
+                    val node = fleet[hall.label]?.maxByOrNull { it.lastUpdatedAt ?: 0L }
+                    hall to deriveNowActionFromSessions(
+                        nowMillis = now,
+                        personCount = node?.personCount ?: 0,
+                        temperatureC = node?.temperatureC?.toFloat(),
+                        hall = hall,
+                        humidityPercent = node?.humidityPercent,
+                        minuteSchedule = schedules[hall.label],
+                    )
+                }
+                fun lineFor(hall: Hall, action: NowAction): String =
+                    "${hall.label} — " + appContext.getString(action.labelRes, *action.labelArgs.toTypedArray())
+
+                // 1) Persistent notification — every actionable recommendation; refresh only on change.
+                val actionableLines = actions
+                    .filter {
+                        it.second.acState == AcState.OFF ||
+                            it.second.acState == AcState.COOL_PLUS ||
+                            it.second.acState == AcState.COOL_MINUS
+                    }
+                    .map { (hall, action) -> lineFor(hall, action) }
+                val sig = actionableLines.joinToString("|")
+                if (sig != lastNotifiedActionSig) {
+                    lastNotifiedActionSig = sig
+                    NowActionNotifier.update(appContext, actionableLines)
+                }
+
+                // 2) Escalation — only "Turn off (empty room)" actions left un-Done past the timeout.
+                val offLines = actions
+                    .filter { it.second.acState == AcState.OFF }
+                    .map { (hall, action) -> lineFor(hall, action) }
+                if (sig != escActionableSig) {
+                    escActionableSig = sig
+                    escPendingSince = now
+                }
+                val escalate = offLines.isNotEmpty() &&
+                    !NowActionNotifier.isAcknowledged(appContext, sig) &&
+                    (now - escPendingSince) >= ESCALATION_MILLIS
+                EnergyAlertNotifier.onNowEscalation(
+                    context = appContext,
+                    active = escalate,
+                    actions = offLines,
+                    signature = sig,
+                )
+            }
+        }
     }
 
     private fun listenToAllHallNodes() {
@@ -268,6 +358,10 @@ class DashboardViewModel(
 
     companion object {
         private const val ENERGY_ADVICE_INTERVAL_MINUTES = 30
+
+        // How long a "Turn off (empty room)" recommendation may stay un-Done before the full-screen
+        // alert escalates. Measured from when the recommendation first appeared (while the app is open).
+        private const val ESCALATION_MILLIS = 30L * 60 * 1000
     }
 }
 
@@ -280,6 +374,7 @@ data class DashboardUiState(
 )
 
 class DashboardViewModelFactory(
+    private val appContext: Context,
     private val repository: TelemetryRepository,
     private val weatherRepository: WeatherRepository,
     private val occupancyForecastProvider: OccupancyForecastProvider,
@@ -289,6 +384,7 @@ class DashboardViewModelFactory(
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(DashboardViewModel::class.java)) {
             return DashboardViewModel(
+                appContext = appContext.applicationContext,
                 repository = repository,
                 weatherRepository = weatherRepository,
                 occupancyForecastProvider = occupancyForecastProvider,

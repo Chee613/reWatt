@@ -2,17 +2,18 @@ package com.rewatt.app.notify
 
 import android.content.Context
 import androidx.core.content.ContextCompat
+import com.rewatt.app.R
 import com.rewatt.app.data.UserRole
 
 /**
- * Decides when the sticky "turn off the lights/AC" prompt should be shown and drives
- * [EnergyAlertService] to display it as a non-swipeable foreground-service notification.
+ * Drives the full-screen "lights still on, no people in the room" alert via [EnergyAlertService].
  *
- * **Every capture** that detects an empty room with the lights/AC still on will trigger the
- * alert. **Done** dismisses the current alert; if the next capture still detects wasteful
- * conditions, the alert fires again immediately. **Snooze** dismisses the current alert *and*
- * suppresses all new alerts for [SNOOZE_DURATION_MILLIS] (5 minutes), even if the room stays
- * wasteful, so the operator gets time to actually walk over and switch things off.
+ * The alert is **not** triggered by raw sensor detection anymore. It **escalates** from the NOW-action
+ * recommendation: when a *Turn off AC & lights / Turn off all systems* (empty-room) recommendation is
+ * left un-Done for too long (see `DashboardViewModel.notifyNowActions`), [onNowEscalation] raises this
+ * alert showing the exact action and space. **Done** acknowledges it (tracked via [NowActionNotifier])
+ * and clears both the alert and the persistent notification; **Snooze** suppresses it for
+ * [SNOOZE_DURATION_MILLIS]. Only Admin phones show it.
  */
 object EnergyAlertNotifier {
     const val ACTION_DONE = "com.rewatt.app.action.ENERGY_DONE"
@@ -21,39 +22,61 @@ object EnergyAlertNotifier {
     /** How long Snooze suppresses new alerts. */
     const val SNOOZE_DURATION_MILLIS = 5 * 60 * 1000L
 
-    private const val PREFS_NAME = "rewatt_energy_alert"
+    internal const val PREFS_NAME = "rewatt_energy_alert"
+    internal const val KEY_ALERT_TITLE = "alert_title"
+    internal const val KEY_ALERT_TEXT = "alert_text"
     private const val KEY_SNOOZE_UNTIL = "snooze_until_millis"
+    private const val KEY_ESC_SIGNATURE = "escalation_signature"
+
+    @Volatile
+    private var showing = false
+    @Volatile
+    private var shownText: String? = null
 
     /**
-     * Evaluate the latest capture: an empty room with the lights still on is wasteful.
-     * Shows the alert every time wasteful conditions are detected, and clears it when
-     * conditions are no longer wasteful — unless a Snooze window is still active.
+     * Escalation entry point (Admin): [active] true => raise the full-screen alert showing [actions]
+     * (one "Space — exact action" line each); false => clear it. [signature] identifies the underlying
+     * recommendation so Done can acknowledge it. Sensor phones stay silent; an active Snooze suppresses.
+     * Safe to call every tick — it only starts/stops the service on a real transition.
      */
-    fun onPerception(context: Context, personCount: Int, lightsOn: Boolean?) {
-        // Sensor-mode edge devices must stay silent. Read the locally-cached APP_MODE
-        // directly from SharedPreferences (safe on a background thread, no Firestore).
+    fun onNowEscalation(context: Context, active: Boolean, actions: List<String>, signature: String) {
         val mode = context
             .getSharedPreferences("rewatt_space_config", Context.MODE_PRIVATE)
             .getString("APP_MODE", null)
-        if (mode == UserRole.Sensor.name) {
-            stop(context) // clear any stale alert if a device just switched to Sensor
+        val shouldShow = active && actions.isNotEmpty() &&
+            mode == UserRole.Admin.name && !isSnoozed(context)
+
+        if (!shouldShow) {
+            if (showing) {
+                showing = false
+                shownText = null
+                stop(context)
+            }
             return
         }
 
-        val wasteful = personCount == 0 && lightsOn == true
-        if (!wasteful) {
-            stop(context)
-            return
+        val text = actions.joinToString("\n")
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .putString(KEY_ALERT_TITLE, context.getString(R.string.energy_alert_title))
+            .putString(KEY_ALERT_TEXT, text)
+            .putString(KEY_ESC_SIGNATURE, signature)
+            .apply()
+        if (!showing || shownText != text) {
+            showing = true
+            shownText = text
+            show(context)
         }
-        // Suppress while the operator's Snooze window is still active.
-        if (isSnoozed(context)) {
-            stop(context)
-            return
-        }
-        show(context)
     }
 
     fun onDone(context: Context) {
+        // Acknowledge the escalated NOW action so it's tracked (local + Firestore) and won't re-fire,
+        // and clear the persistent NOW-action notification too.
+        val signature = context
+            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_ESC_SIGNATURE, null)
+        if (!signature.isNullOrEmpty()) NowActionNotifier.onDone(context, signature)
+        showing = false
+        shownText = null
         stop(context)
     }
 
@@ -62,6 +85,8 @@ object EnergyAlertNotifier {
             .edit()
             .putLong(KEY_SNOOZE_UNTIL, System.currentTimeMillis() + SNOOZE_DURATION_MILLIS)
             .apply()
+        showing = false
+        shownText = null
         stop(context)
     }
 

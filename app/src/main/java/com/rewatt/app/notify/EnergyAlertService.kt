@@ -133,10 +133,18 @@ class EnergyAlertService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
+        // Dynamic per-escalation text (exact action + space) set by EnergyAlertNotifier; fall back to
+        // the generic strings if absent.
+        val prefs = getSharedPreferences(EnergyAlertNotifier.PREFS_NAME, Context.MODE_PRIVATE)
+        val title = prefs.getString(EnergyAlertNotifier.KEY_ALERT_TITLE, null)
+            ?: res.getString(R.string.energy_alert_title)
+        val text = prefs.getString(EnergyAlertNotifier.KEY_ALERT_TEXT, null)
+            ?: res.getString(R.string.energy_alert_text)
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_rewatt)
-            .setContentTitle(res.getString(R.string.energy_alert_title))
-            .setContentText(res.getString(R.string.energy_alert_text))
+            .setContentTitle(title)
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setOngoing(true)
