@@ -1084,6 +1084,11 @@ private fun AnalyticPage(
                     firestoreSchedule = hallSchedules[selectedHall.label],
                     minuteSchedule = hallMinuteSchedules[selectedHall.label],
                 )
+                WeeklyHistoryCard(
+                    hall = selectedHall,
+                    minuteSchedule = hallMinuteSchedules[selectedHall.label],
+                    showPreset = userEmail.equals("tjh3281@gmail.com", ignoreCase = true),
+                )
             }
         }
     }
@@ -1290,6 +1295,131 @@ private fun WeeklyOccupancyCard(
                 }
             }
         }
+    }
+}
+
+// ── Weekly History (demo: 3 collected weeks rendered like the Class Schedule) ──────────────
+private val HISTORY_WEEK_LABELS = listOf("10/5 – 16/5", "17/5 – 23/5", "31/5 – 6/6")
+
+private data class SchedRun(val start: Int, val end: Int, val mean: Int)
+
+/** Contiguous non-zero runs (class sessions) in a day's 10-min bins, with each run's mean count. */
+private fun deriveRuns(row: IntArray): List<SchedRun> {
+    val runs = mutableListOf<SchedRun>()
+    var start = -1; var sum = 0; var count = 0
+    for (b in row.indices) {
+        if (row[b] > 0) {
+            if (start < 0) { start = b; sum = 0; count = 0 }
+            sum += row[b]; count++
+        } else if (start >= 0) {
+            runs.add(SchedRun(start, b, if (count > 0) sum / count else 0)); start = -1
+        }
+    }
+    if (start >= 0) runs.add(SchedRun(start, row.size, if (count > 0) sum / count else 0))
+    return runs
+}
+
+/** Deterministic permutation of [0,1,2] from a seed. */
+private fun perm3(seed: Int): IntArray = when (((seed % 6) + 6) % 6) {
+    0 -> intArrayOf(0, 1, 2); 1 -> intArrayOf(0, 2, 1); 2 -> intArrayOf(1, 0, 2)
+    3 -> intArrayOf(1, 2, 0); 4 -> intArrayOf(2, 0, 1); else -> intArrayOf(2, 1, 0)
+}
+
+/** Three DISTINCT bin shifts drawn from {-2,-1,+1,+2} (±20/±10 min, never 0), seeded. */
+private fun pick3Shift(seed: Int): IntArray {
+    val pool = intArrayOf(-2, -1, 1, 2)
+    val drop = ((seed % 4) + 4) % 4
+    val three = pool.filterIndexed { i, _ -> i != drop }
+    val p = perm3(seed / 4)
+    return intArrayOf(three[p[0]], three[p[1]], three[p[2]])
+}
+
+/**
+ * Build a distinct demo week from a base per-day 10-min schedule. Variation is applied at the
+ * SESSION level so every box differs clearly across the 3 weeks:
+ *  - occupancy: three values spaced by ≥25 (so pairwise >10) within ±~50 of the base mean,
+ *  - start & end: shifted by 10–20 min in distinct directions per week (so >5 min apart).
+ * Sessions are kept separated by ≥1 empty bin so they never merge into one box. Deterministic.
+ */
+private fun varyWeekSchedule(base: Array<IntArray>, weekIndex: Int): Array<IntArray> =
+    Array(base.size) { d ->
+        val row = base[d]
+        val out = IntArray(row.size) { 0 }
+        var prevEnd = -2
+        deriveRuns(row).forEachIndexed { idx, run ->
+            val seed = d * 131 + run.start * 17 + idx * 7 + 1
+            val spacing = 25 + (seed % 25)                       // 25..49 → pairwise >10, within ±50
+            val low = (run.mean - spacing).coerceAtLeast(6)
+            val trio = intArrayOf(low, low + spacing, low + 2 * spacing)
+            val occ = trio[perm3(seed)[weekIndex]]
+            val startShift = pick3Shift(seed + 1)[weekIndex]
+            val endShift = pick3Shift(seed + 2)[weekIndex]
+            var ns = (run.start + startShift).coerceIn(0, row.size - 1)
+            if (ns <= prevEnd) ns = (prevEnd + 1).coerceAtMost(row.size - 1)  // keep a gap → no merge
+            var ne = (run.end + endShift).coerceIn(ns + 1, row.size)
+            for (b in ns until ne) out[b] = occ
+            prevEnd = ne
+        }
+        out
+    }
+
+/**
+ * "History" block under the Weekly occupancy pattern: 3 week tabs, each showing the space's
+ * class schedule (same grid as [ClassScheduleCard]) with its boxes' occupancy = the mean of the
+ * 10-min bins for that day, slightly varied per week. Preset data is shown only when [showPreset]
+ * is true (fsktm); other accounts get an empty "collecting" state. Follows the space picked by the
+ * shared dropdown above (via [hall]).
+ */
+@Composable
+private fun WeeklyHistoryCard(
+    hall: Hall,
+    minuteSchedule: Array<IntArray>?,
+    showPreset: Boolean,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(stringResource(R.string.history_title), fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+
+        if (!showPreset) {
+            InfoCard(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(stringResource(R.string.history_empty), fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = stringResource(R.string.history_empty_desc),
+                        fontSize = 12.sp,
+                        color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            return
+        }
+
+        var weekTab by rememberSaveable(hall) { mutableStateOf(0) }
+        TabRow(selectedTabIndex = weekTab) {
+            HISTORY_WEEK_LABELS.forEachIndexed { i, label ->
+                Tab(
+                    selected = weekTab == i,
+                    onClick = { weekTab = i },
+                    text = { Text(label, fontSize = 12.sp) },
+                )
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        val weekSchedule = remember(minuteSchedule, weekTab) {
+            minuteSchedule?.let { varyWeekSchedule(it, weekTab) }
+        }
+        ClassScheduleCard(
+            hall = hall,
+            learnedDays = null,
+            minuteSchedule = weekSchedule,
+            showFallbackEstimate = true,
+            titleOverride = HISTORY_WEEK_LABELS[weekTab],
+            // Week III (31/5–6/6): Mon & Tue are public holidays → blank for every space.
+            holidayDays = if (weekTab == 2) setOf(0, 1) else emptySet(),
+        )
     }
 }
 
@@ -2627,12 +2757,17 @@ private val CLASS_GRID_END_HOUR   = 19  // 19:00  → 11 hours (08:00–19:00), 
 private val CLASS_DAY_LABEL_WIDTH_DP = 36  // width of the pinned MON/TUE… column
 private val CLASS_ROW_HEIGHT_DP   = 92  // taller rows so all 3 stacked labels fit without clipping
 
+/** Sat (5) & Sun (6) rows are rendered at half height since weekends rarely have classes. */
+private fun classRowHeight(dow: Int): Int = if (dow >= 5) CLASS_ROW_HEIGHT_DP / 2 else CLASS_ROW_HEIGHT_DP
+
 @Composable
 private fun ClassScheduleCard(
     hall: Hall,
     learnedDays: List<List<LearnedSegment>>?,
     minuteSchedule: Array<IntArray>? = null,
     showFallbackEstimate: Boolean = false,
+    titleOverride: String? = null,
+    holidayDays: Set<Int> = emptySet(),
 ) {
     val dayLabels = stringArrayResource(R.array.sched_day_labels)
     val gridStartMin = CLASS_GRID_START_HOUR * 60
@@ -2746,7 +2881,7 @@ private fun ClassScheduleCard(
 
     InfoCard(modifier = Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(stringResource(R.string.sched_title), fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            Text(titleOverride ?: stringResource(R.string.sched_title), fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
             Text(
                 if (isEstimated) stringResource(R.string.sched_estimated) else stringResource(R.string.sched_from_data),
                 fontSize = 11.sp,
@@ -2762,13 +2897,13 @@ private fun ClassScheduleCard(
                 Box(modifier = Modifier.height(20.dp))
                 dayLabels.forEachIndexed { idx, label ->
                     val isToday = idx == todayDow
-                    val isTodayHoliday = isToday && todayIsHoliday
+                    val isHoliday = idx in holidayDays || (isToday && todayIsHoliday)
                     Box(
                         modifier = Modifier
-                            .height(CLASS_ROW_HEIGHT_DP.dp)
+                            .height(classRowHeight(idx).dp)
                             .fillMaxWidth()
                             .background(
-                                if (isTodayHoliday) Color(0xFFFFF3E0)
+                                if (isHoliday) Color(0xFFFFF3E0)
                                 else Color.Transparent
                             ),
                         contentAlignment = Alignment.Center,
@@ -2778,11 +2913,11 @@ private fun ClassScheduleCard(
                                 label,
                                 fontSize = 10.sp,
                                 fontWeight = if (isToday) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isTodayHoliday) Color(0xFFBF360C)
+                                color = if (isHoliday) Color(0xFFBF360C)
                                         else if (isToday) androidx.compose.material3.MaterialTheme.colorScheme.primary
                                         else androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            if (isTodayHoliday) {
+                            if (isHoliday) {
                                 Text(
                                     stringResource(R.string.sched_ph),
                                     fontSize = 8.sp,
@@ -2823,11 +2958,11 @@ private fun ClassScheduleCard(
                     }
                     // Day rows
                     displayDays.forEachIndexed { dow, segments ->
-                        val isHolidayRow = (dow == todayDow) && todayIsHoliday
+                        val isHolidayRow = dow in holidayDays || ((dow == todayDow) && todayIsHoliday)
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(CLASS_ROW_HEIGHT_DP.dp)
+                                .height(classRowHeight(dow).dp)
                                 .background(
                                     if (isHolidayRow) Color(0xFFFFF3E0)
                                     else if (dow % 2 == 0)
