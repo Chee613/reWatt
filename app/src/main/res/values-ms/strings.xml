@@ -210,8 +210,8 @@
 
     <!-- Weather card -->
     <string name="weather_current_conditions">Keadaan semasa</string>
-    <string name="weather_outdoor_temp">Suhu luar</string>
-    <string name="weather_outdoor_rh">Kelembapan luar</string>
+    <string name="weather_outdoor_temp">Suhu</string>
+    <string name="weather_outdoor_rh">Kelembapan</string>
     <string name="weather_delta_indoor">Δ vs dalaman</string>
 
     <!-- Buttons -->
