@@ -65,7 +65,9 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
     private val _sensorGuideEvent = MutableStateFlow(false)
     val sensorGuideEvent: StateFlow<Boolean> = _sensorGuideEvent
 
-    private val _currentUserRole = MutableStateFlow<UserRole?>(null)
+    // Seed from the locally-cached role so the bottom nav shows the correct tabs from the very first
+    // frame on relaunch, instead of showing every tab for ~8s while Firestore resolves the role.
+    private val _currentUserRole = MutableStateFlow<UserRole?>(repository.getCachedRole())
     val currentUserRole: StateFlow<UserRole?> = _currentUserRole
 
     private val _spaceName = MutableStateFlow<String?>(null)
@@ -106,9 +108,12 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
     }
 
     fun loadUserRole() {
+        // Instant: reflect the cached role right away so the nav doesn't flash all tabs on launch.
+        repository.getCachedRole()?.let { _currentUserRole.value = it }
         val uid = repository.currentUser?.uid ?: return
         viewModelScope.launch {
-            _currentUserRole.value = repository.getUserRole(uid)
+            // Refine from Firestore, but keep the cached role if the lookup returns nothing.
+            repository.getUserRole(uid)?.let { _currentUserRole.value = it }
         }
     }
 
