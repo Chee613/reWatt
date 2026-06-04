@@ -26,12 +26,6 @@ data class ObjectDetection(
     val isPerson: Boolean = classId == 0 || label.equals("person", ignoreCase = true)
 }
 
-enum class AudioPresenceLevel {
-    None,
-    Weak,
-    Strong,
-}
-
 enum class CaptureStartSource {
     Manual,
     Auto,
@@ -39,16 +33,6 @@ enum class CaptureStartSource {
 
 enum class YoloModel(val displayName: String, val assetName: String) {
     Yolo26n1920("YOLO26n (1920)", "yolo26n-1920.tflite"),
-}
-
-data class SoundDetection(
-    val label: String,
-    val confidence: Float,
-    val presenceLevel: AudioPresenceLevel =
-        LectureHallPerceptionFilter.classifyAudioLabel(label),
-) {
-    val indicatesHumanPresence: Boolean = presenceLevel == AudioPresenceLevel.Strong
-    val supportsHumanPresence: Boolean = presenceLevel != AudioPresenceLevel.None
 }
 
 data class ExposureReading(
@@ -63,7 +47,6 @@ data class PerceptionUiState(
     val isRunning: Boolean = false,
     val captureStartSource: CaptureStartSource? = null,
     val cameraPermissionGranted: Boolean = false,
-    val microphonePermissionGranted: Boolean = false,
     val statusMessage: String = "Perception is stopped.",
     val latestFrame: Bitmap? = null,
     val latestFrameAtMillis: Long? = null,
@@ -75,18 +58,8 @@ data class PerceptionUiState(
     val exposureAperture: Double = ExposureValueCalculator.FIXED_APERTURE,
     val lightsOn: Boolean? = null,
     val exposureMessage: String = "Exposure is waiting for camera capture.",
-    val latestAudioAtMillis: Long? = null,
-    val audioRecordingStartedAtMillis: Long? = null,
-    val audioSampleCount: Int = 0,
-    val audioRms: Float = 0f,
-    val audioWaveform: List<Float> = emptyList(),
-    val soundDetections: List<SoundDetection> = emptyList(),
-    val yamnetMessage: String = "YAMNet is waiting for microphone audio.",
     val selectedYoloModel: YoloModel = YoloModel.Yolo26n1920,
 ) {
     val peopleDetections: List<ObjectDetection> = yoloDetections.filter { it.isPerson }
     val personCount: Int = peopleDetections.size
-    val audioPresenceDetected: Boolean = soundDetections.any { it.indicatesHumanPresence }
-    val audioPresenceScore: Float =
-        soundDetections.filter { it.indicatesHumanPresence }.maxOfOrNull { it.confidence } ?: 0f
 }

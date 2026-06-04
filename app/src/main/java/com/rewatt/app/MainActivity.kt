@@ -55,10 +55,8 @@ class MainActivity : AppCompatActivity() {
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
             val cameraGranted = permissions[Manifest.permission.CAMERA] == true ||
                 hasPermission(Manifest.permission.CAMERA)
-            val microphoneGranted = permissions[Manifest.permission.RECORD_AUDIO] == true ||
-                hasPermission(Manifest.permission.RECORD_AUDIO)
-            perceptionViewModel.setPermissionState(cameraGranted, microphoneGranted)
-            if (cameraGranted && microphoneGranted) {
+            perceptionViewModel.setPermissionState(cameraGranted)
+            if (cameraGranted) {
                 perceptionViewModel.startPerception(pendingCaptureSource ?: CaptureStartSource.Manual)
             }
             pendingCaptureSource = null
@@ -133,7 +131,6 @@ class MainActivity : AppCompatActivity() {
         requestNotificationPermissionIfNeeded()
         perceptionViewModel.setPermissionState(
             cameraGranted = hasPermission(Manifest.permission.CAMERA),
-            microphoneGranted = hasPermission(Manifest.permission.RECORD_AUDIO),
         )
         refreshWeatherIfLocationGranted()
 
@@ -303,21 +300,15 @@ class MainActivity : AppCompatActivity() {
     private fun requestPerceptionPermissionsThenStart(source: CaptureStartSource) {
         pendingCaptureSource = source
         val cameraGranted = hasPermission(Manifest.permission.CAMERA)
-        val microphoneGranted = hasPermission(Manifest.permission.RECORD_AUDIO)
-        perceptionViewModel.setPermissionState(cameraGranted, microphoneGranted)
+        perceptionViewModel.setPermissionState(cameraGranted)
 
-        if (cameraGranted && microphoneGranted) {
+        if (cameraGranted) {
             pendingCaptureSource = null
             perceptionViewModel.startPerception(source)
             return
         }
 
-        perceptionPermissionLauncher.launch(
-            arrayOf(
-                Manifest.permission.CAMERA,
-                Manifest.permission.RECORD_AUDIO,
-            ),
-        )
+        perceptionPermissionLauncher.launch(arrayOf(Manifest.permission.CAMERA))
     }
 
     private fun requestYoloImageUpload() {

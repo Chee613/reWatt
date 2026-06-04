@@ -31,12 +31,9 @@ class PerceptionViewModel(
 
     private var uploadDetector: YoloDetector? = null
 
-    fun setPermissionState(cameraGranted: Boolean, microphoneGranted: Boolean) {
+    fun setPermissionState(cameraGranted: Boolean) {
         stateHolder.update {
-            it.copy(
-                cameraPermissionGranted = cameraGranted,
-                microphonePermissionGranted = microphoneGranted,
-            )
+            it.copy(cameraPermissionGranted = cameraGranted)
         }
     }
 

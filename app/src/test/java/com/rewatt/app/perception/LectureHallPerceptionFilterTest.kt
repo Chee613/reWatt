@@ -21,25 +21,6 @@ class LectureHallPerceptionFilterTest {
         assertEquals(1, filtered.count { it.isPerson })
     }
 
-    @Test
-    fun classifyAudioLabel_marksStrongPresenceSounds() {
-        val speech = SoundDetection(label = "Speech", confidence = 0.9f)
-        val typing = SoundDetection(label = "Typing", confidence = 0.8f)
-        val footsteps = SoundDetection(label = "Walk, footsteps", confidence = 0.7f)
-
-        assertTrue(speech.indicatesHumanPresence)
-        assertTrue(typing.indicatesHumanPresence)
-        assertTrue(footsteps.indicatesHumanPresence)
-    }
-
-    @Test
-    fun classifyAudioLabel_marksWeakSupportSounds() {
-        val clicking = SoundDetection(label = "Clicking", confidence = 0.9f)
-
-        assertTrue(clicking.supportsHumanPresence)
-        assertFalse(clicking.indicatesHumanPresence)
-    }
-
     private fun detection(
         label: String,
         classId: Int,

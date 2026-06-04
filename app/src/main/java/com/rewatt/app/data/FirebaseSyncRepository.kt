@@ -192,7 +192,7 @@ class FirebaseSyncRepository(
         val captureEntry = RecentCapture(
             capturedAtMillis = capturedAtMillis,
             personCount = perceptionSummary.personCount,
-            primaryActivity = perceptionSummary.activityLabels.firstOrNull(),
+            primaryActivity = null,
             lightsOn = perceptionSummary.lightsOn,
             temperatureC = perceptionSummary.temperatureC,
             humidityPercent = perceptionSummary.humidityPercent,
@@ -628,8 +628,6 @@ fun buildPerceptionPayload(
         "lastUpdatedAt" to updatedAtMillis,
         "perceptionCapturedAt" to perceptionSummary.capturedAtMillis,
         "personCount" to perceptionSummary.personCount,
-        "primaryActivity" to perceptionSummary.activityLabels.firstOrNull(),
-        "activityLabels" to perceptionSummary.activityLabels.take(MAX_ACTIVITY_LABELS),
         "temperatureC" to perceptionSummary.temperatureC,
         "humidityPercent" to perceptionSummary.humidityPercent,
         "lightsOn" to perceptionSummary.lightsOn,

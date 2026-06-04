@@ -91,7 +91,7 @@ fun ModeSelectionDialog(
 
                 ModeCard(
                     title = "Sensor",
-                    description = "This phone will be mounted on the classroom wall to collect data using its camera and microphone.",
+                    description = "This phone will be mounted on the classroom wall to collect data using its camera.",
                     icon = Icons.Outlined.Sensors,
                     selected = currentRole == UserRole.Sensor,
                     onClick = { onSelect(UserRole.Sensor) },
