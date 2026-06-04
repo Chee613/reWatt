@@ -35,7 +35,21 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.graphicsLayer
 import com.rewatt.app.R
+import com.rewatt.app.ui.theme.EaseOutStrong
+import com.rewatt.app.ui.theme.pressScale
 
 /**
  * Full-screen alert activity that appears immediately when an energy-waste alert fires.
@@ -128,10 +142,30 @@ private fun EnergyAlertScreen(
     onDone: () -> Unit,
     onSnooze: () -> Unit,
 ) {
+    // Rare, attention-demanding screen → a quick entrance adds polish without slowing anything.
+    var shown by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { shown = true }
+    val appear by animateFloatAsState(
+        targetValue = if (shown) 1f else 0f,
+        animationSpec = tween(durationMillis = 280, easing = EaseOutStrong),
+        label = "alertAppear",
+    )
+    val iconScale by animateFloatAsState(
+        targetValue = if (shown) 1f else 0.8f,
+        animationSpec = spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessLow),
+        label = "alertIcon",
+    )
+    val doneInteraction = remember { MutableInteractionSource() }
+    val snoozeInteraction = remember { MutableInteractionSource() }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xFF1A1A2E))
+            .graphicsLayer {
+                alpha = appear
+                translationY = (1f - appear) * 24.dp.toPx()
+            }
             .padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
@@ -140,7 +174,9 @@ private fun EnergyAlertScreen(
             imageVector = Icons.Default.Warning,
             contentDescription = null,
             tint = Color(0xFFFFB74D),
-            modifier = Modifier.size(80.dp),
+            modifier = Modifier
+                .size(80.dp)
+                .scale(iconScale),
         )
 
         Spacer(Modifier.height(24.dp))
@@ -169,7 +205,9 @@ private fun EnergyAlertScreen(
             onClick = onDone,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(56.dp),
+                .height(56.dp)
+                .pressScale(doneInteraction),
+            interactionSource = doneInteraction,
             shape = RoundedCornerShape(16.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = Color(0xFF0E7C66),
@@ -194,7 +232,9 @@ private fun EnergyAlertScreen(
             onClick = onSnooze,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(56.dp),
+                .height(56.dp)
+                .pressScale(snoozeInteraction),
+            interactionSource = snoozeInteraction,
             shape = RoundedCornerShape(16.dp),
         ) {
             Text(
