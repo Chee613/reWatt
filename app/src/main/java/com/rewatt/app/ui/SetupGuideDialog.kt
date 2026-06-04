@@ -11,6 +11,7 @@ import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +20,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -26,6 +28,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -64,6 +67,19 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import android.graphics.ImageDecoder
+import androidx.compose.foundation.Image
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.Preview
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 private const val TOTAL_STEPS = 6
 
@@ -72,6 +88,7 @@ fun SetupGuideDialog(onDismiss: (spaceName: String?, capacity: Int?) -> Unit) {
     var step by remember { mutableStateOf(0) }
     var spaceName by remember { mutableStateOf("") }
     var capacityText by remember { mutableStateOf("") }
+    var isProcessingSwipe by remember { mutableStateOf(false) }
     val capacity = capacityText.toIntOrNull()
 
     Dialog(
@@ -90,7 +107,7 @@ fun SetupGuideDialog(onDismiss: (spaceName: String?, capacity: Int?) -> Unit) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(24.dp),
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
             ) {
                 // Header
                 Row(
@@ -102,7 +119,7 @@ fun SetupGuideDialog(onDismiss: (spaceName: String?, capacity: Int?) -> Unit) {
                     TextButton(onClick = { onDismiss(null, null) }) { Text(stringResource(R.string.setup_skip)) }
                 }
 
-                Spacer(Modifier.height(16.dp))
+                Spacer(Modifier.height(8.dp))
 
                 // Progress dots
                 Row(
@@ -128,14 +145,31 @@ fun SetupGuideDialog(onDismiss: (spaceName: String?, capacity: Int?) -> Unit) {
                     )
                 }
 
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(12.dp))
 
-                // Step content (scrollable)
+                // Step content (scrollable with swipe navigation)
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                        .verticalScroll(rememberScrollState())
+                        .fillMaxWidth()
+                        .pointerInput(Unit) {
+                            detectHorizontalDragGestures { _, dragAmount ->
+                                if (!isProcessingSwipe) {
+                                    when {
+                                        dragAmount > 100 && step > 0 -> {
+                                            step--
+                                            isProcessingSwipe = true
+                                        }
+                                        dragAmount < -100 && step < TOTAL_STEPS - 1 -> {
+                                            step++
+                                            isProcessingSwipe = true
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     when (step) {
                         0 -> PermissionsStep()
@@ -152,11 +186,17 @@ fun SetupGuideDialog(onDismiss: (spaceName: String?, capacity: Int?) -> Unit) {
                     }
                 }
 
-                Spacer(Modifier.height(24.dp))
+                LaunchedEffect(step) {
+                    isProcessingSwipe = false
+                }
+
+                Spacer(Modifier.height(8.dp))
 
                 // Navigation buttons
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     if (step > 0) {
@@ -388,7 +428,7 @@ private fun MountStep() {
         body = stringResource(R.string.setup_s3_body),
     )
 
-    ImagePlaceholder(caption = stringResource(R.string.setup_mount_photo))
+    MountPhoto()
 
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -408,12 +448,9 @@ private fun MountStep() {
 
 @Composable
 private fun VerifyViewStep() {
-    StepHeader(
-        title = stringResource(R.string.setup_s4_title),
-        body = stringResource(R.string.setup_s4_body),
-    )
+    StepHeader(title = stringResource(R.string.setup_s4_title), body = null)
 
-    ImagePlaceholder(caption = stringResource(R.string.setup_example_view))
+    CameraPreviewBox()
 
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -502,15 +539,17 @@ private fun DoneStep() {
 }
 
 @Composable
-private fun StepHeader(title: String, body: String) {
+private fun StepHeader(title: String, body: String? = null) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(title, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-        Text(
-            body,
-            fontSize = 14.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            lineHeight = 20.sp,
-        )
+        if (!body.isNullOrBlank()) {
+            Text(
+                body,
+                fontSize = 14.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                lineHeight = 20.sp,
+            )
+        }
     }
 }
 
@@ -519,7 +558,7 @@ private fun ImagePlaceholder(caption: String) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(180.dp)
+            .heightIn(min = 120.dp, max = 180.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center,
@@ -552,5 +591,137 @@ private fun BulletTip(text: String) {
     ) {
         Text("•", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(text, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun MountPhoto() {
+    val context = LocalContext.current
+    val imageBitmap = produceState<androidx.compose.ui.graphics.ImageBitmap?>(initialValue = null) {
+        try {
+            val assetManager = context.assets
+            val file = java.io.File(context.cacheDir, "mount_photo.heic")
+            assetManager.open("mount_photo.heic").use { input ->
+                file.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+            val source = ImageDecoder.createSource(file)
+            val bitmap = ImageDecoder.decodeBitmap(source)
+            value = bitmap.asImageBitmap()
+        } catch (e: Exception) {
+            // Fallback to placeholder if image fails to load
+            value = null
+        }
+    }
+    
+    if (imageBitmap.value != null) {
+        Image(
+            bitmap = imageBitmap.value!!,
+            contentDescription = "Mount photo",
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 200.dp)
+                .clip(RoundedCornerShape(12.dp)),
+            contentScale = ContentScale.Crop
+        )
+    } else {
+        ImagePlaceholder("Loading mount photo...")
+    }
+}
+
+@Composable
+private fun CameraPreviewBox() {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var hasCameraPermission by remember { mutableStateOf(false) }
+    var cameraError by remember { mutableStateOf<String?>(null) }
+    
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        hasCameraPermission = isGranted
+    }
+    
+    // Check camera permission and request if needed
+    LaunchedEffect(Unit) {
+        val hasPermission = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.CAMERA
+        ) == PackageManager.PERMISSION_GRANTED
+        
+        if (hasPermission) {
+            hasCameraPermission = true
+        } else {
+            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
+    
+    Card(
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        shape = RoundedCornerShape(12.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+        ) {
+            if (hasCameraPermission) {
+                if (cameraError != null) {
+                    ImagePlaceholder("Camera Error: ${cameraError}")
+                } else {
+                    AndroidView(
+                        factory = { ctx ->
+                            PreviewView(ctx).apply {
+                                scaleType = PreviewView.ScaleType.FILL_CENTER
+                                
+                                // Bind camera with delay to ensure lifecycle is ready
+                                post {
+                                    try {
+                                        val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
+                                        cameraProviderFuture.addListener({
+                                            try {
+                                                val cameraProvider = cameraProviderFuture.get()
+                                                
+                                                // Check if camera is available
+                                                val availableCameras = cameraProvider.availableCameraInfos
+                                                if (availableCameras.isEmpty()) {
+                                                    cameraError = "No cameras available"
+                                                    return@addListener
+                                                }
+                                                
+                                                val preview = Preview.Builder().build().also {
+                                                    it.surfaceProvider = surfaceProvider
+                                                }
+                                                
+                                                val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+                                                
+                                                cameraProvider.unbindAll()
+                                                cameraProvider.bindToLifecycle(
+                                                    lifecycleOwner,
+                                                    cameraSelector,
+                                                    preview
+                                                )
+                                            } catch (e: Exception) {
+                                                cameraError = e.message ?: "Camera binding failed"
+                                            }
+                                        }, ContextCompat.getMainExecutor(ctx))
+                                    } catch (e: Exception) {
+                                        cameraError = e.message ?: "Failed to get camera provider"
+                                    }
+                                }
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 160.dp, max = 240.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color.Black)
+                    )
+                }
+            } else {
+                ImagePlaceholder("Requesting camera access...")
+            }
+        }
     }
 }

@@ -1299,7 +1299,7 @@ private fun WeeklyOccupancyCard(
 }
 
 // ── Weekly History (demo: 3 collected weeks rendered like the Class Schedule) ──────────────
-private val HISTORY_WEEK_LABELS = listOf("10/5 – 16/5", "17/5 – 23/5", "31/5 – 6/6")
+private val HISTORY_WEEK_LABELS = listOf("10/5 – 16/5", "17/5 – 23/5", "24/5 – 30/5", "31/5 – 6/6")
 
 private data class SchedRun(val start: Int, val end: Int, val mean: Int)
 
@@ -1325,20 +1325,12 @@ private fun perm3(seed: Int): IntArray = when (((seed % 6) + 6) % 6) {
     3 -> intArrayOf(1, 2, 0); 4 -> intArrayOf(2, 0, 1); else -> intArrayOf(2, 1, 0)
 }
 
-/** Three DISTINCT bin shifts drawn from {-2,-1,+1,+2} (±20/±10 min, never 0), seeded. */
-private fun pick3Shift(seed: Int): IntArray {
-    val pool = intArrayOf(-2, -1, 1, 2)
-    val drop = ((seed % 4) + 4) % 4
-    val three = pool.filterIndexed { i, _ -> i != drop }
-    val p = perm3(seed / 4)
-    return intArrayOf(three[p[0]], three[p[1]], three[p[2]])
-}
-
 /**
  * Build a distinct demo week from a base per-day 10-min schedule. Variation is applied at the
- * SESSION level so every box differs clearly across the 3 weeks:
+ * SESSION level:
  *  - occupancy: three values spaced by ≥25 (so pairwise >10) within ±~50 of the base mean,
- *  - start & end: shifted by 10–20 min in distinct directions per week (so >5 min apart).
+ *  - start & end: only a small ±10-min drift per week (kept low; the displayed start is then
+ *    snapped to :10/:50 at render), so weeks differ mainly by occupancy, not timing.
  * Sessions are kept separated by ≥1 empty bin so they never merge into one box. Deterministic.
  */
 private fun varyWeekSchedule(base: Array<IntArray>, weekIndex: Int): Array<IntArray> =
@@ -1351,9 +1343,13 @@ private fun varyWeekSchedule(base: Array<IntArray>, weekIndex: Int): Array<IntAr
             val spacing = 25 + (seed % 25)                       // 25..49 → pairwise >10, within ±50
             val low = (run.mean - spacing).coerceAtLeast(6)
             val trio = intArrayOf(low, low + spacing, low + 2 * spacing)
-            val occ = trio[perm3(seed)[weekIndex]]
-            val startShift = pick3Shift(seed + 1)[weekIndex]
-            val endShift = pick3Shift(seed + 2)[weekIndex]
+            // Map the tab index to a 0..2 variant (perm3/trio are 3-wide; the no-data week 2 never
+            // reaches here, so data weeks 0,1,3 map to distinct variants 0,1,2).
+            val w = weekIndex.coerceAtMost(2)
+            val occ = trio[perm3(seed)[w]]
+            // Low time drift (±10 min); start is snapped to :10/:50 when rendered.
+            val startShift = ((seed + w * 13) % 3) - 1
+            val endShift = ((seed + w * 29 + 5) % 3) - 1
             var ns = (run.start + startShift).coerceIn(0, row.size - 1)
             if (ns <= prevEnd) ns = (prevEnd + 1).coerceAtMost(row.size - 1)  // keep a gap → no merge
             var ne = (run.end + endShift).coerceIn(ns + 1, row.size)
@@ -1409,16 +1405,25 @@ private fun WeeklyHistoryCard(
         }
         Spacer(Modifier.height(8.dp))
         val weekSchedule = remember(minuteSchedule, weekTab) {
-            minuteSchedule?.let { varyWeekSchedule(it, weekTab) }
+            if (weekTab == 2) {
+                // 24/5–30/5: no real data. Dummy bins only on the holiday days so the grid still
+                // renders (those days are hidden behind the public-holiday banner anyway).
+                Array(7) { d -> IntArray(144) { b -> if (d in setOf(1, 2, 3) && b == 60) 1 else 0 } }
+            } else {
+                minuteSchedule?.let { varyWeekSchedule(it, weekTab) }
+            }
         }
         ClassScheduleCard(
             hall = hall,
             learnedDays = null,
             minuteSchedule = weekSchedule,
-            showFallbackEstimate = true,
+            showFallbackEstimate = weekTab != 2,
             titleOverride = HISTORY_WEEK_LABELS[weekTab],
-            // Week III (31/5–6/6): Mon & Tue are public holidays → blank for every space.
-            holidayDays = if (weekTab == 2) setOf(0, 1) else emptySet(),
+            holidayDays = when (weekTab) {
+                2 -> setOf(1, 2, 3)   // 24/5–30/5: Tue, Wed, Thu public holiday; other days blank
+                3 -> setOf(0, 1)      // 31/5–6/6: Mon, Tue public holiday
+                else -> emptySet()
+            },
         )
     }
 }
@@ -2760,6 +2765,16 @@ private val CLASS_ROW_HEIGHT_DP   = 92  // taller rows so all 3 stacked labels f
 /** Sat (5) & Sun (6) rows are rendered at half height since weekends rarely have classes. */
 private fun classRowHeight(dow: Int): Int = if (dow >= 5) CLASS_ROW_HEIGHT_DP / 2 else CLASS_ROW_HEIGHT_DP
 
+/** Snap a minute-of-day to the nearest :10 or :50 mark (class start times must land on those). */
+private fun snapTo1050(minute: Int): Int {
+    val base = (minute / 60) * 60
+    val marks = intArrayOf(base - 10, base + 10, base + 50, base + 70)  // (H-1):50, H:10, H:50, (H+1):10
+    return marks.minByOrNull { kotlin.math.abs(it - minute) } ?: minute
+}
+
+/** Snap a minute-of-day to the nearest whole hour (:00). Used for the first session of each day. */
+private fun snapToHour(minute: Int): Int = ((minute + 30) / 60) * 60
+
 @Composable
 private fun ClassScheduleCard(
     hall: Hall,
@@ -2997,10 +3012,14 @@ private fun ClassScheduleCard(
                                 }
                             }
                             // Session blocks (hidden on holiday rows)
-                            if (!isHolidayRow) segments.forEach { seg ->
-                                val startMin = seg.startMinuteOfDay.coerceIn(gridStartMin, gridEndMin)
+                            if (!isHolidayRow) segments.forEachIndexed { segIdx, seg ->
+                                // First session of the day starts on a whole hour (:00); the rest
+                                // land on :10 or :50. This guarantees ≥4 XX:00 boxes per space.
+                                val rawStart = seg.startMinuteOfDay
+                                val startMin = (if (segIdx == 0) snapToHour(rawStart) else snapTo1050(rawStart))
+                                    .coerceIn(gridStartMin, gridEndMin)
                                 val endMin   = seg.endMinuteOfDay.coerceIn(gridStartMin, gridEndMin)
-                                if (endMin <= startMin) return@forEach
+                                if (endMin <= startMin) return@forEachIndexed
                                 val leftDp  = hourWidth * ((startMin - gridStartMin) / 60f)
                                 val widthDp = hourWidth * ((endMin - startMin) / 60f)
 

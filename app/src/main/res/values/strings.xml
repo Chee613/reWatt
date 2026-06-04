@@ -156,6 +156,7 @@
     <string name="setup_s6_body">Everything is ready. reWatt will now watch the room and help manage energy automatically. You can come back to this guide anytime from the Settings tab.</string>
     <string name="setup_complete">Setup complete</string>
     <string name="setup_complete_desc">Tap Done to start using reWatt.</string>
+    <string name="setup_camera_needed">Camera permission needed to show the live view</string>
 
     <!-- Capture tab -->
     <string name="capture_your_space">Your monitored space</string>
