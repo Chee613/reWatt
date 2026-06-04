@@ -62,6 +62,19 @@ data class SensorNodeSnapshot(
     val lastUpdatedAt: Long?,
 )
 
+/**
+ * Cross-device energy-waste signal. The sensor phone (camera + USB mmWave) writes this per room when
+ * it detects an empty, lit room; every Admin phone listens and raises the full-screen alert.
+ */
+data class EnergyAlertSignal(
+    val active: Boolean,
+    val roomId: String,
+    val personCount: Int,
+    val lightsOn: Boolean,
+    val nodeId: String,
+    val updatedAt: Long,
+)
+
 /** Next-day "wasted electricity" summary computed by [EnergyWasteWorker] and shown on the dashboard. */
 data class EnergyWasteSummary(
     val dateLabel: String,
@@ -310,6 +323,60 @@ class FirebaseSyncRepository(
         }
     }
 
+    /**
+     * Publish this device's current energy-waste state for its room so every Admin phone can alert.
+     * Called once per capture by the sensor: [wasteful] true => empty room with the lights still on.
+     * Writing the same `energyAlert/latest` doc each capture also refreshes `updatedAt`, which Admin
+     * uses to expire a stale alert if the sensor stops reporting.
+     */
+    fun publishEnergyAlert(wasteful: Boolean, personCount: Int, lightsOn: Boolean?) {
+        if (!hasFirebaseConfig()) return
+        val uid = currentUid ?: return
+        val room = effectiveRoomId
+        val data = mapOf(
+            "active" to wasteful,
+            "roomId" to room,
+            "personCount" to personCount,
+            "lightsOn" to (lightsOn ?: false),
+            "nodeId" to nodeId,
+            "updatedAt" to System.currentTimeMillis(),
+        )
+        roomRef(uid, room)
+            .collection("energyAlert").document("latest")
+            .set(data, SetOptions.merge())
+    }
+
+    /**
+     * Log that an Admin marked a NOW-action recommendation as done, so the system can track which
+     * recommendations were actually carried out. One doc per acknowledgement under the account.
+     */
+    fun recordNowActionDone(signature: String) {
+        if (!hasFirebaseConfig()) return
+        val uid = currentUid ?: return
+        val now = System.currentTimeMillis()
+        val data = mapOf(
+            "signature" to signature,
+            "acknowledgedAt" to now,
+            "nodeId" to nodeId,
+        )
+        FirebaseFirestore.getInstance()
+            .collection("rewatt_users").document(uid)
+            .collection("nowActionAcks").document(now.toString())
+            .set(data)
+    }
+
+    /** Live cross-device energy-waste signal for [roomId] (written by the sensor via [publishEnergyAlert]). */
+    fun energyAlertFlow(roomId: String): Flow<EnergyAlertSignal?> = callbackFlow {
+        val uid = FirebaseAuth.getInstance().currentUser?.uid
+        if (uid == null) { trySend(null); awaitClose { }; return@callbackFlow }
+        val listener = roomRef(uid, roomId)
+            .collection("energyAlert").document("latest")
+            .addSnapshotListener { snapshot, _ ->
+                trySend(snapshot?.toEnergyAlertSignal(roomId))
+            }
+        awaitClose { listener.remove() }
+    }
+
     /** Live next-day energy-waste summary for this device's room (written by [EnergyWasteWorker]). */
     fun wasteSummaryFlow(): Flow<EnergyWasteSummary?> = callbackFlow {
         val uid = FirebaseAuth.getInstance().currentUser?.uid
@@ -527,6 +594,19 @@ private fun DocumentSnapshot.toSensorNodeSnapshot(fallbackRoomId: String): Senso
         batteryPercent = getLong("batteryPercent")?.toInt(),
         lastUpdatedAt = getLong("lastUpdatedAt"),
     )
+
+private fun DocumentSnapshot.toEnergyAlertSignal(roomId: String): EnergyAlertSignal? {
+    if (!exists()) return null
+    val updatedAt = getLong("updatedAt") ?: return null
+    return EnergyAlertSignal(
+        active = getBoolean("active") ?: false,
+        roomId = getString("roomId") ?: roomId,
+        personCount = getLong("personCount")?.toInt() ?: 0,
+        lightsOn = getBoolean("lightsOn") ?: false,
+        nodeId = getString("nodeId") ?: "",
+        updatedAt = updatedAt,
+    )
+}
 
 private fun DocumentSnapshot.toEnergyWasteSummary(): EnergyWasteSummary? {
     if (!exists()) return null

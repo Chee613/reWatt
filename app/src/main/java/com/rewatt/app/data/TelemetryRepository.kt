@@ -1,6 +1,8 @@
 package com.rewatt.app.data
 
+import com.rewatt.app.telemetry.PacketFreshness
 import com.rewatt.app.telemetry.RadarTelemetry
+import com.rewatt.app.telemetry.TelemetryFreshness
 import com.rewatt.app.telemetry.UsbDataParser
 import com.rewatt.app.usb.UsbConnectionStatus
 import kotlinx.coroutines.CoroutineScope
@@ -24,6 +26,31 @@ class TelemetryRepository(
     private val analysisScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var analysisJob: Job? = null
     private var lastAnalysisKey: String? = null
+    private val freshness = TelemetryFreshness()
+
+    /** True only when the USB mmWave sensor sent a packet within the freshness window (~30s). */
+    fun isTelemetryFresh(nowMillis: Long = System.currentTimeMillis()): Boolean =
+        freshness.evaluate(mutableState.value.lastValidPacketAtMillis, nowMillis) == PacketFreshness.Fresh
+
+    /** Sensor side: publish the current energy-waste state to Firestore so Admin phones can alert. */
+    fun publishEnergyAlertState(wasteful: Boolean, personCount: Int, lightsOn: Boolean?) {
+        firebaseSyncRepository.publishEnergyAlert(wasteful, personCount, lightsOn)
+    }
+
+    /** Admin side: live cross-device energy-waste signal for [roomId]. */
+    fun energyAlertFlow(roomId: String): Flow<EnergyAlertSignal?> =
+        firebaseSyncRepository.energyAlertFlow(roomId)
+
+    /** Admin side: log that a NOW-action recommendation was carried out (Done pressed). */
+    fun recordNowActionDone(signature: String) {
+        firebaseSyncRepository.recordNowActionDone(signature)
+    }
+
+    // Last time a packet was persisted to Room. Used to throttle high-rate serial writes so the DB
+    // can never back up and stall the live UI path. Volatile because packets are processed on
+    // concurrent coroutines (one per serial line); an occasional extra insert from a race is harmless.
+    @Volatile
+    private var lastPersistedAtMillis = 0L
 
     suspend fun acceptRawPacket(rawPacket: String, capturedAtMillis: Long = System.currentTimeMillis()) {
         val telemetry = UsbDataParser.parseTelemetry(rawPacket, capturedAtMillis)
@@ -37,14 +64,31 @@ class TelemetryRepository(
             return
         }
 
-        telemetryDao.insert(telemetry.toEntity())
+        // Update the live UI state IMMEDIATELY, independently of persistence. Previously the Room
+        // insert ran first, so as the (never-pruned) telemetry_readings table grew, the serialized
+        // write backed up and the displayed reading fell progressively behind real time — the
+        // "live data freezes after a few minutes" bug. Newest packet always wins, so an out-of-order
+        // older packet (concurrent coroutines) can never overwrite a fresher reading.
         mutableState.update { current ->
-            current.copy(
-                latestTelemetry = telemetry,
-                lastValidPacketAtMillis = telemetry.capturedAtMillis,
-                validPacketCount = current.validPacketCount + 1,
-                lastMalformedPacket = null,
-            )
+            val lastAt = current.lastValidPacketAtMillis
+            if (lastAt != null && telemetry.capturedAtMillis < lastAt) {
+                current.copy(validPacketCount = current.validPacketCount + 1)
+            } else {
+                current.copy(
+                    latestTelemetry = telemetry,
+                    lastValidPacketAtMillis = telemetry.capturedAtMillis,
+                    validPacketCount = current.validPacketCount + 1,
+                    lastMalformedPacket = null,
+                )
+            }
+        }
+
+        // Persist at most once per PERSIST_INTERVAL_MILLIS. The serial stream can emit many packets a
+        // second; the dashboard/forecast only need a sampled history, so throttling keeps the table
+        // small and the write path off the live UI's back.
+        if (capturedAtMillis - lastPersistedAtMillis >= PERSIST_INTERVAL_MILLIS) {
+            lastPersistedAtMillis = capturedAtMillis
+            runCatching { telemetryDao.insert(telemetry.toEntity()) }
         }
     }
 
@@ -176,6 +220,10 @@ class TelemetryRepository(
 
     companion object {
         private const val MAX_MALFORMED_PACKET_PREVIEW = 160
+
+        // Persist at most one telemetry row every 2s regardless of serial packet rate. The live UI
+        // updates on every packet (in memory); only the sampled history goes to Room.
+        private const val PERSIST_INTERVAL_MILLIS = 2_000L
     }
 }
 
