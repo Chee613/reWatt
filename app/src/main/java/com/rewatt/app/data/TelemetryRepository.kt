@@ -147,7 +147,7 @@ class TelemetryRepository(
         }
 
         analysisJob = analysisScope.launch {
-            runCatching { geminiActivityAnalyzer.analyze(summary) }
+            runCatching { geminiActivityAnalyzer.analyze(summary, com.rewatt.app.core.LocaleManager.promptLanguageName()) }
                 .onSuccess { analysis ->
                     mutableState.update { current ->
                         current.copy(

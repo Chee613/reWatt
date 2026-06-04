@@ -44,7 +44,7 @@ class GeminiEnergyWasteAnalyzer(
 ) {
     fun isConfigured(): Boolean = apiKey.isNotBlank()
 
-    suspend fun analyze(input: EnergyWasteInput): EnergyWasteAnalysis =
+    suspend fun analyze(input: EnergyWasteInput, language: String = "English"): EnergyWasteAnalysis =
         withContext(Dispatchers.IO) {
             require(isConfigured()) { "Gemini API key is missing." }
 
@@ -60,7 +60,7 @@ class GeminiEnergyWasteAnalyzer(
 
             try {
                 connection.outputStream.use { output ->
-                    output.write(buildRequestBody(input).toByteArray(Charsets.UTF_8))
+                    output.write(buildRequestBody(input, language).toByteArray(Charsets.UTF_8))
                 }
 
                 val responseCode = connection.responseCode
@@ -84,7 +84,7 @@ class GeminiEnergyWasteAnalyzer(
         const val MODEL_ID = "gemini-2.5-flash"
         private const val GEMINI_ENDPOINT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
-        fun buildRequestBody(input: EnergyWasteInput): String =
+        fun buildRequestBody(input: EnergyWasteInput, language: String = "English"): String =
             JSONObject()
                 .put(
                     "contents",
@@ -93,7 +93,7 @@ class GeminiEnergyWasteAnalyzer(
                             .put("role", "user")
                             .put(
                                 "parts",
-                                JSONArray().put(JSONObject().put("text", buildPrompt(input))),
+                                JSONArray().put(JSONObject().put("text", buildPrompt(input, language))),
                             ),
                     ),
                 )
@@ -105,7 +105,7 @@ class GeminiEnergyWasteAnalyzer(
                 )
                 .toString()
 
-        fun buildPrompt(input: EnergyWasteInput): String =
+        fun buildPrompt(input: EnergyWasteInput, language: String = "English"): String =
             listOf(
                 "You estimate wasted electricity for a university lecture hall in Malaysia (tropical).",
                 "Yesterday the room was detected EMPTY but with the lights and air-conditioning still",
@@ -128,6 +128,7 @@ class GeminiEnergyWasteAnalyzer(
                 "wastedKwh (number, rounded to 2 decimals),",
                 "costRm (number, rounded to 2 decimals),",
                 "summary (one concise sentence a facilities manager would read).",
+                "Write the roomType and summary field values in $language. Keep the JSON keys in English.",
             ).joinToString("\n")
 
         fun parseGenerateContentResponse(responseBody: String): EnergyWasteAnalysis {

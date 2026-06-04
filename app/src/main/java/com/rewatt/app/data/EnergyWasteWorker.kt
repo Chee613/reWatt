@@ -70,6 +70,7 @@ class EnergyWasteWorker(context: Context, params: WorkerParameters) : CoroutineW
             runCatching {
                 GeminiEnergyWasteAnalyzer().analyze(
                     EnergyWasteInput(roomName = room, capacity = capacity, wastedMinutes = wastedMinutes),
+                    com.rewatt.app.core.LocaleManager.promptLanguageName(),
                 )
             }.getOrNull()
         }

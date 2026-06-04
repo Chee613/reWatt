@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">REWATT</string>
+    <string name="usb_notification_channel">Pautan penderia</string>
+    <string name="usb_notification_title">Pautan penderia REWATT aktif</string>
+    <string name="usb_notification_text">Mendengar telemetri ESP32-C6 melalui USB.</string>
+    <string name="perception_notification_channel">Tangkapan latar belakang</string>
+    <string name="perception_notification_title">REWATT sedang memantau bilik ini</string>
+    <string name="perception_notification_text">Menangkap satu bingkai setiap 10 minit untuk menjejak penghunian dan penggunaan tenaga.</string>
+    <string name="energy_alert_channel">Peringatan tenaga</string>
+    <string name="energy_alert_title">Lampu masih menyala dalam bilik kosong</string>
+    <string name="energy_alert_text">Tiada sesiapa di sini tetapi lampu/penyaman udara masih hidup. Sila matikannya untuk menjimatkan tenaga.</string>
+    <string name="energy_alert_done">Selesai</string>
+    <string name="energy_alert_snooze">Tunda 5 min</string>
+
+    <!-- Bottom navigation + sub-tabs -->
+    <string name="nav_live">LANGSUNG</string>
+    <string name="nav_analytic">Analitik</string>
+    <string name="nav_capture">Tangkap</string>
+    <string name="nav_setting">Tetapan</string>
+    <string name="subtab_overview">Ringkasan</string>
+    <string name="subtab_manage">Urus</string>
+    <string name="toggle_action">Tindakan</string>
+    <string name="toggle_data">Data</string>
+
+    <!-- Section headers -->
+    <string name="dash_activity">AKTIVITI</string>
+    <string name="weather_title">CUACA LUAR</string>
+    <string name="ac_suggestion_title">CADANGAN TENAGA PENYAMAN</string>
+    <string name="waste_title">TENAGA TERBAZIR SEMALAM</string>
+
+    <!-- Settings -->
+    <string name="settings_language">Bahasa</string>
+    <string name="settings_title">Tetapan</string>
+    <string name="settings_device_setup">Persediaan Peranti</string>
+    <string name="settings_your_space">Ruang Anda</string>
+    <string name="settings_profile">Profil</string>
+    <string name="settings_phone_mode">Mod Telefon</string>
+    <string name="settings_connection">Sambungan</string>
+    <string name="settings_system_status">Status sistem</string>
+
+    <!-- Metric card titles -->
+    <string name="m_ac_lights">Penyaman &amp; Lampu</string>
+    <string name="m_temperature">Suhu</string>
+    <string name="m_humidity">Kelembapan</string>
+    <string name="m_session_ends">Sesi tamat</string>
+    <string name="m_top_sound">Bunyi utama</string>
+    <string name="m_camera">Kamera</string>
+    <string name="m_mic">Mikrofon</string>
+    <string name="m_people_detected">Orang dikesan</string>
+    <string name="m_room_light">Cahaya bilik</string>
+    <string name="m_exposure">Pendedahan</string>
+
+    <!-- Weather card -->
+    <string name="weather_current_conditions">Keadaan semasa</string>
+    <string name="weather_outdoor_temp">Suhu luar</string>
+    <string name="weather_outdoor_rh">Kelembapan luar</string>
+    <string name="weather_delta_indoor">Δ vs dalaman</string>
+
+    <!-- Buttons -->
+    <string name="btn_capture">Tangkap</string>
+    <string name="btn_open">Buka</string>
+    <string name="btn_refresh">Muat semula</string>
+    <string name="btn_loading">Memuatkan…</string>
+    <string name="btn_sign_out">Log Keluar</string>
+    <string name="btn_delete_account">Padam Akaun</string>
+    <string name="btn_dismiss">Tutup</string>
+    <string name="btn_suggest_action">Cadangkan tindakan</string>
+    <string name="btn_thinking">Sedang berfikir…</string>
+
+    <!-- Auth -->
+    <string name="auth_tagline_signin">Log masuk untuk teruskan</string>
+    <string name="auth_email">E-mel</string>
+    <string name="auth_password">Kata laluan</string>
+    <string name="auth_sign_in">Log Masuk</string>
+    <string name="auth_no_account">Tiada akaun? Daftar</string>
+    <string name="auth_create_account">Cipta Akaun</string>
+    <string name="auth_confirm_password">Sahkan Kata Laluan</string>
+    <string name="auth_passwords_no_match">Kata laluan tidak sepadan</string>
+    <string name="auth_have_account">Sudah ada akaun? Log Masuk</string>
+    <string name="auth_join">Sertai ReWatt</string>
+    <string name="auth_building">Bangunan</string>
+    <string name="auth_building_hint">cth. fsktm, foe, fass</string>
+
+    <!-- NOW-block action labels -->
+    <string name="now_label_keep_ac_on">Kekalkan penyaman udara</string>
+    <string name="now_label_turn_off_ac_lights">Matikan penyaman &amp; lampu</string>
+    <string name="now_label_turn_off_all">Matikan semua sistem</string>
+    <string name="now_label_set_ac">Tetapkan penyaman ke %1$d°C</string>
+    <string name="now_label_increase_cooling">Tingkatkan penyejukan</string>
+    <string name="now_label_maintain">Kekalkan tetapan semasa</string>
+    <string name="now_label_no_action">Tiada tindakan segera diperlukan</string>
+
+    <!-- NOW-block action reasons -->
+    <string name="now_reason_unexpected_occupancy">Penghunian luar jangka (%1$d orang dikesan)</string>
+    <string name="now_reason_no_class_until">Tiada kelas sehingga %1$02d:00</string>
+    <string name="now_reason_no_more_classes">Tiada lagi kelas hari ini</string>
+    <string name="now_reason_too_cold">Terlalu sejuk (THI %1$.1f) — naikkan suhu untuk jimat tenaga</string>
+    <string name="now_reason_temperature">Suhu ialah %1$.1f°C</string>
+    <string name="now_reason_class_in_session">Kelas sedang berlangsung (~%1$d dijangka)</string>
+    <string name="now_reason_weekend">Hujung minggu — tiada kelas dijadualkan</string>
+    <string name="now_reason_overnight">Waktu malam — tiada kelas sehingga 07:30</string>
+    <string name="now_reason_break_until">Waktu rehat sehingga %1$02d:%2$02d</string>
+    <string name="now_reason_normal_session">Sesi kelas biasa sedang berlangsung</string>
+    <string name="now_reason_room_empty">Bilik kelihatan kosong</string>
+</resources>

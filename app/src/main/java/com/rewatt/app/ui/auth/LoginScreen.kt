@@ -38,6 +38,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rewatt.app.R
 
@@ -71,7 +72,7 @@ fun LoginScreen(
         Spacer(Modifier.height(16.dp))
         Text("ReWatt", fontWeight = FontWeight.Bold, fontSize = 32.sp)
         Text(
-            "Sign in to continue",
+            stringResource(R.string.auth_tagline_signin),
             fontSize = 14.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -80,7 +81,7 @@ fun LoginScreen(
         OutlinedTextField(
             value = username,
             onValueChange = { username = it },
-            label = { Text("Email") },
+            label = { Text(stringResource(R.string.auth_email)) },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
@@ -90,7 +91,7 @@ fun LoginScreen(
         OutlinedTextField(
             value = password,
             onValueChange = { password = it },
-            label = { Text("Password") },
+            label = { Text(stringResource(R.string.auth_password)) },
             visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             singleLine = true,
@@ -124,12 +125,12 @@ fun LoginScreen(
             if (isLoading) {
                 CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
             } else {
-                Text("Sign In")
+                Text(stringResource(R.string.auth_sign_in))
             }
         }
         Spacer(Modifier.height(12.dp))
         TextButton(onClick = onNavigateToSignUp, enabled = !isLoading) {
-            Text("Don't have an account? Sign Up")
+            Text(stringResource(R.string.auth_no_account))
         }
 
         if (onDevBypass != null) {

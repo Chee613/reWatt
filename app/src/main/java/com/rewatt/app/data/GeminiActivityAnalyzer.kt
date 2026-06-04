@@ -14,7 +14,7 @@ class GeminiActivityAnalyzer(
 ) {
     fun isConfigured(): Boolean = apiKey.isNotBlank()
 
-    suspend fun analyze(summary: PerceptionSyncSummary): ActivityAnalysis =
+    suspend fun analyze(summary: PerceptionSyncSummary, language: String = "English"): ActivityAnalysis =
         withContext(Dispatchers.IO) {
             require(isConfigured()) { "Gemini API key is missing." }
 
@@ -30,7 +30,7 @@ class GeminiActivityAnalyzer(
 
             try {
                 connection.outputStream.use { output ->
-                    output.write(buildRequestBody(summary).toByteArray(Charsets.UTF_8))
+                    output.write(buildRequestBody(summary, language).toByteArray(Charsets.UTF_8))
                 }
 
                 val responseCode = connection.responseCode
@@ -60,7 +60,7 @@ class GeminiActivityAnalyzer(
             "likely_empty",
         )
 
-        fun buildRequestBody(summary: PerceptionSyncSummary): String =
+        fun buildRequestBody(summary: PerceptionSyncSummary, language: String = "English"): String =
             JSONObject()
                 .put(
                     "contents",
@@ -69,7 +69,7 @@ class GeminiActivityAnalyzer(
                             .put("role", "user")
                             .put(
                                 "parts",
-                                JSONArray().put(JSONObject().put("text", buildPrompt(summary))),
+                                JSONArray().put(JSONObject().put("text", buildPrompt(summary, language))),
                             ),
                     ),
                 )
@@ -81,7 +81,7 @@ class GeminiActivityAnalyzer(
                 )
                 .toString()
 
-        fun buildPrompt(summary: PerceptionSyncSummary): String =
+        fun buildPrompt(summary: PerceptionSyncSummary, language: String = "English"): String =
             listOf(
                 "You classify lecture hall activity from sensor summaries.",
                 "",
@@ -95,6 +95,7 @@ class GeminiActivityAnalyzer(
                 "",
                 "Allowed occupancyHint values: occupied, likely_occupied, unclear, likely_empty.",
                 "Prefer practical room activities such as Lecture session, Group discussion, Quiet study, Cleaning/maintenance, Empty/idle, Unknown.",
+                "Write the activity and reason field values in $language. Keep the JSON keys and the occupancyHint value in English.",
             ).joinToString("\n")
 
         fun parseGenerateContentResponse(responseBody: String): ActivityAnalysis {

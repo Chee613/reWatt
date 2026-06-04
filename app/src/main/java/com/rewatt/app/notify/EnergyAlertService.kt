@@ -92,7 +92,18 @@ class EnergyAlertService : Service() {
         )
     }
 
+    /**
+     * Context whose resources use the app's selected language. AppCompat's per-app locale does not
+     * reach Service contexts on API < 33, so we override the configuration explicitly here.
+     */
+    private fun localizedContext(): android.content.Context {
+        val config = android.content.res.Configuration(resources.configuration)
+        config.setLocale(com.rewatt.app.core.LocaleManager.currentLocale())
+        return createConfigurationContext(config)
+    }
+
     private fun buildNotification(): Notification {
+        val res = localizedContext()
         val fullScreenIntent = PendingIntent.getActivity(
             this,
             FULL_SCREEN_REQUEST_CODE,
@@ -124,8 +135,8 @@ class EnergyAlertService : Service() {
 
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_rewatt)
-            .setContentTitle(getString(R.string.energy_alert_title))
-            .setContentText(getString(R.string.energy_alert_text))
+            .setContentTitle(res.getString(R.string.energy_alert_title))
+            .setContentText(res.getString(R.string.energy_alert_text))
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setOngoing(true)
@@ -136,12 +147,12 @@ class EnergyAlertService : Service() {
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .addAction(
                 0,
-                getString(R.string.energy_alert_done),
+                res.getString(R.string.energy_alert_done),
                 actionIntent(EnergyAlertNotifier.ACTION_DONE, 0),
             )
             .addAction(
                 0,
-                getString(R.string.energy_alert_snooze),
+                res.getString(R.string.energy_alert_snooze),
                 actionIntent(EnergyAlertNotifier.ACTION_SNOOZE, 1),
             )
             .build()
