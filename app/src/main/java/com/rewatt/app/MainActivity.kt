@@ -184,6 +184,7 @@ class MainActivity : AppCompatActivity() {
                     val learnedSchedules by viewModel.learnedSchedules.collectAsStateWithLifecycle()
                     val recentCaptures by viewModel.recentCaptures.collectAsStateWithLifecycle()
                     val wasteSummary by viewModel.wasteSummary.collectAsStateWithLifecycle()
+                    val wasteRefreshing by viewModel.wasteRefreshing.collectAsStateWithLifecycle()
                     val sensorFleet by viewModel.sensorFleet.collectAsStateWithLifecycle()
                     val authedUser = (authState as? AuthState.Authenticated)?.user
                     DashboardScreen(
@@ -197,6 +198,8 @@ class MainActivity : AppCompatActivity() {
                         onDebugCapture = perceptionViewModel::captureNow,
                         onRefreshWeather = viewModel::refreshWeather,
                         onRequestEnergyAdvice = viewModel::requestEnergyAdvice,
+                        onRefreshWaste = viewModel::refreshWasteSummary,
+                        wasteRefreshing = wasteRefreshing,
                         userEmail = authedUser?.email ?: "dev@rewatt.app",
                         userDisplayName = authedUser?.displayName ?: if (devBypass) "Dev Mode" else null,
                         onSignOut = {
