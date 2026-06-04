@@ -46,7 +46,6 @@
     <string name="m_session_ends">Session ends</string>
     <string name="m_top_sound">Top sound</string>
     <string name="m_camera">Camera</string>
-    <string name="m_mic">Mic</string>
     <string name="m_people_detected">People detected</string>
     <string name="m_room_light">Room light</string>
     <string name="m_exposure">Exposure</string>
@@ -120,10 +119,9 @@
     <string name="setup_next">Next</string>
     <string name="setup_done">Done</string>
     <string name="setup_step_counter">%1$d / %2$d</string>
-    <string name="setup_s1_title">1. Allow Camera, Microphone &amp; Location</string>
-    <string name="setup_s1_body">reWatt uses the camera and microphone to detect who is in the room, and location to fetch outdoor weather for energy advice.</string>
+    <string name="setup_s1_title">1. Allow Camera &amp; Location</string>
+    <string name="setup_s1_body">reWatt uses the camera to detect who is in the room, and location to fetch outdoor weather for energy advice.</string>
     <string name="setup_perm_camera">Camera</string>
-    <string name="setup_perm_microphone">Microphone</string>
     <string name="setup_perm_location">Location</string>
     <string name="setup_allowed">Allowed</string>
     <string name="setup_not_allowed">Not allowed</string>

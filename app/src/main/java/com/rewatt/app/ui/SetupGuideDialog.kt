@@ -225,8 +225,7 @@ fun SetupGuideDialog(onDismiss: (spaceName: String?, capacity: Int?) -> Unit) {
 // single-permission requests instead.
 private const val REQUEST_IDLE = 0
 private const val REQUEST_CAMERA = 1
-private const val REQUEST_MIC = 2
-private const val REQUEST_LOCATION = 3
+private const val REQUEST_LOCATION = 2
 
 @Composable
 private fun PermissionsStep() {
@@ -234,12 +233,6 @@ private fun PermissionsStep() {
     var cameraGranted by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
-                PackageManager.PERMISSION_GRANTED,
-        )
-    }
-    var micGranted by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
                 PackageManager.PERMISSION_GRANTED,
         )
     }
@@ -259,12 +252,6 @@ private fun PermissionsStep() {
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
         cameraGranted = granted
-        requestStep = REQUEST_MIC
-    }
-    val micLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        micGranted = granted
         requestStep = REQUEST_LOCATION
     }
     val locationLauncher = rememberLauncherForActivityResult(
@@ -279,11 +266,8 @@ private fun PermissionsStep() {
     LaunchedEffect(requestStep) {
         when (requestStep) {
             REQUEST_CAMERA ->
-                if (cameraGranted) requestStep = REQUEST_MIC
+                if (cameraGranted) requestStep = REQUEST_LOCATION
                 else cameraLauncher.launch(Manifest.permission.CAMERA)
-            REQUEST_MIC ->
-                if (micGranted) requestStep = REQUEST_LOCATION
-                else micLauncher.launch(Manifest.permission.RECORD_AUDIO)
             REQUEST_LOCATION ->
                 if (locationGranted) requestStep = REQUEST_IDLE
                 else locationLauncher.launch(
@@ -310,12 +294,11 @@ private fun PermissionsStep() {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             PermissionRow(label = stringResource(R.string.setup_perm_camera), granted = cameraGranted)
-            PermissionRow(label = stringResource(R.string.setup_perm_microphone), granted = micGranted)
             PermissionRow(label = stringResource(R.string.setup_perm_location), granted = locationGranted)
         }
     }
 
-    if (!cameraGranted || !micGranted || !locationGranted) {
+    if (!cameraGranted || !locationGranted) {
         Button(
             onClick = { requestStep = REQUEST_CAMERA },
             modifier = Modifier.fillMaxWidth(),

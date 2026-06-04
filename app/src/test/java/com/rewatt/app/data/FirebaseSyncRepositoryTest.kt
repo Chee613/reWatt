@@ -11,9 +11,6 @@ class FirebaseSyncRepositoryTest {
         val payload = buildPerceptionPayload(
             perceptionSummary = PerceptionSyncSummary(
                 personCount = 1,
-                activityLabels = listOf("Speech", "Typing", "Clapping", "Wind"),
-                audioPresenceDetected = true,
-                audioPresenceScore = 0.82f,
                 temperatureC = 26.5f,
                 humidityPercent = 58.2f,
                 lightsOn = true,
@@ -33,7 +30,6 @@ class FirebaseSyncRepositoryTest {
         assertEquals(1_000L, payload["lastUpdatedAt"])
         assertEquals(1, payload["personCount"])
         assertEquals(900L, payload["perceptionCapturedAt"])
-        assertEquals("Speech", payload["primaryActivity"])
         assertEquals(26.5f, payload["temperatureC"])
         assertEquals(58.2f, payload["humidityPercent"])
         assertEquals(true, payload["lightsOn"])
@@ -41,11 +37,8 @@ class FirebaseSyncRepositoryTest {
         assertEquals(200, payload["exposureIso"])
         assertEquals(0.05, payload["exposureTimeSeconds"])
         assertEquals(1.8, payload["exposureAperture"])
-        val activityLabels = payload["activityLabels"] as List<*>
-        assertEquals(3, activityLabels.size)
-        assertTrue(activityLabels.contains("Typing"))
-        assertTrue(activityLabels.contains("Clapping"))
-        assertFalse(activityLabels.contains("Wind"))
+        assertFalse(payload.containsKey("primaryActivity"))
+        assertFalse(payload.containsKey("activityLabels"))
         assertFalse(payload.containsKey("presence"))
         assertFalse(payload.containsKey("movingEnergy"))
         assertFalse(payload.containsKey("stationaryEnergy"))

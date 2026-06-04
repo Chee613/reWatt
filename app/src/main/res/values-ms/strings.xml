@@ -46,7 +46,6 @@
     <string name="m_session_ends">Sesi tamat</string>
     <string name="m_top_sound">Bunyi utama</string>
     <string name="m_camera">Kamera</string>
-    <string name="m_mic">Mikrofon</string>
     <string name="m_people_detected">Orang dikesan</string>
     <string name="m_room_light">Cahaya bilik</string>
     <string name="m_exposure">Pendedahan</string>
@@ -120,10 +119,9 @@
     <string name="setup_next">Seterusnya</string>
     <string name="setup_done">Selesai</string>
     <string name="setup_step_counter">%1$d / %2$d</string>
-    <string name="setup_s1_title">1. Benarkan Kamera, Mikrofon &amp; Lokasi</string>
-    <string name="setup_s1_body">reWatt menggunakan kamera dan mikrofon untuk mengesan siapa yang berada di dalam bilik, dan lokasi untuk mendapatkan cuaca luar bagi nasihat tenaga.</string>
+    <string name="setup_s1_title">1. Benarkan Kamera &amp; Lokasi</string>
+    <string name="setup_s1_body">reWatt menggunakan kamera untuk mengesan siapa yang berada di dalam bilik, dan lokasi untuk mendapatkan cuaca luar bagi nasihat tenaga.</string>
     <string name="setup_perm_camera">Kamera</string>
-    <string name="setup_perm_microphone">Mikrofon</string>
     <string name="setup_perm_location">Lokasi</string>
     <string name="setup_allowed">Dibenarkan</string>
     <string name="setup_not_allowed">Tidak dibenarkan</string>

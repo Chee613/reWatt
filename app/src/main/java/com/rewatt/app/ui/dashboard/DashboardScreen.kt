@@ -103,7 +103,6 @@ import com.rewatt.app.data.SensorDashboardState
 import com.rewatt.app.data.SensorNodeSnapshot
 import com.rewatt.app.data.WeatherState
 import com.rewatt.app.data.WeatherStatus
-import com.rewatt.app.perception.AudioCaptureController
 import com.rewatt.app.perception.CaptureStartSource
 import com.rewatt.app.perception.ObjectDetection
 import com.rewatt.app.perception.PerceptionUiState
@@ -978,56 +977,6 @@ private fun BulletPoint(text: String) {
             fontSize = 13.sp,
             color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.weight(1f),
-        )
-    }
-}
-
-@Composable
-private fun RoomContextCard(perceptionState: PerceptionUiState) {
-    val sounds = perceptionState.soundDetections.take(6)
-    InfoCard {
-        Text("Sound scene", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-        Spacer(Modifier.height(8.dp))
-        if (sounds.isEmpty()) {
-            Text(
-                text = if (perceptionState.isRunning) "Listening…" else "Start capture to detect sounds",
-                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 12.sp,
-            )
-        } else {
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                sounds.forEach { sound -> SoundChip(sound = sound) }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SoundChip(sound: com.rewatt.app.perception.SoundDetection) {
-    val containerColor = if (sound.indicatesHumanPresence) {
-        androidx.compose.material3.MaterialTheme.colorScheme.primaryContainer
-    } else {
-        androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant
-    }
-    val contentColor = if (sound.indicatesHumanPresence) {
-        androidx.compose.material3.MaterialTheme.colorScheme.onPrimaryContainer
-    } else {
-        androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
-    }
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(50))
-            .background(containerColor)
-            .padding(horizontal = 10.dp, vertical = 5.dp),
-    ) {
-        Text(
-            text = "${sound.label}  ${(sound.confidence * 100).toInt()}%",
-            fontSize = 12.sp,
-            fontWeight = if (sound.indicatesHumanPresence) FontWeight.SemiBold else FontWeight.Normal,
-            color = contentColor,
         )
     }
 }
@@ -3396,74 +3345,6 @@ private fun LatestFrameCompactCard(
 }
 
 @Composable
-private fun AudioCompactCard(
-    state: PerceptionUiState,
-    modifier: Modifier = Modifier,
-) {
-    InfoCard(modifier = modifier) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text("Human activity sounds", fontWeight = FontWeight.SemiBold)
-            }
-            Text(
-                text = if (state.audioPresenceDetected) {
-                    "${(state.audioPresenceScore * 100).toInt()}%"
-                } else {
-                    "${(state.audioRms * 100).toInt()}%"
-                },
-                color = androidx.compose.material3.MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.SemiBold,
-            )
-        }
-        state.audioRecordingStartedAtMillis?.let { startedAt ->
-            Spacer(Modifier.height(8.dp))
-            AudioRecordingProgress(startedAtMillis = startedAt)
-        }
-        Spacer(Modifier.height(6.dp))
-        WaveformBar(waveform = state.audioWaveform)
-        Text(
-            text = state.yamnetMessage,
-            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 12.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
-@Composable
-private fun AudioRecordingProgress(startedAtMillis: Long) {
-    val totalSeconds = AudioCaptureController.RECORDING_WINDOW_SECONDS
-    var now by remember(startedAtMillis) { mutableStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(startedAtMillis) {
-        while (true) {
-            now = System.currentTimeMillis()
-            kotlinx.coroutines.delay(100L)
-        }
-    }
-    val elapsedSeconds = ((now - startedAtMillis) / 1000f).coerceIn(0f, totalSeconds.toFloat())
-    val progress = (elapsedSeconds / totalSeconds).coerceIn(0f, 1f)
-
-    Column {
-        Text(
-            text = stringResource(R.string.capture_recording, elapsedSeconds.toInt(), totalSeconds),
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Medium,
-            color = androidx.compose.material3.MaterialTheme.colorScheme.primary,
-        )
-        Spacer(Modifier.height(4.dp))
-        androidx.compose.material3.LinearProgressIndicator(
-            progress = { progress },
-            modifier = Modifier.fillMaxWidth(),
-        )
-    }
-}
-
-@Composable
 private fun FramePreview(
     frame: Bitmap?,
     detections: List<ObjectDetection>,
@@ -3516,63 +3397,6 @@ private fun DetectionOverlay(detections: List<ObjectDetection>) {
                 style = Stroke(width = strokeWidth),
             )
         }
-    }
-}
-
-@Composable
-private fun WaveformBar(waveform: List<Float>) {
-    val barColor = androidx.compose.material3.MaterialTheme.colorScheme.secondary
-    val emptyColor = androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant
-    Canvas(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(40.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(emptyColor),
-    ) {
-        if (waveform.isEmpty()) return@Canvas
-        val barWidth = size.width / waveform.size
-        waveform.forEachIndexed { index, level ->
-            val barHeight = (size.height * level).coerceAtLeast(2f)
-            drawRect(
-                color = barColor,
-                topLeft = androidx.compose.ui.geometry.Offset(
-                    x = index * barWidth,
-                    y = (size.height - barHeight) / 2f,
-                ),
-                size = androidx.compose.ui.geometry.Size(
-                    width = (barWidth * 0.72f).coerceAtLeast(1f),
-                    height = barHeight,
-                ),
-            )
-        }
-    }
-}
-
-@Composable
-private fun DetectionRow(
-    label: String,
-    confidence: Float,
-    highlight: Boolean,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = label,
-            fontWeight = if (highlight) FontWeight.SemiBold else FontWeight.Normal,
-            fontSize = 12.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        Text(
-            text = "${(confidence * 100).toInt()}%",
-            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 12.sp,
-        )
     }
 }
 

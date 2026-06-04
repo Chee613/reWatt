@@ -11,7 +11,6 @@ import com.rewatt.app.perception.CaptureStartSource
 import com.rewatt.app.perception.DetectionBox
 import com.rewatt.app.perception.ObjectDetection
 import com.rewatt.app.perception.PerceptionUiState
-import com.rewatt.app.perception.SoundDetection
 import com.rewatt.app.telemetry.PacketFreshness
 import com.rewatt.app.telemetry.RadarTelemetry
 import com.rewatt.app.ui.theme.ReWattTheme
@@ -124,10 +123,6 @@ class DashboardScreenTest {
                         classId = 63,
                         box = DetectionBox(0f, 0f, 1f, 1f),
                     ),
-                ),
-                soundDetections = listOf(
-                    SoundDetection(label = "Speech", confidence = 0.84f),
-                    SoundDetection(label = "Clicking", confidence = 0.76f),
                 ),
                 captureStartSource = CaptureStartSource.Manual,
                 isRunning = true,

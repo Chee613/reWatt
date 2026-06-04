@@ -11,7 +11,6 @@ class GeminiActivityAnalyzerTest {
         val prompt = GeminiActivityAnalyzer.buildPrompt(
             PerceptionSyncSummary(
                 personCount = 2,
-                activityLabels = listOf("Clapping", "Speech", "Computer keyboard", "Typing"),
                 temperatureC = 26.5f,
                 humidityPercent = 58.2f,
             ),
@@ -30,7 +29,7 @@ class GeminiActivityAnalyzerTest {
     fun buildRequestBody_requestsJsonOutput() {
         val body = JSONObject(
             GeminiActivityAnalyzer.buildRequestBody(
-                PerceptionSyncSummary(activityLabels = listOf("Speech")),
+                PerceptionSyncSummary(personCount = 1),
             ),
         )
         val generationConfig = body.getJSONObject("generationConfig")

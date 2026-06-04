@@ -28,9 +28,8 @@ import kotlinx.coroutines.launch
  * Foreground service that owns the perception pipeline so captures keep firing while the screen is
  * off. The camera is driven by an exact alarm ([AlarmManager.setExactAndAllowWhileIdle]) anchored to
  * the next 10-minute wall-clock mark, with a partial wake lock held across the capture — this is
- * what fixes the missed 3:10 AM capture. Audio keeps its own self-scheduling loop on the service
- * scope. Results are written to [PerceptionStateHolder] (for the dashboard) and
- * [TelemetryRepository] (for sync/forecast).
+ * what fixes the missed 3:10 AM capture. Results are written to [PerceptionStateHolder] (for the
+ * dashboard) and [TelemetryRepository] (for sync/forecast).
  */
 class CameraCaptureService : LifecycleService() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -41,9 +40,7 @@ class CameraCaptureService : LifecycleService() {
     private lateinit var powerManager: PowerManager
 
     private var cameraController: CameraCaptureController? = null
-    private var audioController: AudioCaptureController? = null
     private var yoloDetector: YoloDetector? = null
-    private var yamnetDetector: YamnetDetector? = null
     private var started = false
 
     override fun onCreate() {
@@ -61,10 +58,7 @@ class CameraCaptureService : LifecycleService() {
         super.onStartCommand(intent, flags, startId)
         when (intent?.action) {
             ACTION_CAPTURE -> runCaptureCycle()
-            ACTION_CAPTURE_NOW -> {
-                cameraController?.captureNow()
-                audioController?.captureNow()
-            }
+            ACTION_CAPTURE_NOW -> cameraController?.captureNow()
             else -> startPerception()
         }
         return START_STICKY
@@ -78,12 +72,10 @@ class CameraCaptureService : LifecycleService() {
                 isRunning = true,
                 statusMessage = "Perception is running in the background.",
                 yoloMessage = "Loading YOLO in the background.",
-                yamnetMessage = "Loading YAMNet in the background.",
             )
         }
         setupControllers()
         loadDetectors()
-        audioController?.start()
         // Do NOT capture immediately — the first capture fires at the next 10-minute boundary.
         // Immediate capture is only done via the explicit "Capture Now" (ACTION_CAPTURE_NOW).
         scheduleNextCaptureAlarm()
@@ -137,35 +129,6 @@ class CameraCaptureService : LifecycleService() {
             },
             onError = { message -> stateHolder.update { it.copy(yoloMessage = message) } },
         ).also { it.attach(this) }
-
-        audioController = AudioCaptureController(
-            context = this,
-            scope = serviceScope,
-            yamnetDetectorProvider = { yamnetDetector },
-            onStatus = { message ->
-                stateHolder.update { it.copy(yamnetMessage = message, statusMessage = "Perception is running.") }
-            },
-            onAudioCaptured = { result ->
-                val newState = stateHolder.updateAndGet {
-                    it.copy(
-                        latestAudioAtMillis = result.capturedAtMillis,
-                        audioSampleCount = result.sampleCount,
-                        audioRms = result.rms,
-                        audioWaveform = result.waveform,
-                        soundDetections = result.detections,
-                        yamnetMessage = result.message,
-                        statusMessage = "Perception is running.",
-                    )
-                }
-                publishPerceptionSummary(newState)
-            },
-            onError = { message -> stateHolder.update { it.copy(yamnetMessage = message) } },
-            onRecordingActive = { active ->
-                stateHolder.update {
-                    it.copy(audioRecordingStartedAtMillis = if (active) System.currentTimeMillis() else null)
-                }
-            },
-        )
     }
 
     private fun loadDetectors() {
@@ -179,20 +142,6 @@ class CameraCaptureService : LifecycleService() {
                     stateHolder.update { s -> s.copy(yoloMessage = "YOLO model failed to load: ${error.message ?: error::class.java.simpleName}") }
                 }
         }
-        serviceScope.launch {
-            if (!AssetModelLoader.assetExists(applicationContext, YamnetDetector.MODEL_ASSET)) {
-                stateHolder.update { it.copy(yamnetMessage = "Captured audio will be shown, but yamnet.tflite is missing.") }
-                return@launch
-            }
-            runCatching { YamnetDetector.create(applicationContext) }
-                .onSuccess {
-                    yamnetDetector = it
-                    stateHolder.update { s -> s.copy(yamnetMessage = "YAMNet loaded; recording a 15-second window every 10 minutes.") }
-                }
-                .onFailure { error ->
-                    stateHolder.update { s -> s.copy(yamnetMessage = "YAMNet model failed to load: ${error.message ?: error::class.java.simpleName}") }
-                }
-        }
     }
 
     private fun runCaptureCycle() {
@@ -202,7 +151,6 @@ class CameraCaptureService : LifecycleService() {
         runCatching { wakeLock.acquire(WAKELOCK_TIMEOUT_MS) }
         try {
             cameraController?.capture()
-            audioController?.captureNow()
         } finally {
             scheduleNextCaptureAlarm()
             if (wakeLock.isHeld) runCatching { wakeLock.release() }
@@ -236,20 +184,12 @@ class CameraCaptureService : LifecycleService() {
         telemetryRepository.updatePerceptionSummary(
             PerceptionSyncSummary(
                 personCount = state.personCount,
-                // YAMNet output is intentionally suppressed: keep audio fields empty so it does not
-                // propagate to Firestore, Gemini, or the UI. YAMNet still runs internally.
-                activityLabels = emptyList(),
-                audioPresenceDetected = false,
-                audioPresenceScore = 0f,
                 lightsOn = state.lightsOn,
                 exposureEv = state.exposureEv,
                 exposureIso = state.exposureIso,
                 exposureTimeSeconds = state.exposureTimeSeconds,
                 exposureAperture = state.exposureAperture,
-                capturedAtMillis = listOfNotNull(
-                    state.latestFrameAtMillis,
-                    state.latestAudioAtMillis,
-                ).maxOrNull(),
+                capturedAtMillis = state.latestFrameAtMillis,
             ),
         )
     }
@@ -288,12 +228,8 @@ class CameraCaptureService : LifecycleService() {
         runCatching { alarmManager.cancel(capturePendingIntent()) }
         cameraController?.close()
         cameraController = null
-        audioController?.close()
-        audioController = null
         yoloDetector?.close()
         yoloDetector = null
-        yamnetDetector?.close()
-        yamnetDetector = null
         serviceScope.cancel()
         stateHolder.update {
             it.copy(isRunning = false, statusMessage = "Perception is stopped.")
@@ -321,8 +257,7 @@ class CameraCaptureService : LifecycleService() {
 
     private fun foregroundServiceType(): Int =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA or
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
         } else {
             0
         }
