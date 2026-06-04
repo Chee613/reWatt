@@ -91,7 +91,7 @@ class GeminiEnergyAdvisor(
         }
 
     companion object {
-        const val MODEL_ID = "gemini-2.5-flash"
+        const val MODEL_ID = "gemini-3.1-flash-lite"
         private const val GEMINI_ENDPOINT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
         fun buildRequestBody(input: EnergyAdviceInput, language: String = "English"): String =
