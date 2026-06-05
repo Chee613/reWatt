@@ -12,6 +12,11 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.platform.LocalContext
+import com.rewatt.app.notify.NowActionNotifier
+import com.rewatt.app.notify.EnergyAlertNotifier
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -165,6 +170,10 @@ private const val NODE_ONLINE_WINDOW_MILLIS = 15 * 60_000L
 private fun ManageContent(
     nodes: List<SensorNodeSnapshot>,
     nowMillis: Long,
+    isDemo: Boolean = false,
+    // Demo (fsktm): long-press the first fleet card toggles this; hoisted so it survives tab switches.
+    fleetDemo: Boolean = false,
+    onToggleFleetDemo: () -> Unit = {},
 ) {
     LazyColumn(
         modifier = Modifier
@@ -189,21 +198,38 @@ private fun ManageContent(
             }
         } else {
             items(nodes, key = { it.roomId + "/" + it.nodeId }) { node ->
-                val online = node.lastUpdatedAt != null &&
-                    nowMillis - node.lastUpdatedAt < NODE_ONLINE_WINDOW_MILLIS
-                SensorNodeCard(node = node, online = online)
+                val isFirst = node == nodes.first()
+                // Demo override on the first card: force Online + battery 46%.
+                val display = if (isFirst && fleetDemo) {
+                    node.copy(batteryPercent = 46, lastUpdatedAt = nowMillis)
+                } else {
+                    node
+                }
+                val online = display.lastUpdatedAt != null &&
+                    nowMillis - display.lastUpdatedAt < NODE_ONLINE_WINDOW_MILLIS
+                SensorNodeCard(
+                    node = display,
+                    online = online,
+                    modifier = if (isFirst && isDemo) {
+                        Modifier.pointerInput(Unit) {
+                            detectTapGestures(onLongPress = { onToggleFleetDemo() })
+                        }
+                    } else {
+                        Modifier
+                    },
+                )
             }
         }
     }
 }
 
 @Composable
-private fun SensorNodeCard(node: SensorNodeSnapshot, online: Boolean) {
+private fun SensorNodeCard(node: SensorNodeSnapshot, online: Boolean, modifier: Modifier = Modifier) {
     val colorScheme = androidx.compose.material3.MaterialTheme.colorScheme
     val accent = if (online) colorScheme.primary else colorScheme.error
     val batteryMissing = node.batteryPercent == null || node.batteryPercent == 0
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(containerColor = colorScheme.surface),
         border = BorderStroke(1.dp, accent.copy(alpha = if (online) 0.4f else 1f)),
@@ -337,6 +363,7 @@ fun DashboardScreen(
     onRequestEnergyAdvice: () -> Unit = {},
     onRefreshWaste: () -> Unit = {},
     wasteRefreshing: Boolean = false,
+    onStartTooColdDemo: (String) -> Unit = {},
     userEmail: String,
     userDisplayName: String?,
     onSignOut: () -> Unit,
@@ -363,6 +390,11 @@ fun DashboardScreen(
 ) {
     var selectedTab by rememberSaveable { mutableStateOf(ReWattTab.Live) }
     var selectedHall by rememberSaveable { mutableStateOf(Hall.Hall1) }
+    // Hoisted to the root (always composed) so the demo toggles survive tab/sub-tab switches.
+    var fleetDemo by rememberSaveable { mutableStateOf(false) }
+    var weatherDemo by rememberSaveable { mutableStateOf(false) }
+    var scheduleFlipped by rememberSaveable { mutableStateOf(false) }
+    var humidityDemo by rememberSaveable { mutableStateOf(false) }
 
     // Keep ViewModel in sync with the locally-selected hall so Firestore listener switches
     LaunchedEffect(selectedHall) { onHallSelect(selectedHall.label) }
@@ -506,6 +538,14 @@ fun DashboardScreen(
                     onRequestEnergyAdvice = onRequestEnergyAdvice,
                     onRefreshWaste = onRefreshWaste,
                     wasteRefreshing = wasteRefreshing,
+                    isDemo = userEmail.equals("tjh3281@gmail.com", ignoreCase = true),
+                    onStartTooColdDemo = onStartTooColdDemo,
+                    fleetDemo = fleetDemo,
+                    onToggleFleetDemo = { fleetDemo = !fleetDemo },
+                    weatherDemo = weatherDemo,
+                    onToggleWeatherDemo = { weatherDemo = !weatherDemo },
+                    humidityDemo = humidityDemo,
+                    onToggleHumidityDemo = { humidityDemo = !humidityDemo },
                     currentUserRole = currentUserRole,
                     spaceName = spaceName,
                     hallSnapshot = hallSnapshot,
@@ -526,6 +566,8 @@ fun DashboardScreen(
                     hallMinuteSchedules = hallMinuteSchedules,
                     learnedSchedules = learnedSchedules,
                     userEmail = userEmail,
+                    scheduleFlipped = scheduleFlipped,
+                    onToggleScheduleFlip = { scheduleFlipped = !scheduleFlipped },
                 )
 
                 ReWattTab.Capture -> CapturePage(
@@ -632,6 +674,14 @@ private fun LivePage(
     onRequestEnergyAdvice: () -> Unit = {},
     onRefreshWaste: () -> Unit = {},
     wasteRefreshing: Boolean = false,
+    isDemo: Boolean = false,
+    onStartTooColdDemo: (String) -> Unit = {},
+    fleetDemo: Boolean = false,
+    onToggleFleetDemo: () -> Unit = {},
+    weatherDemo: Boolean = false,
+    onToggleWeatherDemo: () -> Unit = {},
+    humidityDemo: Boolean = false,
+    onToggleHumidityDemo: () -> Unit = {},
     currentUserRole: UserRole? = null,
     spaceName: String? = null,
     hallSnapshot: HallSnapshot? = null,
@@ -652,6 +702,12 @@ private fun LivePage(
         onRequestEnergyAdvice = onRequestEnergyAdvice,
         onRefreshWaste = onRefreshWaste,
         wasteRefreshing = wasteRefreshing,
+        isDemo = isDemo,
+        onStartTooColdDemo = onStartTooColdDemo,
+        weatherDemo = weatherDemo,
+        onToggleWeatherDemo = onToggleWeatherDemo,
+        humidityDemo = humidityDemo,
+        onToggleHumidityDemo = onToggleHumidityDemo,
         currentUserRole = currentUserRole,
         spaceName = spaceName,
         hallSnapshot = hallSnapshot,
@@ -666,23 +722,119 @@ private fun LivePage(
     }
 
     var subTab by rememberSaveable { mutableStateOf(LiveSubTab.Overview) }
+    val panelColor = androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant
+    val tabDivider = androidx.compose.material3.MaterialTheme.colorScheme.outline
     Column(modifier = Modifier.fillMaxSize()) {
-        TabRow(selectedTabIndex = subTab.ordinal) {
-            LiveSubTab.values().forEach { tab ->
-                Tab(
-                    selected = subTab == tab,
-                    onClick = { subTab = tab },
-                    text = { Text(stringResource(tab.labelRes)) },
-                )
+        // Chrome-style browser tab strip: each tab has a favicon, label and ✕, with a + at the end.
+        // The active tab is lighter and joins the content panel below; inactive tabs sit behind it.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(androidx.compose.material3.MaterialTheme.colorScheme.background)
+                .padding(start = 8.dp, end = 8.dp, top = 8.dp),
+        ) {
+            // The baseline (content's top edge) — visible divider, "broken" under the active tab.
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth()
+                    .height(1.5.dp)
+                    .background(tabDivider),
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.Bottom,
+            ) {
+                LiveSubTab.values().forEach { tab ->
+                    val selected = subTab == tab
+                    val favicon = when (tab) {
+                        LiveSubTab.Overview -> "📊"
+                        LiveSubTab.Manage -> "🛰️"
+                    }
+                    val tabInteraction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                    Row(
+                        modifier = Modifier
+                            // Two equal tabs fill the width.
+                            .weight(1f)
+                            // Inactive tabs stop above the baseline; the active tab reaches & covers it.
+                            .then(if (selected) Modifier else Modifier.padding(bottom = 4.dp))
+                            .pressScale(tabInteraction)
+                            .clip(RoundedCornerShape(topStart = 11.dp, topEnd = 11.dp))
+                            .background(
+                                if (selected) panelColor
+                                else androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            )
+                            // Active tab: outline its top + sides (open bottom) so it reads as the
+                            // chosen browser tab joined to the content, with the baseline broken under it.
+                            .drawBehind {
+                                if (selected) {
+                                    val stroke = 1.5.dp.toPx()
+                                    val r = 11.dp.toPx()
+                                    val w = size.width
+                                    val h = size.height
+                                    val half = stroke / 2f
+                                    val path = androidx.compose.ui.graphics.Path().apply {
+                                        moveTo(half, h)
+                                        lineTo(half, r + half)
+                                        arcTo(
+                                            androidx.compose.ui.geometry.Rect(half, half, half + 2 * r, half + 2 * r),
+                                            180f, 90f, false,
+                                        )
+                                        lineTo(w - r - half, half)
+                                        arcTo(
+                                            androidx.compose.ui.geometry.Rect(w - half - 2 * r, half, w - half, half + 2 * r),
+                                            270f, 90f, false,
+                                        )
+                                        lineTo(w - half, h)
+                                    }
+                                    drawPath(
+                                        path,
+                                        tabDivider,
+                                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke),
+                                    )
+                                }
+                            }
+                            .clickable(interactionSource = tabInteraction, indication = null) { subTab = tab }
+                            .padding(vertical = 11.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(7.dp, Alignment.CenterHorizontally),
+                    ) {
+                        Text(favicon, fontSize = 14.sp)
+                        Text(
+                            text = stringResource(tab.labelRes),
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                            color = if (selected) {
+                                androidx.compose.material3.MaterialTheme.colorScheme.onSurface
+                            } else {
+                                androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            fontSize = 14.sp,
+                        )
+                    }
+                }
             }
         }
-        when (subTab) {
-            LiveSubTab.Overview -> overview()
-            LiveSubTab.Manage -> {
-                // Force-fetch the latest stored node data each time Manage opens, so the
-                // admin sees the freshest values without waiting for the next capture sync.
-                LaunchedEffect(Unit) { onRefreshFleet() }
-                ManageContent(nodes = sensorFleet, nowMillis = nowMillis)
+        // Content panel the active tab connects to.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(panelColor),
+        ) {
+            when (subTab) {
+                LiveSubTab.Overview -> overview()
+                LiveSubTab.Manage -> {
+                    // Force-fetch the latest stored node data each time Manage opens, so the
+                    // admin sees the freshest values without waiting for the next capture sync.
+                    LaunchedEffect(Unit) { onRefreshFleet() }
+                    ManageContent(
+                        nodes = sensorFleet,
+                        nowMillis = nowMillis,
+                        isDemo = isDemo,
+                        fleetDemo = fleetDemo,
+                        onToggleFleetDemo = onToggleFleetDemo,
+                    )
+                }
             }
         }
     }
@@ -699,6 +851,12 @@ private fun OverviewContent(
     onRequestEnergyAdvice: () -> Unit = {},
     onRefreshWaste: () -> Unit = {},
     wasteRefreshing: Boolean = false,
+    isDemo: Boolean = false,
+    onStartTooColdDemo: (String) -> Unit = {},
+    weatherDemo: Boolean = false,
+    onToggleWeatherDemo: () -> Unit = {},
+    humidityDemo: Boolean = false,
+    onToggleHumidityDemo: () -> Unit = {},
     currentUserRole: UserRole? = null,
     spaceName: String? = null,
     hallSnapshot: HallSnapshot? = null,
@@ -707,13 +865,20 @@ private fun OverviewContent(
 ) {
     val telemetry = uiState.sensorState.latestTelemetry
     val analysis = uiState.sensorState.activityAnalysisState.analysis
+    val acDemoContext = LocalContext.current
 
     // For Admin, pull live values from the Firestore snapshot of the selected hall.
     // For Sensor, use the local perception state and USB radar readings.
     val isAdmin = currentUserRole == UserRole.Admin
-    val displayPersonCount = if (isAdmin) hallSnapshot?.personCount ?: 0 else perceptionState.personCount
-    val displayTempC = if (isAdmin && hallSnapshot?.temperatureC != null) hallSnapshot.temperatureC else telemetry?.temperatureC?.toDouble()
-    val displayHumidity = if (isAdmin && hallSnapshot?.humidityPercent != null) hallSnapshot.humidityPercent else telemetry?.humidityPercent?.toDouble()
+    // Demo override (fsktm screen-recording): fake this hall's vitals so the 4 blocks animate and the
+    // too-cold notification fires. Started by a hidden long-press on the Occupancy tile.
+    val demo = uiState.demoVitals?.takeIf { it.hallLabel == selectedHall.label }
+    val displayPersonCount = demo?.personCount
+        ?: if (isAdmin) hallSnapshot?.personCount ?: 0 else perceptionState.personCount
+    val displayTempC = demo?.temperatureC
+        ?: if (isAdmin && hallSnapshot?.temperatureC != null) hallSnapshot.temperatureC else telemetry?.temperatureC?.toDouble()
+    val displayHumidity = demo?.humidityPercent
+        ?: if (isAdmin && hallSnapshot?.humidityPercent != null) hallSnapshot.humidityPercent else telemetry?.humidityPercent?.toDouble()
 
     val nowAction = remember(uiState.nowMillis, displayPersonCount, displayTempC, displayHumidity, analysis?.occupancyHint, selectedHall, hallMeanSchedules) {
         deriveNowAction(
@@ -748,42 +913,52 @@ private fun OverviewContent(
             HallDropdown(selectedHall = selectedHall, onHallChange = onHallChange)
         }
 
-        // ── Outdoor weather + deltaT ──────────────────────────────────────────
-        WeatherCard(
-            weather = weather,
-            deltaT = deltaT,
-            onRefreshWeather = onRefreshWeather,
-        )
-
-        // ── Gemini insights: AC suggestion + yesterday's wasted energy, framed together ───────
-        GeminiFrame {
-            EnergyAdviceCard(
-                state = energyAdvice,
-                onRequestEnergyAdvice = onRequestEnergyAdvice,
-            )
-            wasteSummary?.let {
-                EnergyWasteCard(summary = it, onRefresh = onRefreshWaste, refreshing = wasteRefreshing)
-            }
-        }
-
-        // ── 6-card grid ──────────────────────────────────────────────────────
+        // ── 5-card metric grid (moved to the top, just below the space dropdown) ───────────────
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             MetricCard(
                 title = stringResource(R.string.m_occupancy),
                 value = when {
+                    // Demo (long-press Humidity): force Empty (0 occupancy).
+                    humidityDemo -> stringResource(R.string.occ_empty)
                     displayPersonCount > 0 -> stringResource(R.string.occ_ppl, displayPersonCount)
                     telemetry?.presence == true -> stringResource(R.string.occ_detected)
                     isAdmin && hallSnapshot != null -> stringResource(R.string.occ_empty)
                     telemetry != null -> stringResource(R.string.occ_empty)
                     else -> "--"
                 },
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    // Hidden demo trigger (fsktm only): long-press to run the too-cold THI demo.
+                    .then(
+                        if (isDemo) {
+                            Modifier.pointerInput(selectedHall.label) {
+                                detectTapGestures(onLongPress = { onStartTooColdDemo(selectedHall.label) })
+                            }
+                        } else {
+                            Modifier
+                        },
+                    ),
                 leadingEmoji = "👥",
             )
             MetricCard(
                 title = stringResource(R.string.m_ac_lights),
-                value = acLightStateLabel(nowAction.acState),
-                modifier = Modifier.weight(1f),
+                // During the demo the AC/lights are ON (that's why it's getting cold); the too-cold
+                // recommendation still fires as the NOW notification. Humidity demo also forces ON.
+                value = acLightStateLabel(if (demo != null || humidityDemo) AcState.ON else nowAction.acState),
+                modifier = Modifier
+                    .weight(1f)
+                    // Hidden demo (fsktm): long-press to pop a "Turn off all systems" action notification.
+                    .then(
+                        if (isDemo) {
+                            Modifier.pointerInput(selectedHall.label) {
+                                detectTapGestures(
+                                    onLongPress = { NowActionNotifier.showDemoTurnOff(acDemoContext, selectedHall.label) },
+                                )
+                            }
+                        } else {
+                            Modifier
+                        },
+                    ),
                 leadingEmoji = "❄️",
             )
         }
@@ -791,13 +966,37 @@ private fun OverviewContent(
             MetricCard(
                 title = stringResource(R.string.m_temperature),
                 value = displayTempC?.let { "%.1f °C".format(it) } ?: "--",
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    // Hidden demo (fsktm): long-press to raise the full-screen "lights still on" alert.
+                    .then(
+                        if (isDemo) {
+                            Modifier.pointerInput(selectedHall.label) {
+                                detectTapGestures(
+                                    onLongPress = { EnergyAlertNotifier.showDemoLightsAlert(acDemoContext, selectedHall.label) },
+                                )
+                            }
+                        } else {
+                            Modifier
+                        },
+                    ),
                 leadingEmoji = "🌡️",
             )
             MetricCard(
                 title = stringResource(R.string.m_humidity),
                 value = displayHumidity?.let { "%.1f %%".format(it) } ?: "--",
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    // Hidden demo (fsktm): long-press to force Occupancy = Empty and AC/Lights = On.
+                    .then(
+                        if (isDemo) {
+                            Modifier.pointerInput(Unit) {
+                                detectTapGestures(onLongPress = { onToggleHumidityDemo() })
+                            }
+                        } else {
+                            Modifier
+                        },
+                    ),
                 leadingEmoji = "💧",
             )
         }
@@ -808,6 +1007,49 @@ private fun OverviewContent(
                 modifier = Modifier.weight(1f),
                 leadingEmoji = "⏱️",
             )
+        }
+
+        // ── Outdoor weather + deltaT ──────────────────────────────────────────
+        // Demo flip (fsktm): long-press to fake a sunny outdoor reading; long-press again to restore.
+        val weatherForCard = if (weatherDemo) {
+            WeatherState(
+                status = WeatherStatus.Loaded,
+                info = com.rewatt.app.data.WeatherInfo(
+                    temperatureC = 30.6,
+                    humidityPercent = 72.0,
+                    conditionText = "Sunny",
+                    conditionType = "CLEAR",
+                ),
+            )
+        } else {
+            weather
+        }
+        val deltaForCard = if (weatherDemo) 7.2 else deltaT
+        Box(
+            modifier = if (isDemo) {
+                Modifier.pointerInput(Unit) {
+                    detectTapGestures(onLongPress = { onToggleWeatherDemo() })
+                }
+            } else {
+                Modifier
+            },
+        ) {
+            WeatherCard(
+                weather = weatherForCard,
+                deltaT = deltaForCard,
+                onRefreshWeather = onRefreshWeather,
+            )
+        }
+
+        // ── Gemini insights: AC suggestion + yesterday's wasted energy, framed together ───────
+        GeminiFrame {
+            EnergyAdviceCard(
+                state = energyAdvice,
+                onRequestEnergyAdvice = onRequestEnergyAdvice,
+            )
+            wasteSummary?.let {
+                EnergyWasteCard(summary = it, onRefresh = onRefreshWaste, refreshing = wasteRefreshing)
+            }
         }
 
         // ── Activity section ─────────────────────────────────────────────────
@@ -867,7 +1109,18 @@ private fun WeatherCard(
     deltaT: Double?,
     onRefreshWeather: () -> Unit,
 ) {
-    InfoCard {
+    val glowGrey = Color(0xFF9E9E9E)
+    InfoCard(
+        modifier = Modifier
+            // Soft grey glow + thick grey outline around the Outdoor weather block.
+            .shadow(
+                elevation = 14.dp,
+                shape = RoundedCornerShape(8.dp),
+                ambientColor = glowGrey,
+                spotColor = glowGrey,
+            )
+            .border(3.dp, glowGrey, RoundedCornerShape(8.dp)),
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -944,7 +1197,11 @@ private fun WeatherCard(
             }
         } else {
             Text(
-                text = weather.message,
+                text = if (weather.status == WeatherStatus.Failed || weather.status == WeatherStatus.ConfigMissing) {
+                    stringResource(R.string.error_try_again)
+                } else {
+                    weather.message
+                },
                 fontSize = 13.sp,
                 color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -1013,14 +1270,14 @@ private fun EnergyAdviceCard(
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Color.Transparent,
                     disabledContainerColor = Color.Transparent,
-                    contentColor = Color.White,
-                    disabledContentColor = Color.White.copy(alpha = 0.7f),
+                    contentColor = GeminiOnSoft,
+                    disabledContentColor = GeminiOnSoft.copy(alpha = 0.6f),
                 ),
-                // Match the Gemini gradient of the surrounding frame; compact size.
+                // Softer, lighter Gemini gradient (instead of the high-contrast one); compact size.
                 modifier = Modifier
                     .height(34.dp)
                     .background(
-                        Brush.linearGradient(GeminiGradient),
+                        Brush.linearGradient(GeminiGradientSoft),
                         RoundedCornerShape(16.dp),
                     ),
             ) {
@@ -1047,7 +1304,11 @@ private fun EnergyAdviceCard(
         } else {
             Spacer(Modifier.height(8.dp))
             Text(
-                state.message,
+                if (state.status == EnergyAdviceStatus.Failed || state.status == EnergyAdviceStatus.ConfigMissing) {
+                    stringResource(R.string.error_try_again)
+                } else {
+                    state.message
+                },
                 fontSize = 13.sp,
                 color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -1173,6 +1434,8 @@ private fun AnalyticPage(
     hallMinuteSchedules: Map<String, Array<IntArray>> = emptyMap(),
     learnedSchedules: Map<String, List<List<LearnedSegment>>> = emptyMap(),
     userEmail: String = "",
+    scheduleFlipped: Boolean = false,
+    onToggleScheduleFlip: () -> Unit = {},
 ) {
     var isAction by rememberSaveable { mutableStateOf(true) }
     // Demo (fsktm) account has no live sensor schedule, so the Class Schedule, Weekly/Daily
@@ -1201,6 +1464,8 @@ private fun AnalyticPage(
                 hallMeanSchedules = hallMeanSchedules,
                 hallMinuteSchedules = hallMinuteSchedules,
                 isDemo = isDemo,
+                scheduleFlipped = scheduleFlipped,
+                onToggleScheduleFlip = onToggleScheduleFlip,
             )
         } else {
             Column(
@@ -1579,6 +1844,7 @@ private fun WeeklyHistoryCard(
             minuteSchedule = weekSchedule,
             showFallbackEstimate = weekTab != 2,
             titleOverride = HISTORY_WEEK_LABELS[weekTab],
+            purpleBlocks = true,
             holidayDays = when (weekTab) {
                 2 -> setOf(1, 2, 3)   // 24/5–30/5: Tue, Wed, Thu public holiday; other days blank
                 3 -> setOf(0, 1)      // 31/5–6/6: Mon, Tue public holiday
@@ -1637,6 +1903,17 @@ private fun heatColorForCount(c: Int): Color = when {
     c < 200  -> Color(0xFF42A5F5) // 150-199
     c < 250  -> Color(0xFF1E88E5) // 200-249
     else     -> Color(0xFF0D47A1) // 250+
+}
+
+/** Purple version of [heatColorForCount] with the SAME banding — used for the History blocks. */
+private fun purpleHeatForCount(c: Int): Color = when {
+    c <= 0   -> Color.Transparent
+    c < 50   -> Color(0xFFE1BEE7) // 1-49
+    c < 100  -> Color(0xFFCE93D8) // 50-99
+    c < 150  -> Color(0xFFBA68C8) // 100-149
+    c < 200  -> Color(0xFF9C27B0) // 150-199
+    c < 250  -> Color(0xFF7B1FA2) // 200-249
+    else     -> Color(0xFF4A148C) // 250+
 }
 
 @Composable
@@ -1959,6 +2236,8 @@ private fun ActionPage(
     hallMeanSchedules: Map<String, Array<IntArray>> = emptyMap(),
     hallMinuteSchedules: Map<String, Array<IntArray>> = emptyMap(),
     isDemo: Boolean = false,
+    scheduleFlipped: Boolean = false,
+    onToggleScheduleFlip: () -> Unit = {},
 ) {
     val hasAnySensorHistory = hallMeanSchedules.values.any { s -> s.any { row -> row.any { v -> v != 0 } } }
     // Demo always has the canonical class-schedule to draw from, so never show the empty state.
@@ -2011,6 +2290,12 @@ private fun ActionPage(
     }
     var dismissedIds by rememberSaveable { mutableStateOf(setOf<String>()) }
     var nowDismissed by rememberSaveable { mutableStateOf(false) }
+    // Demo (fsktm): long-press the 10:40 timeline row flips its time to the current time. State is
+    // hoisted (scheduleFlipped) so it survives tab/sub-tab switches until flipped again.
+    val nowTimeLabel = remember(uiState.nowMillis) {
+        val c = Calendar.getInstance().apply { timeInMillis = uiState.nowMillis }
+        "%02d:%02d".format(c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE))
+    }
 
     LaunchedEffect(nowActions.joinToString { "${it.second.labelRes}:${it.second.reasonArgs}" }) { nowDismissed = false }
     LaunchedEffect(previewDayOffset) { dismissedIds = emptySet() }
@@ -2061,10 +2346,26 @@ private fun ActionPage(
                     visible = notification.id !in dismissedIds,
                     exit = slideOutHorizontally(targetOffsetX = { it }),
                 ) {
-                    NotificationBlock(
-                        notification = notification,
-                        onDone = { dismissedIds = dismissedIds + notification.id },
-                    )
+                    val isFlipTarget = isDemo && notification.timeLabel == "10:40"
+                    val shown = if (isFlipTarget && scheduleFlipped) {
+                        notification.copy(timeLabel = nowTimeLabel)
+                    } else {
+                        notification
+                    }
+                    Box(
+                        modifier = if (isFlipTarget) {
+                            Modifier.pointerInput(Unit) {
+                                detectTapGestures(onLongPress = { onToggleScheduleFlip() })
+                            }
+                        } else {
+                            Modifier
+                        },
+                    ) {
+                        NotificationBlock(
+                            notification = shown,
+                            onDone = { dismissedIds = dismissedIds + notification.id },
+                        )
+                    }
                 }
             }
         }
@@ -2365,6 +2666,8 @@ private fun CapturePage(
                 color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        // Live sensor data sits at the top, right below the "Your monitored space" header.
+        SensorLiveDataCard(telemetry = telemetry)
         CaptureHeader(
             state = state,
             onStartPerception = onStartPerception,
@@ -2388,7 +2691,6 @@ private fun CapturePage(
             nowMillis = nowMillis,
             modifier = Modifier.fillMaxWidth(),
         )
-        SensorLiveDataCard(telemetry = telemetry)
         if (currentUserRole == UserRole.Sensor && spaceName != null) {
             DatabaseSection(
                 spaceName = spaceName,
@@ -3002,6 +3304,7 @@ private fun ClassScheduleCard(
     showFallbackEstimate: Boolean = false,
     titleOverride: String? = null,
     holidayDays: Set<Int> = emptySet(),
+    purpleBlocks: Boolean = false,
 ) {
     val dayLabels = stringArrayResource(R.array.sched_day_labels)
     val gridStartMin = CLASS_GRID_START_HOUR * 60
@@ -3220,8 +3523,19 @@ private fun ClassScheduleCard(
                                 // Same blue gradient as the heatmap / daily pattern, keyed on the
                                 // session's average expected occupants.
                                 val expected = seg.predictedOccupancy
-                                val blockColor = if (isEstimated) Color(0xFFFFE082) else heatColorForCount(expected)
-                                val textColor = if (expected >= 150) Color.White else Color(0xFF0D2B5E)
+                                // History uses the same banded intensity format, but in purple.
+                                val blockColor = when {
+                                    purpleBlocks -> purpleHeatForCount(expected)
+                                    isEstimated -> Color(0xFFFFE082)
+                                    else -> heatColorForCount(expected)
+                                }
+                                val textColor = if (expected >= 150) {
+                                    Color.White
+                                } else if (purpleBlocks) {
+                                    Color(0xFF3B1E5E)
+                                } else {
+                                    Color(0xFF0D2B5E)
+                                }
                                 val occupancyLabel = if (isEstimated) "~$expected" else stringResource(R.string.occ_ppl, expected)
                                 val startLabel = minuteLabel(startMin)
                                 val endLabel   = minuteLabel(endMin)
@@ -3301,6 +3615,11 @@ private fun meanSegment(startMin: Int, endMin: Int, meanCount: Int): LearnedSegm
     )
 }
 
+/** Changa One display font (bundled in res/font) for the space dropdown. */
+private val ChangaOne = androidx.compose.ui.text.font.FontFamily(
+    androidx.compose.ui.text.font.Font(R.font.changa_one),
+)
+
 @Composable
 private fun HallDropdown(
     selectedHall: Hall,
@@ -3314,19 +3633,20 @@ private fun HallDropdown(
                 .clip(RoundedCornerShape(8.dp))
                 .background(androidx.compose.material3.MaterialTheme.colorScheme.surfaceVariant)
                 .clickable { expanded = true }
-                .padding(horizontal = 14.dp, vertical = 10.dp),
+                .padding(horizontal = 14.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            // Chosen space: Black Ops One, heading-1 size.
             Text(
                 text = selectedHall.label,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 14.sp,
+                fontFamily = ChangaOne,
+                fontSize = 30.sp,
                 color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
                 text = "▾",
-                fontSize = 14.sp,
+                fontSize = 22.sp,
                 color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -3336,7 +3656,13 @@ private fun HallDropdown(
                     text = {
                         Text(
                             hall.label,
-                            fontWeight = if (hall == selectedHall) FontWeight.Bold else FontWeight.Normal,
+                            fontFamily = ChangaOne,
+                            fontSize = 18.sp,
+                            color = if (hall == selectedHall) {
+                                androidx.compose.material3.MaterialTheme.colorScheme.primary
+                            } else {
+                                androidx.compose.material3.MaterialTheme.colorScheme.onSurface
+                            },
                         )
                     },
                     onClick = { onHallChange(hall); expanded = false },
@@ -3528,7 +3854,13 @@ private fun ActivityAnalysisStatusRow(sensorState: SensorDashboardState) {
         Text(
             text = analysisState.analysis?.let {
                 "${it.activity} (${(it.confidence * 100).toInt()}%)"
-            } ?: analysisState.message,
+            } ?: if (analysisState.status == ActivityAnalysisStatus.Failed ||
+                analysisState.status == ActivityAnalysisStatus.ConfigMissing
+            ) {
+                stringResource(R.string.error_try_again)
+            } else {
+                analysisState.message
+            },
             color = color,
             fontSize = 12.sp,
             maxLines = 3,
@@ -3929,6 +4261,16 @@ private val GeminiGradient = listOf(
     Color(0xFF9B72CB),
     Color(0xFFD96570),
 )
+
+/** Lighter pastel version of [GeminiGradient] for softer fills (e.g. the Suggest-action button). */
+private val GeminiGradientSoft = listOf(
+    Color(0xFFBBD3FB),
+    Color(0xFFDCC9ED),
+    Color(0xFFF4CBCF),
+)
+
+/** Readable label colour on the soft Gemini gradient. */
+private val GeminiOnSoft = Color(0xFF5B3FA0)
 
 /**
  * Wraps Gemini-powered cards in one bigger rounded box with a colourful gradient edge + a gradient

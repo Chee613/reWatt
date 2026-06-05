@@ -200,6 +200,7 @@ class MainActivity : AppCompatActivity() {
                         onRequestEnergyAdvice = viewModel::requestEnergyAdvice,
                         onRefreshWaste = viewModel::refreshWasteSummary,
                         wasteRefreshing = wasteRefreshing,
+                        onStartTooColdDemo = viewModel::startTooColdDemo,
                         userEmail = authedUser?.email ?: "dev@rewatt.app",
                         userDisplayName = authedUser?.displayName ?: if (devBypass) "Dev Mode" else null,
                         onSignOut = {

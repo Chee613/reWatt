@@ -131,9 +131,9 @@
     <string name="setup_allow_permissions">Allow Permissions</string>
     <string name="setup_s2_title">2. Turn Off Battery Saver for reWatt</string>
     <string name="setup_s2_body">Your phone may pause the app to save battery. Turn off Battery Optimization so reWatt keeps running at all times — even when the screen is off.</string>
-    <string name="setup_batt_off">Battery optimization is off — good!</string>
-    <string name="setup_batt_on">Battery optimization is ON — please turn it off</string>
-    <string name="setup_allow_always_on">Allow Always-On Access</string>
+    <string name="setup_batt_off">Battery Saver is off — good!</string>
+    <string name="setup_batt_on">Battery Saver is on — set it to Off!</string>
+    <string name="setup_allow_always_on">Open Battery Saver settings</string>
     <string name="setup_s3_title">3. Mount the Sensor Phone</string>
     <string name="setup_s3_body">Use the wall mount in the kit to attach this phone to the classroom wall or whiteboard. Point the camera toward the centre of the room.</string>
     <string name="setup_mount_photo">Mount photo — coming soon</string>
@@ -219,6 +219,7 @@
     <string name="btn_open">Open</string>
     <string name="btn_refresh">Refresh</string>
     <string name="btn_loading">Loading…</string>
+    <string name="error_try_again">Try again</string>
     <string name="btn_sign_out">Sign Out</string>
     <string name="btn_delete_account">Delete Account</string>
     <string name="btn_dismiss">Dismiss</string>
