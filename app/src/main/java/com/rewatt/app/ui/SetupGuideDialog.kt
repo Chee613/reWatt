@@ -332,19 +332,16 @@ private fun PermissionRow(label: String, granted: Boolean) {
 private fun BatteryStep() {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    fun checkIgnoring(): Boolean =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            (context.getSystemService(Context.POWER_SERVICE) as PowerManager)
-                .isIgnoringBatteryOptimizations(context.packageName)
-        } else {
-            true
-        }
+    val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+    // The real blocker on Samsung is Battery Saver (Off / Medium / Maximum). isPowerSaveMode() is true
+    // for Medium & Maximum, false only when it is Off — which is the state reWatt needs to stay alive.
+    fun saverIsOff(): Boolean = !powerManager.isPowerSaveMode
 
-    // Re-check on resume so the status updates the moment the user returns from system settings.
-    var isIgnoring by remember { mutableStateOf(checkIgnoring()) }
+    var saverOff by remember { mutableStateOf(saverIsOff()) }
+    // Re-check when the user returns from settings so the status updates the moment they switch it Off.
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) isIgnoring = checkIgnoring()
+            if (event == Lifecycle.Event.ON_RESUME) saverOff = saverIsOff()
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -357,8 +354,10 @@ private fun BatteryStep() {
     )
 
     Card(
+        // Short-press also flips it (demo); the real status drives the default + re-check on resume.
+        onClick = { saverOff = !saverOff },
         colors = CardDefaults.cardColors(
-            containerColor = if (isIgnoring)
+            containerColor = if (saverOff)
                 MaterialTheme.colorScheme.surfaceVariant
             else
                 MaterialTheme.colorScheme.errorContainer,
@@ -371,31 +370,33 @@ private fun BatteryStep() {
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Icon(
-                imageVector = if (isIgnoring) Icons.Default.Check else Icons.Default.Close,
+                imageVector = if (saverOff) Icons.Default.Check else Icons.Default.Close,
                 contentDescription = null,
-                tint = if (isIgnoring) green else MaterialTheme.colorScheme.onErrorContainer,
+                tint = if (saverOff) green else MaterialTheme.colorScheme.onErrorContainer,
                 modifier = Modifier.size(20.dp),
             )
             Text(
-                text = if (isIgnoring)
+                text = if (saverOff)
                     stringResource(R.string.setup_batt_off)
                 else
                     stringResource(R.string.setup_batt_on),
                 fontSize = 14.sp,
-                color = if (isIgnoring) green else MaterialTheme.colorScheme.onErrorContainer,
+                color = if (saverOff) green else MaterialTheme.colorScheme.onErrorContainer,
             )
         }
     }
 
-    if (!isIgnoring) {
+    if (!saverOff) {
         Button(
             onClick = {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                // Jump straight to Battery Saver settings; fall back to all settings if unavailable.
+                val saverIntent = Intent(Settings.ACTION_BATTERY_SAVER_SETTINGS)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                if (saverIntent.resolveActivity(context.packageManager) != null) {
+                    context.startActivity(saverIntent)
+                } else {
                     context.startActivity(
-                        Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                            data = Uri.parse("package:${context.packageName}")
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        },
+                        Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                     )
                 }
             },
