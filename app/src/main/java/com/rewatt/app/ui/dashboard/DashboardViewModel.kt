@@ -117,6 +117,44 @@ class DashboardViewModel(
         }
     }
 
+    // Demo override (fsktm screen-recording only): fake vitals for the LIVE blocks + NOW notification.
+    private val _demoVitals = MutableStateFlow<DemoVitals?>(null)
+    // Gate so the too-cold notification fires only once the animation finishes (not mid-ramp).
+    private val _demoNotifyArmed = MutableStateFlow(false)
+    private var demoJob: Job? = null
+
+    /**
+     * Screen-recording demo: ramp the [hallLabel] room's vitals comfortable→too-cold over ~10s (occupied),
+     * hold ~8s so the THI "Set AC" notification is visible, then ramp back and clear. Drives both the LIVE
+     * Temp/Humidity/Occupancy blocks (via [uiState].demoVitals) and the NOW notification (via
+     * [notifyNowActions], which reads [_demoVitals]).
+     */
+    fun startTooColdDemo(hallLabel: String) {
+        demoJob?.cancel()
+        _demoNotifyArmed.value = false   // clears any prior notification while the new ramp runs
+        demoJob = viewModelScope.launch {
+            val people = 28
+            val steps = 60
+            val stepMs = 100L                // 60 * 100ms ≈ 6s ramp
+            suspend fun ramp(fromT: Double, toT: Double, fromH: Double, toH: Double) {
+                for (i in 0..steps) {
+                    val f = i.toDouble() / steps
+                    _demoVitals.value = DemoVitals(
+                        hallLabel = hallLabel,
+                        personCount = people,
+                        temperatureC = fromT + (toT - fromT) * f,
+                        humidityPercent = fromH + (toH - fromH) * f,
+                    )
+                    delay(stepMs)
+                }
+            }
+            ramp(24.0, 21.5, 58.0, 65.0)   // comfortable (THI ≈ 22) → too cold (THI ≈ 20) over ~6s
+            // Fire the persistent, unswipeable too-cold notification (with Done) right as the
+            // animation finishes. The vitals hold at too-cold and the notification stays until Done.
+            _demoNotifyArmed.value = true
+        }
+    }
+
     // Escalation bookkeeping (admin): the current actionable signature, when it first appeared, and
     // the last signature we posted a notification for. Drive both the persistent notification and the
     // "left un-Done too long" full-screen escalation.
@@ -162,14 +200,18 @@ class DashboardViewModel(
             combine(_hallMinuteSchedules, _sensorFleet, ticker) { schedules, fleet, now ->
                 Triple(schedules, fleet, now)
             }.collect { (schedules, fleet, now) ->
+                val demo = _demoVitals.value
+                val demoArmed = _demoNotifyArmed.value
                 val actions = Hall.values().map { hall ->
                     val node = fleet[hall.label]?.maxByOrNull { it.lastUpdatedAt ?: 0L }
+                    // Only drive the notification from the demo once armed (animation finished).
+                    val useDemo = demo != null && demoArmed && demo.hallLabel == hall.label
                     hall to deriveNowActionFromSessions(
                         nowMillis = now,
-                        personCount = node?.personCount ?: 0,
-                        temperatureC = node?.temperatureC?.toFloat(),
+                        personCount = if (useDemo) demo!!.personCount else node?.personCount ?: 0,
+                        temperatureC = if (useDemo) demo!!.temperatureC.toFloat() else node?.temperatureC?.toFloat(),
                         hall = hall,
-                        humidityPercent = node?.humidityPercent,
+                        humidityPercent = if (useDemo) demo!!.humidityPercent else node?.humidityPercent,
                         minuteSchedule = schedules[hall.label],
                     )
                 }
@@ -294,13 +336,15 @@ class DashboardViewModel(
         weatherRepository.weatherState,
         energyAdvice,
         ticker,
-    ) { sensorState, weather, advice, now ->
+        _demoVitals,
+    ) { sensorState, weather, advice, now, demo ->
         DashboardUiState(
             sensorState = sensorState,
             weather = weather,
             energyAdvice = advice,
             packetFreshness = freshness.evaluate(sensorState.lastValidPacketAtMillis, now),
             nowMillis = now,
+            demoVitals = demo,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -397,12 +441,21 @@ class DashboardViewModel(
     }
 }
 
+/** Faked vitals for the fsktm screen-recording demo (see DashboardViewModel.startTooColdDemo). */
+data class DemoVitals(
+    val hallLabel: String,
+    val personCount: Int,
+    val temperatureC: Double,
+    val humidityPercent: Double,
+)
+
 data class DashboardUiState(
     val sensorState: SensorDashboardState = SensorDashboardState(),
     val weather: WeatherState = WeatherState(),
     val energyAdvice: EnergyAdviceState = EnergyAdviceState(),
     val packetFreshness: PacketFreshness = PacketFreshness.WaitingForFirstPacket,
     val nowMillis: Long = System.currentTimeMillis(),
+    val demoVitals: DemoVitals? = null,
 )
 
 class DashboardViewModelFactory(

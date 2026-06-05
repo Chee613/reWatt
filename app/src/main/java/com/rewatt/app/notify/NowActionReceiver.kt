@@ -10,9 +10,12 @@ import android.content.Intent
  */
 class NowActionReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action == NowActionNotifier.ACTION_DONE) {
-            val signature = intent.getStringExtra(NowActionNotifier.EXTRA_SIGNATURE).orEmpty()
-            NowActionNotifier.onDone(context, signature)
+        when (intent.action) {
+            NowActionNotifier.ACTION_DONE -> {
+                val signature = intent.getStringExtra(NowActionNotifier.EXTRA_SIGNATURE).orEmpty()
+                NowActionNotifier.onDone(context, signature)
+            }
+            NowActionNotifier.ACTION_DEMO_DISMISS -> NowActionNotifier.onDemoDismiss(context)
         }
     }
 }

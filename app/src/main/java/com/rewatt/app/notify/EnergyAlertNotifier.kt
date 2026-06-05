@@ -1,6 +1,7 @@
 package com.rewatt.app.notify
 
 import android.content.Context
+import android.content.Intent
 import androidx.core.content.ContextCompat
 import com.rewatt.app.R
 import com.rewatt.app.data.UserRole
@@ -32,6 +33,34 @@ object EnergyAlertNotifier {
     private var showing = false
     @Volatile
     private var shownText: String? = null
+    // While a long-press demo alert is up, the per-tick escalation loop must not clear it.
+    @Volatile
+    private var demoActive = false
+
+    /** Demo (fsktm): raise the full-screen "Lights still on with 0 occupancy" alert for [hallLabel]. */
+    fun showDemoLightsAlert(context: Context, hallLabel: String) {
+        val mode = context
+            .getSharedPreferences("rewatt_space_config", Context.MODE_PRIVATE)
+            .getString("APP_MODE", null)
+        if (mode != UserRole.Admin.name) return
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .putString(KEY_ALERT_TITLE, "Lights still on with 0 occupancy")
+            .putString(KEY_ALERT_TEXT, "Space: $hallLabel")
+            .putString(KEY_ESC_SIGNATURE, "")   // Done simply dismisses (no NOW-action ack)
+            .apply()
+        demoActive = true
+        showing = true
+        shownText = "Space: $hallLabel"
+        show(context)
+        // Force the full-screen page (with Done/Snooze) to appear even when the app is in the
+        // foreground — otherwise the full-screen intent only shows a heads-up while unlocked.
+        runCatching {
+            context.startActivity(
+                Intent(context, EnergyAlertActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+            )
+        }
+    }
 
     /**
      * Escalation entry point (Admin): [active] true => raise the full-screen alert showing [actions]
@@ -40,6 +69,8 @@ object EnergyAlertNotifier {
      * Safe to call every tick — it only starts/stops the service on a real transition.
      */
     fun onNowEscalation(context: Context, active: Boolean, actions: List<String>, signature: String) {
+        // The demo alert owns the screen until the user dismisses it.
+        if (demoActive) return
         val mode = context
             .getSharedPreferences("rewatt_space_config", Context.MODE_PRIVATE)
             .getString("APP_MODE", null)
@@ -75,6 +106,7 @@ object EnergyAlertNotifier {
             .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getString(KEY_ESC_SIGNATURE, null)
         if (!signature.isNullOrEmpty()) NowActionNotifier.onDone(context, signature)
+        demoActive = false
         showing = false
         shownText = null
         stop(context)
@@ -85,6 +117,7 @@ object EnergyAlertNotifier {
             .edit()
             .putLong(KEY_SNOOZE_UNTIL, System.currentTimeMillis() + SNOOZE_DURATION_MILLIS)
             .apply()
+        demoActive = false
         showing = false
         shownText = null
         stop(context)

@@ -131,9 +131,9 @@
     <string name="setup_allow_permissions">Benarkan Kebenaran</string>
     <string name="setup_s2_title">2. Matikan Penjimat Bateri untuk reWatt</string>
     <string name="setup_s2_body">Telefon anda mungkin menjeda aplikasi untuk menjimatkan bateri. Matikan Pengoptimuman Bateri supaya reWatt terus berjalan pada setiap masa — walaupun skrin dimatikan.</string>
-    <string name="setup_batt_off">Pengoptimuman bateri dimatikan — bagus!</string>
-    <string name="setup_batt_on">Pengoptimuman bateri HIDUP — sila matikannya</string>
-    <string name="setup_allow_always_on">Benarkan Akses Sentiasa Aktif</string>
+    <string name="setup_batt_off">Mod penjimat bateri dimatikan — bagus!</string>
+    <string name="setup_batt_on">Mod penjimat bateri hidup — tetapkan ke Mati!</string>
+    <string name="setup_allow_always_on">Buka tetapan penjimat bateri</string>
     <string name="setup_s3_title">3. Pasang Telefon Penderia</string>
     <string name="setup_s3_body">Gunakan pelekap dinding dalam kit untuk memasang telefon ini pada dinding bilik darjah atau papan putih. Halakan kamera ke tengah bilik.</string>
     <string name="setup_mount_photo">Foto pelekap — akan datang</string>
@@ -219,6 +219,7 @@
     <string name="btn_open">Buka</string>
     <string name="btn_refresh">Muat semula</string>
     <string name="btn_loading">Memuatkan…</string>
+    <string name="error_try_again">Cuba lagi</string>
     <string name="btn_sign_out">Log Keluar</string>
     <string name="btn_delete_account">Padam Akaun</string>
     <string name="btn_dismiss">Tutup</string>
