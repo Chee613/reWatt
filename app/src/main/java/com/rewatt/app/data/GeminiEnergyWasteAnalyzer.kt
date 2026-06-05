@@ -98,7 +98,7 @@ class GeminiEnergyWasteAnalyzer(
                     ),
                 )
                 .put(
-                    "generationConfig",
+                    "generationConfig ",
                     JSONObject()
                         .put("temperature", 0.2)
                         .put("responseMimeType", "application/json"),
