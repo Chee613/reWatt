@@ -46,11 +46,13 @@ class TelemetryRepository(
         firebaseSyncRepository.recordNowActionDone(signature)
     }
 
-    // Last time a packet was persisted to Room. Used to throttle high-rate serial writes so the DB
-    // can never back up and stall the live UI path. Volatile because packets are processed on
-    // concurrent coroutines (one per serial line); an occasional extra insert from a race is harmless.
+    // Throttle markers (Volatile: packets are processed on concurrent coroutines, one per serial line;
+    // an occasional race just means one extra emit/insert, which is harmless).
     @Volatile
     private var lastPersistedAtMillis = 0L
+    @Volatile
+    private var lastUiEmitAtMillis = 0L
+    private val validPacketCounter = java.util.concurrent.atomic.AtomicInteger(0)
 
     suspend fun acceptRawPacket(rawPacket: String, capturedAtMillis: Long = System.currentTimeMillis()) {
         val telemetry = UsbDataParser.parseTelemetry(rawPacket, capturedAtMillis)
@@ -64,20 +66,19 @@ class TelemetryRepository(
             return
         }
 
-        // Update the live UI state IMMEDIATELY, independently of persistence. Previously the Room
-        // insert ran first, so as the (never-pruned) telemetry_readings table grew, the serialized
-        // write backed up and the displayed reading fell progressively behind real time — the
-        // "live data freezes after a few minutes" bug. Newest packet always wins, so an out-of-order
-        // older packet (concurrent coroutines) can never overwrite a fresher reading.
-        mutableState.update { current ->
-            val lastAt = current.lastValidPacketAtMillis
-            if (lastAt != null && telemetry.capturedAtMillis < lastAt) {
-                current.copy(validPacketCount = current.validPacketCount + 1)
-            } else {
+        val count = validPacketCounter.incrementAndGet()
+
+        // Throttle the LIVE UI emission to ~UI_EMIT_INTERVAL_MILLIS. The mmWave module streams many
+        // packets a second; emitting dashboard state on every one floods Compose with recompositions
+        // and makes the live card stutter/lag on the sensor phone. Emitting the latest packet at ~8 Hz
+        // stays real-time but smooth. (Persistence is throttled separately, below.)
+        if (capturedAtMillis - lastUiEmitAtMillis >= UI_EMIT_INTERVAL_MILLIS) {
+            lastUiEmitAtMillis = capturedAtMillis
+            mutableState.update { current ->
                 current.copy(
                     latestTelemetry = telemetry,
                     lastValidPacketAtMillis = telemetry.capturedAtMillis,
-                    validPacketCount = current.validPacketCount + 1,
+                    validPacketCount = count,
                     lastMalformedPacket = null,
                 )
             }
@@ -221,9 +222,12 @@ class TelemetryRepository(
     companion object {
         private const val MAX_MALFORMED_PACKET_PREVIEW = 160
 
-        // Persist at most one telemetry row every 2s regardless of serial packet rate. The live UI
-        // updates on every packet (in memory); only the sampled history goes to Room.
+        // Persist at most one telemetry row every 2s regardless of serial packet rate.
         private const val PERSIST_INTERVAL_MILLIS = 2_000L
+
+        // Emit live dashboard state at most ~8 Hz so a high serial packet rate can't flood
+        // Compose recompositions and make the live card lag/stutter.
+        private const val UI_EMIT_INTERVAL_MILLIS = 120L
     }
 }
 
