@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="rewatt_icon_background">#FFFFFF</color>
+    <color name="rewatt_alert_red">#B91C1C</color>
+</resources>

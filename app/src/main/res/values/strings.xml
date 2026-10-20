@@ -1,0 +1,359 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ReWatt</string>
+    <string name="usb_notification_channel">Sensor link</string>
+    <string name="usb_notification_title">ReWatt sensor link active</string>
+    <string name="usb_notification_text">Listening for ESP32-C6 telemetry over USB.</string>
+    <string name="perception_notification_channel">Background capture</string>
+    <string name="perception_notification_title">ReWatt is monitoring this room</string>
+    <string name="perception_notification_text">Capturing one frame every 10 minutes to track occupancy and energy use.</string>
+    <string name="energy_alert_channel">Energy reminders</string>
+    <string name="energy_alert_title">Lights still on in an empty room</string>
+    <string name="energy_alert_text">No one is here but the lights/AC are on. Please switch them off to save energy.</string>
+    <string name="energy_alert_done">Done</string>
+    <string name="energy_alert_snooze">Snooze 5 min</string>
+    <string name="now_action_notif_channel">Energy actions</string>
+    <string name="now_action_notif_title">Energy action needed</string>
+    <string name="scheduled_action_notif_channel">Scheduled actions</string>
+
+    <!-- Bottom navigation + sub-tabs -->
+    <string name="nav_live">LIVE</string>
+    <string name="nav_analytic">Analytic</string>
+    <string name="nav_capture">Capture</string>
+    <string name="nav_setting">Setting</string>
+    <string name="subtab_overview">Overview</string>
+    <string name="subtab_manage">Manage</string>
+    <string name="toggle_action">Action</string>
+    <string name="toggle_data">Data</string>
+
+    <!-- Section headers -->
+    <string name="dash_activity">ACTIVITY</string>
+    <string name="weather_title">OUTDOOR WEATHER</string>
+    <string name="ac_suggestion_title">AC ENERGY SUGGESTION</string>
+    <string name="waste_title">YESTERDAY\'S WASTED ENERGY</string>
+
+    <!-- Settings -->
+    <string name="settings_language">Language</string>
+    <string name="settings_title">Settings</string>
+    <string name="settings_device_setup">Device Setup</string>
+    <string name="settings_your_space">Your Space</string>
+    <string name="settings_profile">Profile</string>
+    <string name="settings_phone_mode">Phone Mode</string>
+    <string name="settings_connection">Connection</string>
+    <string name="settings_system_status">System status</string>
+
+    <!-- Metric card titles -->
+    <string name="m_ac_lights">AC &amp; Lights</string>
+    <string name="m_temperature">Temperature</string>
+    <string name="m_humidity">Humidity</string>
+    <string name="m_session_ends">Session ends</string>
+    <string name="m_top_sound">Top sound</string>
+    <string name="m_camera">Camera</string>
+    <string name="m_people_detected">People detected</string>
+    <string name="m_room_light">Room light</string>
+    <string name="m_exposure">Exposure</string>
+
+    <string name="m_occupancy">Occupancy</string>
+    <string name="occ_ppl">%1$d ppl</string>
+    <string name="occ_detected">Detected</string>
+    <string name="occ_empty">Empty</string>
+
+    <!-- AC/Lights chip states -->
+    <string name="ac_state_off">OFF</string>
+    <string name="ac_state_on">ON</string>
+    <string name="ac_state_cool_plus">COOL +</string>
+    <string name="ac_state_cool_minus">COOL -</string>
+
+    <!-- AC energy suggestion bullets -->
+    <string name="adv_start_ac">Start AC at %1$s</string>
+    <string name="adv_target_setpoint">Target setpoint %1$s °C</string>
+    <string name="adv_occupancy">Occupancy: %1$d people (%2$s)</string>
+    <string name="adv_reason">Reason: %1$s</string>
+    <string name="occlvl_occupied">occupied</string>
+    <string name="occlvl_likely_occupied">likely occupied</string>
+    <string name="occlvl_unclear">unclear</string>
+    <string name="occlvl_likely_empty">likely empty</string>
+
+    <!-- Action / Analytics -->
+    <string name="label_now">NOW</string>
+    <string name="sched_today_schedule">Today\'s schedule</string>
+    <string name="sched_full_day_schedule">Full day schedule</string>
+    <string name="day_yesterday">Yesterday</string>
+    <string name="day_today">Today</string>
+    <string name="day_tomorrow">Tomorrow</string>
+    <string name="day_plus2">+2 Days</string>
+
+    <!-- Weekly / daily occupancy -->
+    <string name="analytics_weekly_title">Weekly occupancy pattern</string>
+    <string name="history_title">History</string>
+    <string name="history_empty">No history yet</string>
+    <string name="history_empty_desc">Weekly history will appear once the sensor has collected enough occupancy data for this space.</string>
+    <string name="analytics_no_history">No sensor history yet</string>
+    <string name="analytics_no_history_desc">Run the sensor to collect occupancy data for this hall.</string>
+    <string name="analytics_daily_pattern">%1$s — daily pattern</string>
+    <string name="analytics_peak">Peak: %1$d ppl</string>
+
+    <!-- Class schedule -->
+    <string name="sched_title">Class Schedule</string>
+    <string name="sched_no_data">No class data yet</string>
+    <string name="sched_no_data_desc">The class schedule will appear once the sensor has collected enough occupancy data for this hall.</string>
+    <string name="sched_estimated">estimated</string>
+    <string name="sched_from_data">from occupancy data</string>
+    <string name="sched_ph">PH</string>
+    <string name="sched_public_holiday">Public Holiday — No Classes</string>
+    <string name="sched_estimated_note">Showing estimated schedule — class detection will improve once sensor data spans 2+ weeks.</string>
+    <string name="sched_no_breaks">No breaks scheduled</string>
+    <string name="sched_weekend">No classes — weekend</string>
+    <string name="sched_break">Break %1$02d:%2$02d–%3$02d:%4$02d</string>
+
+    <string-array name="day_names_full">
+        <item>Monday</item><item>Tuesday</item><item>Wednesday</item><item>Thursday</item>
+        <item>Friday</item><item>Saturday</item><item>Sunday</item>
+    </string-array>
+    <string-array name="sched_day_labels">
+        <item>MON</item><item>TUE</item><item>WED</item><item>THU</item>
+        <item>FRI</item><item>SAT</item><item>SUN</item>
+    </string-array>
+
+    <!-- Setup guide -->
+    <string name="setup_title">Sensor Setup Guide</string>
+    <string name="setup_skip">Skip</string>
+    <string name="setup_back">Back</string>
+    <string name="setup_next">Next</string>
+    <string name="setup_done">Done</string>
+    <string name="setup_step_counter">%1$d / %2$d</string>
+    <string name="setup_s1_title">1. Allow Camera &amp; Location</string>
+    <string name="setup_s1_body">reWatt uses the camera to detect who is in the room, and location to fetch outdoor weather for energy advice.</string>
+    <string name="setup_perm_camera">Camera</string>
+    <string name="setup_perm_location">Location</string>
+    <string name="setup_allowed">Allowed</string>
+    <string name="setup_not_allowed">Not allowed</string>
+    <string name="setup_allow_permissions">Allow Permissions</string>
+    <string name="setup_s2_title">2. Turn Off Battery Saver for reWatt</string>
+    <string name="setup_s2_body">Your phone may pause the app to save battery. Turn off Battery Optimization so reWatt keeps running at all times — even when the screen is off.</string>
+    <string name="setup_batt_off">Battery Saver is off — good!</string>
+    <string name="setup_batt_on">Battery Saver is on — set it to Off!</string>
+    <string name="setup_allow_always_on">Open Battery Saver settings</string>
+    <string name="setup_s3_title">4. Mount the Sensor Phone</string>
+    <string name="setup_s3_body">Use the wall mount in the kit to attach this phone to the classroom wall or whiteboard. Point the camera toward the centre of the room.</string>
+    <string name="setup_mount_photo">Mount photo — coming soon</string>
+    <string name="setup_s3_tip1">Attach the mount at shoulder height or above.</string>
+    <string name="setup_s3_tip2">Make sure the camera faces the seating area.</string>
+    <string name="setup_s3_tip3">Keep the lens clear — no tape or cover over it.</string>
+    <string name="setup_s3_tip4">Plug in the charger so the phone stays powered.</string>
+    <string name="setup_s4_title">5. Check the Sensor View</string>
+    <string name="setup_s4_body">Ask the person with the Admin phone to open the Capture tab and choose your hall. They will confirm the camera can see the whole room clearly.</string>
+    <string name="setup_example_view">Example view — coming soon</string>
+    <string name="setup_s4_tip1">The full room should be visible — no blind spots.</string>
+    <string name="setup_s4_tip2">Avoid pointing at bright light sources.</string>
+    <string name="setup_s4_tip3">If the angle is wrong, re-adjust the mount and check again.</string>
+    <string name="setup_s5_title">6. Name Your Space</string>
+    <string name="setup_s5_body">Give this sensor a name and seating capacity — e.g. the room, hall or lab it monitors and how many people it holds. reWatt uses the capacity to estimate energy use.</string>
+    <string name="setup_space_name">Space name</string>
+    <string name="setup_space_name_hint">e.g. Room1, Living room, Community hall</string>
+    <string name="setup_capacity">Capacity (pax)</string>
+    <string name="setup_capacity_hint">e.g. 300</string>
+    <string name="setup_s6_title">7. You\'re All Set!</string>
+    <string name="setup_s6_body">Everything is ready. reWatt will now watch the room and help manage energy automatically. You can come back to this guide anytime from the Settings tab.</string>
+    <string name="setup_complete">Setup complete</string>
+    <string name="setup_complete_desc">Tap Done to start using reWatt.</string>
+    <string name="setup_camera_needed">Camera permission needed to show the live view</string>
+
+    <!-- Capture tab -->
+    <string name="capture_your_space">Your monitored space</string>
+    <string name="capture_interface">Capture interface</string>
+    <string name="capture_live_sensor">Live Sensor Data</string>
+    <string name="capture_need_access">Need access</string>
+    <string name="capture_upload">Upload</string>
+    <string name="capture_stop">Stop</string>
+    <string name="capture_start">Start</string>
+    <string name="capture_capture_now">Capture now</string>
+    <string name="capture_no_frame">No captured frame yet</string>
+    <string name="capture_recording">Recording audio…  %1$ds / %2$ds</string>
+    <string name="capture_people_detected">People detected</string>
+    <string name="sensor_environmental">Environmental (SHT30)</string>
+    <string name="sensor_radar">Radar (LD2412)</string>
+    <string name="sensor_presence">Presence</string>
+    <string name="sensor_clear">Clear</string>
+    <string name="sensor_distance">Distance</string>
+    <string name="sensor_temp">Temp</string>
+    <string name="sensor_radar_state">Radar State</string>
+    <string name="sensor_moving_target">Moving Target</string>
+    <string name="sensor_stationary_target">Stationary Target</string>
+    <string name="sensor_moving">Moving</string>
+    <string name="sensor_stationary">Stationary</string>
+    <string name="sensor_moving_energy">Moving Energy (≥%1$d = person)</string>
+    <string name="sensor_stationary_energy">Stationary Energy (≥%1$d = person)</string>
+    <string name="sensor_connect_otg">Connect sensor via OTG cable to see live data</string>
+    <string name="sensor_waiting_packet">Waiting for radar packet</string>
+    <string name="sensor_scan">Scan</string>
+    <string name="radar_no_target">No Target</string>
+    <string name="radar_moving">Moving</string>
+    <string name="radar_stationary">Stationary</string>
+    <string name="radar_both">Both</string>
+    <string name="verdict_occupied">OCCUPIED — someone is in the room</string>
+    <string name="verdict_empty">EMPTY — no one detected</string>
+    <string name="verdict_waiting">WAITING — no sensor data</string>
+    <string name="db_database">Database</string>
+    <string name="db_recent_captures">Recent Captures</string>
+    <string name="db_no_captures">No captures yet — start the sensor to begin.</string>
+    <string name="db_packet_health">Packet health</string>
+    <string name="db_firestore_sync">Firestore sync</string>
+    <string name="db_gemini_activity">Gemini activity</string>
+    <string name="sync_synced">Synced</string>
+    <string name="sync_syncing">Syncing…</string>
+    <string name="sync_failed">Failed</string>
+    <string name="sync_config_missing">Config missing</string>
+    <string name="sync_idle">Idle</string>
+    <string name="settings_setup_guide">Setup Guide</string>
+    <string name="settings_setup_guide_desc">Permissions, mount &amp; camera view</string>
+
+    <!-- Weather card -->
+    <string name="weather_current_conditions">Current conditions</string>
+    <string name="weather_outdoor_temp">Temp</string>
+    <string name="weather_outdoor_rh">Humidity</string>
+    <string name="weather_delta_indoor">Δ vs indoor</string>
+
+    <!-- Buttons -->
+    <string name="btn_capture">Capture</string>
+    <string name="btn_open">Open</string>
+    <string name="btn_refresh">Refresh</string>
+    <string name="btn_loading">Loading…</string>
+    <string name="error_try_again">Try again</string>
+    <string name="btn_sign_out">Sign Out</string>
+    <string name="btn_delete_account">Delete Account</string>
+    <string name="btn_dismiss">Dismiss</string>
+    <string name="btn_suggest_action">Suggest action</string>
+    <string name="btn_thinking">Thinking…</string>
+
+    <!-- Auth -->
+    <string name="auth_tagline_signin">Sign in to continue</string>
+    <string name="auth_email">Email</string>
+    <string name="auth_password">Password</string>
+    <string name="auth_sign_in">Sign In</string>
+    <string name="auth_no_account">Don\'t have an account? Sign Up</string>
+    <string name="auth_create_account">Create Account</string>
+    <string name="auth_confirm_password">Confirm Password</string>
+    <string name="auth_passwords_no_match">Passwords do not match</string>
+    <string name="auth_have_account">Already have an account? Sign In</string>
+    <string name="auth_join">Join ReWatt</string>
+    <string name="auth_building">Building</string>
+    <string name="auth_building_hint">e.g. fsktm, foe, fass</string>
+
+    <!-- NOW-block action labels -->
+    <string name="now_label_keep_ac_on">Keep AC on</string>
+    <string name="now_label_turn_off_ac_lights">Turn off AC &amp; lights</string>
+    <string name="now_label_turn_off_all">Turn off all systems</string>
+    <string name="now_label_set_ac">Set AC to %1$d°C</string>
+    <string name="now_label_increase_cooling">Increase AC cooling</string>
+    <string name="now_label_maintain">Maintain current settings</string>
+    <string name="now_label_no_action">No immediate action needed</string>
+
+    <!-- NOW-block action reasons -->
+    <string name="now_reason_unexpected_occupancy">Unexpected occupancy (%1$d people detected)</string>
+    <string name="now_reason_no_class_until">No class until %1$02d:00</string>
+    <string name="now_reason_no_more_classes">No more classes today</string>
+    <string name="now_reason_too_cold">Too cold (THI %1$.1f) — raise setpoint to save energy</string>
+    <string name="now_reason_temperature">Temperature is %1$.1f°C</string>
+    <string name="now_reason_class_in_session">Class in session (~%1$d expected)</string>
+    <string name="now_reason_weekend">Weekend — no classes scheduled</string>
+    <string name="now_reason_overnight">Overnight — no classes until 07:30</string>
+    <string name="now_reason_break_until">Break period until %1$02d:%2$02d</string>
+    <string name="now_reason_normal_session">Normal class session in progress</string>
+    <string name="now_reason_room_empty">Room appears empty</string>
+    <!-- CCTV security camera -->
+    <string name="cctv_channel_intrusion">Intrusion alerts</string>
+    <string name="cctv_channel_status">CCTV status</string>
+    <string name="cctv_alert_title">Intruder alert</string>
+    <string name="cctv_alert_text">Unrecognised person detected in %1$s</string>
+    <string name="cctv_alert_heading">INTRUDER ALERT</string>
+    <string name="cctv_alert_detail">%1$s · face not recognised (unknown or masked)</string>
+    <string name="cctv_alert_detail_score">%1$s · best FAMILY match %2$s</string>
+    <string name="cctv_dismiss">Dismiss</string>
+    <string name="cctv_resume_title">CCTV paused</string>
+    <string name="cctv_resume_text">Open ReWatt to resume the security camera.</string>
+    <string name="cctv_deterrent_speech">You are being recorded</string>
+    <string name="sec_title">Security Camera</string>
+    <string name="sec_subtitle">Radar motion → person check → FAMILY face check.</string>
+    <string name="sec_armed">ARMED</string>
+    <string name="sec_disarmed">DISARMED</string>
+    <string name="sec_arm_desc_disarmed">Arm it when the house is empty or at night.</string>
+    <string name="sec_arm_hint_no_faces">Register at least one FAMILY face before arming.</string>
+    <string name="sec_arm_hint_radar">Radar module not connected — the camera can\'t detect motion.</string>
+    <string name="sec_status">Live status</string>
+    <string name="sec_phase_idle">Idle</string>
+    <string name="sec_phase_motion">Motion detected</string>
+    <string name="sec_phase_grace">Motion ended — closing in 5 s</string>
+    <string name="sec_recording">Recording</string>
+    <string name="sec_torch">Torch on</string>
+    <string name="sec_last_check">Last check</string>
+    <string name="sec_no_checks">No checks yet</string>
+    <string name="sec_result_no_person">No person</string>
+    <string name="sec_result_no_face">Person, no face</string>
+    <string name="sec_result_family">FAMILY</string>
+    <string name="sec_result_stranger">STRANGER</string>
+    <string name="sec_family_title">FAMILY faces</string>
+    <string name="sec_family_count">%1$d photos registered</string>
+    <string name="sec_register">Register FAMILY face</string>
+    <string name="sec_register_disarm_first">Disarm to register faces</string>
+    <string name="sec_clear_all">Clear all</string>
+    <string name="sec_strictness">Match strictness</string>
+    <string name="sec_strictness_desc">Raw cosine similarity at which a face counts as FAMILY (calibrated confidence reaches 85\u0025). Higher = stricter: fewer wrong FAMILY matches, more false alarms. Default 0.40.</string>
+    <string name="sec_test_alarm">Test alarm</string>
+    <string name="sec_storage">Storage: %1$s used of 2 GB · kept up to 7 days</string>
+    <string name="sec_history">Event history</string>
+    <string name="sec_history_empty">No events yet. FAMILY visits and empty triggers are not kept.</string>
+    <string name="sec_delete">Delete</string>
+    <string name="sec_close">Close</string>
+    <string name="sec_clip_part">Clip %1$d</string>
+    <string name="sec_photos">Photos</string>
+    <string name="sec_perm_fullscreen">Allow full-screen alerts so the red alert can wake the screen.</string>
+    <string name="sec_perm_camera">Camera permission is needed for the security camera.</string>
+    <string name="sec_perm_mic">Microphone not allowed — clips will have no sound.</string>
+    <string name="sec_perm_fix">Fix</string>
+    <string name="sec_perm_battery">Battery optimisation is on — the phone may pause the security camera. Set ReWatt to Unrestricted / Don\'t optimise.</string>
+    <string name="sec_phone_setup_title">Phone settings for the alarm</string>
+    <string name="sec_phone_setup_body">Some phone brands block apps from waking the screen or running in the background. Open ReWatt\'s app settings and allow these (names differ by brand):</string>
+    <string name="sec_phone_setup_items">• Show on lock screen\n• Pop-up windows / Display over other apps\n• Autostart / Allow background activity\n• Battery: Unrestricted / No restrictions</string>
+    <string name="sec_phone_setup_brands">Usually needed on Xiaomi, Redmi, POCO, OPPO, realme, OnePlus, vivo, Huawei, Honor and Samsung. On stock Android (e.g. Pixel) nothing extra is needed.</string>
+    <string name="sec_phone_setup_open">Open settings</string>
+    <string name="sec_phone_setup_done">Done</string>
+    <string name="reg_title">Register FAMILY face</string>
+    <string name="reg_step">Shot %1$d of %2$d</string>
+    <string name="reg_prompt_1">Look straight at the camera</string>
+    <string name="reg_prompt_2">Turn your head slightly left</string>
+    <string name="reg_prompt_3">Turn your head slightly right</string>
+    <string name="reg_prompt_4">Tilt your chin slightly up</string>
+    <string name="reg_prompt_5">Tilt your chin slightly down</string>
+    <string name="reg_capture">Capture</string>
+    <string name="reg_checking">Checking…</string>
+    <string name="reg_no_face">No face found — retake.</string>
+    <string name="reg_multi">More than one face — one person at a time.</string>
+    <string name="reg_small">Face too small — move closer.</string>
+    <string name="reg_error">Face models failed to load.</string>
+    <string name="reg_saved">Saved as FAMILY ✓</string>
+    <string name="reg_all_done">This person is registered as FAMILY.</string>
+    <string name="reg_another">Add another person</string>
+    <string name="reg_done">Done</string>
+    <string name="sec_test_check">Test CCTV check</string>
+    <string name="sec_test_check_desc">Takes one photo with the back camera after a 5-second countdown and runs the full check: person → face → FAMILY.</string>
+    <string name="sec_test_countdown">Stand in front of the back camera… %1$d</string>
+    <string name="sec_test_counts">%1$d person · %2$d face</string>
+    <string name="sec_test_err_busy">A motion event is in progress — try again when it ends.</string>
+    <string name="sec_test_err_camera">Camera unavailable — close other camera screens and try again.</string>
+    <string name="sec_test_err_models">Models are still loading — try again in a few seconds.</string>
+    <string name="sec_test_err_face">Face check failed — please send the logs to the developer.</string>
+    <string name="setup_sec_title">3. Security Camera Permissions</string>
+    <string name="setup_sec_body">The security camera needs these so the alarm can sound, wake the screen over the lock screen and record clips. You can skip this step if you won\'t use the security camera.</string>
+    <string name="setup_perm_notifications">Notifications</string>
+    <string name="setup_perm_microphone">Microphone (clip sound)</string>
+    <string name="setup_perm_fullscreen">Full-screen alerts</string>
+    <string name="setup_perm_background">Run in background</string>
+    <string name="setup_sec_allow_runtime">Allow notifications &amp; microphone</string>
+    <string name="setup_sec_allow_fullscreen">Allow full-screen alerts</string>
+    <string name="setup_sec_allow_background">Allow background running</string>
+    <string name="setup_sec_phone_confirmed">Phone settings confirmed</string>
+    <string name="setup_sec_next_tip">After setup, open the SECURITY tab to register FAMILY faces, then turn on Armed.</string>
+    <string name="sec_calibration_line">C(s) = 1 / (1 + e^(−k(s − s0))) · s0 %1$s · k %2$s · FAMILY when C ≥ %3$s</string>
+</resources>
+

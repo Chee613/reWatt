@@ -1,0 +1,35 @@
+.gradle/
+.kotlin/
+.idea/
+*.iml
+local.properties
+build/
+app/build/
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.ap_
+*.keystore
+hs_err_pid*.log
+replay_pid*.log
+functions/node_modules/
+functions/.env
+functions/.secret.local
+
+# Firebase Admin private key — never commit
+serviceAccountKey.json
+*-firebase-adminsdk-*.json
+scripts/node_modules/
+gradle/gradle-daemon-jvm.properties
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+history.png
+forecast_day.png
+forecast_week.png
