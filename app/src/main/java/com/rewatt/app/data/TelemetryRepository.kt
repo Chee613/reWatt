@@ -1,5 +1,6 @@
 package com.rewatt.app.data
 
+import com.rewatt.app.telemetry.GasReading
 import com.rewatt.app.telemetry.PacketFreshness
 import com.rewatt.app.telemetry.RadarTelemetry
 import com.rewatt.app.telemetry.TelemetryFreshness
@@ -9,9 +10,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -35,8 +40,48 @@ class TelemetryRepository(
     private var lastUiEmitAtMillis = 0L
     private val validPacketCounter = java.util.concurrent.atomic.AtomicInteger(0)
 
+    // Optional SGP41 gas data. Every reading goes to the fire monitor (not throttled); the dashboard
+    // gets the latest one alongside the normal UI emission. Absent on modules without an SGP41.
+    private val mutableGasSamples = MutableSharedFlow<GasReading>(
+        extraBufferCapacity = 32,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+    val gasSamples: SharedFlow<GasReading> = mutableGasSamples.asSharedFlow()
+
+    @Volatile
+    private var latestGas: GasReading? = null
+
+    /** While the long-press fire demo runs, real SGP41 readings are ignored so the two don't mix. */
+    @Volatile
+    var gasDemoActive: Boolean = false
+
+    /** Feed a simulated reading through the same path as real SGP41 data (fire demo). */
+    fun injectGas(gas: GasReading) {
+        latestGas = gas
+        mutableGasSamples.tryEmit(gas)
+        mutableState.update { it.copy(latestGas = gas) }
+    }
+
+    /** Forget the last gas reading (dashboard goes back to "--" until real data arrives). */
+    fun clearGas() {
+        latestGas = null
+        mutableState.update { it.copy(latestGas = null) }
+    }
+
     suspend fun acceptRawPacket(rawPacket: String, capturedAtMillis: Long = System.currentTimeMillis()) {
+        val parsedGas = UsbDataParser.parseGas(rawPacket, capturedAtMillis)
+        val gas = parsedGas?.takeUnless { gasDemoActive }
+        if (gas != null) {
+            latestGas = gas
+            mutableGasSamples.tryEmit(gas)
+        }
+
         val telemetry = UsbDataParser.parseTelemetry(rawPacket, capturedAtMillis)
+        if (telemetry == null && parsedGas != null) {
+            // Phonix-style gas-only line (VOC:x,NOX:y): valid data, not a malformed packet.
+            if (gas != null) mutableState.update { it.copy(latestGas = gas) }
+            return
+        }
         if (telemetry == null) {
             mutableState.update { current ->
                 current.copy(
@@ -61,6 +106,7 @@ class TelemetryRepository(
                     lastValidPacketAtMillis = telemetry.capturedAtMillis,
                     validPacketCount = count,
                     lastMalformedPacket = null,
+                    latestGas = latestGas ?: current.latestGas,
                 )
             }
         }
@@ -106,6 +152,8 @@ data class SensorDashboardState(
     val connectionStatus: UsbConnectionStatus = UsbConnectionStatus.Disconnected,
     val connectionMessage: String = "USB service has not scanned yet.",
     val latestTelemetry: RadarTelemetry? = null,
+    /** Latest SGP41 reading, or null when the module has no gas sensor. */
+    val latestGas: GasReading? = null,
     val lastValidPacketAtMillis: Long? = null,
     val validPacketCount: Int = 0,
     val malformedPacketCount: Int = 0,

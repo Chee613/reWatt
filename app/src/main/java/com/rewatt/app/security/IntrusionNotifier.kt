@@ -79,6 +79,50 @@ class IntrusionNotifier(context: Context) {
         manager.cancel(INTRUSION_NOTIFICATION_ID)
     }
 
+    /** Full-screen "Fire alert" (SGP41). The Dismiss action works without any service running. */
+    fun showFire(roomId: String, vocIndex: Int?, noxIndex: Int?, test: Boolean) {
+        val text = localizedContext(appContext)
+        manager.createNotificationChannel(
+            NotificationChannel(FIRE_CHANNEL, text.getString(R.string.fire_channel), NotificationManager.IMPORTANCE_HIGH).apply {
+                setSound(null, null) // the siren is played separately on the alarm stream
+                enableVibration(false)
+                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+            },
+        )
+        val alertIntent = IntrusionAlertActivity.fireIntent(appContext, roomId, vocIndex, noxIndex, test)
+        val fullScreen = PendingIntent.getActivity(
+            appContext,
+            REQUEST_FIRE_ALERT,
+            alertIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val dismiss = PendingIntent.getBroadcast(
+            appContext,
+            REQUEST_FIRE_DISMISS,
+            Intent(appContext, com.rewatt.app.safety.FireDismissReceiver::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val notification = NotificationCompat.Builder(appContext, FIRE_CHANNEL)
+            .setSmallIcon(R.drawable.ic_rewatt)
+            .setContentTitle(text.getString(R.string.fire_alert_title))
+            .setContentText(text.getString(R.string.fire_alert_text, roomId))
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setOngoing(true)
+            .setAutoCancel(false)
+            .setContentIntent(fullScreen)
+            .setFullScreenIntent(fullScreen, true)
+            .addAction(0, text.getString(R.string.cctv_dismiss), dismiss)
+            .build()
+        runCatching { NotificationManagerCompat.from(appContext).notify(FIRE_NOTIFICATION_ID, notification) }
+        runCatching { appContext.startActivity(alertIntent) }
+    }
+
+    fun cancelFire() {
+        manager.cancel(FIRE_NOTIFICATION_ID)
+    }
+
     /** Android blocked the camera/microphone from the background (e.g. after a restart). */
     fun showResumeHint() {
         ensureChannels()
@@ -107,6 +151,10 @@ class IntrusionNotifier(context: Context) {
         private const val REQUEST_ALERT = 90
         private const val REQUEST_DISMISS = 93
         private const val REQUEST_OPEN = 94
+        private const val FIRE_CHANNEL = "rewatt_fire"
+        private const val FIRE_NOTIFICATION_ID = 95
+        private const val REQUEST_FIRE_ALERT = 96
+        private const val REQUEST_FIRE_DISMISS = 97
     }
 }
 

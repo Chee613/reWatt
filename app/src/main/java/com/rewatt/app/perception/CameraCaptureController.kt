@@ -99,6 +99,9 @@ class CameraCaptureController(
     private var torchSuppressed = false
 
     @Volatile
+    private var alarmTorch = false
+
+    @Volatile
     private var deviceRotation: Int = Surface.ROTATION_0
 
     private val orientationListener = object : OrientationEventListener(context) {
@@ -135,7 +138,7 @@ class CameraCaptureController(
                 cameraMutex.withLock {
                     val imageCapture = ensureBound(wantVideo = recording != null)
                     // Protect the illuminance reading: never take this photo with the CCTV torch lit.
-                    val torchWasLit = securitySessionActive && desiredTorch
+                    val torchWasLit = (securitySessionActive && desiredTorch) || alarmTorch
                     if (torchWasLit) {
                         torchSuppressed = true
                         applyTorch()
@@ -250,6 +253,14 @@ class CameraCaptureController(
         scope.launch(Dispatchers.Main.immediate) { applyTorch() }
     }
 
+    /** Alarm strobe (e.g. fire) while this controller holds the camera; still off during occupancy photos. */
+    fun setAlarmTorch(on: Boolean) {
+        alarmTorch = on
+        scope.launch(Dispatchers.Main.immediate) { applyTorch() }
+    }
+
+    val isCameraBound: Boolean get() = camera != null
+
     /**
      * End the CCTV session: stop the clip, torch off, unbind video. The ImageCapture stays bound
      * only when [keepImageBound] (the occupancy capture is running and expects it warm).
@@ -323,7 +334,7 @@ class CameraCaptureController(
     }
 
     private fun applyTorch() {
-        val on = desiredTorch && securitySessionActive && !torchSuppressed
+        val on = ((desiredTorch && securitySessionActive) || alarmTorch) && !torchSuppressed
         runCatching { camera?.cameraControl?.enableTorch(on) }
     }
 

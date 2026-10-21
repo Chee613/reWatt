@@ -278,7 +278,7 @@
     <string name="sec_armed">AKTIF</string>
     <string name="sec_disarmed">TIDAK AKTIF</string>
     <string name="sec_arm_desc_disarmed">Aktifkan apabila rumah kosong atau pada waktu malam.</string>
-    <string name="sec_arm_hint_no_faces">Daftar sekurang-kurangnya satu wajah FAMILY sebelum mengaktifkan.</string>
+    <string name="sec_arm_hint_no_faces">Daftar sekurang-kurangnya satu wajah FAMILY dalam Tetapan sebelum mengaktifkan.</string>
     <string name="sec_arm_hint_radar">Modul radar tidak disambung — kamera tidak dapat mengesan gerakan.</string>
     <string name="sec_status">Status langsung</string>
     <string name="sec_phase_idle">Senggang</string>
@@ -299,7 +299,7 @@
     <string name="sec_clear_all">Padam semua</string>
     <string name="sec_strictness">Ketegasan padanan</string>
     <string name="sec_strictness_desc">Keserupaan kosinus mentah di mana wajah dikira FAMILY (keyakinan terkalibrasi mencapai 85\u0025). Lebih tinggi = lebih tegas: kurang padanan FAMILY yang salah, lebih banyak penggera palsu. Lalai 0.40.</string>
-    <string name="sec_test_alarm">Uji penggera</string>
+    <string name="sec_test_alarm">Uji penggera penceroboh</string>
     <string name="sec_storage">Storan: %1$s digunakan daripada 2 GB · disimpan hingga 7 hari</string>
     <string name="sec_history">Sejarah peristiwa</string>
     <string name="sec_history_empty">Belum ada peristiwa. Lawatan FAMILY dan pencetus kosong tidak disimpan.</string>
@@ -355,4 +355,14 @@
     <string name="setup_sec_phone_confirmed">Tetapan telefon disahkan</string>
     <string name="setup_sec_next_tip">Selepas persediaan, buka tab SECURITY untuk mendaftar wajah FAMILY, kemudian aktifkan Armed.</string>
     <string name="sec_calibration_line">C(s) = 1 / (1 + e^(−k(s − s0))) · s0 %1$s · k %2$s · FAMILY jika C ≥ %3$s</string>
+    <string name="fire_channel">Amaran kebakaran</string>
+    <string name="fire_alert_title">Amaran kebakaran</string>
+    <string name="fire_alert_text">Kemungkinan kebakaran dikesan di %1$s</string>
+    <string name="fire_alert_heading">AMARAN KEBAKARAN</string>
+    <string name="fire_alert_detail">%1$s · Indeks VOC %2$s · Indeks NOx %3$s</string>
+    <string name="fire_alert_test">%1$s · Ujian penggera</string>
+    <string name="settings_security_header">Keselamatan &amp; kebenaran</string>
+    <string name="settings_all_permissions_ok">Semua kebenaran dibenarkan</string>
+    <string name="settings_tests_header">Ujian</string>
+    <string name="settings_test_fire_alarm">Uji penggera kebakaran</string>
 </resources>

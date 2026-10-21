@@ -3,12 +3,18 @@ package com.rewatt.app.ui.sensor
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
-import android.widget.Toast
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,11 +35,16 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.outlined.BatteryFull
+import androidx.compose.material.icons.outlined.Bolt
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.HelpOutline
 import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Lightbulb
+import androidx.compose.material.icons.outlined.LocalFireDepartment
 import androidx.compose.material.icons.outlined.MeetingRoom
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Radar
@@ -92,13 +103,19 @@ import com.rewatt.app.R
 import com.rewatt.app.data.MqttStatus
 import com.rewatt.app.perception.CaptureStartSource
 import com.rewatt.app.perception.PerceptionUiState
+import com.rewatt.app.safety.FireAlarmState
 import com.rewatt.app.security.EventPhase
 import com.rewatt.app.security.SecurityUiState
+import com.rewatt.app.telemetry.FireThreshold
+import com.rewatt.app.telemetry.GasLevel
+import com.rewatt.app.telemetry.GasReading
+import com.rewatt.app.telemetry.noxLevel
+import com.rewatt.app.telemetry.vocLevel
 import com.rewatt.app.usb.UsbConnectionStatus
 
 private enum class StitchTab(val label: String) {
-    MAIN("MAIN"),
-    DEBUG("DEBUG"),
+    ENERGY("ENERGY"),
+    FIRE("FIRE"),
     SECURITY("SECURITY"),
     SETTINGS("SETTINGS"),
 }
@@ -118,8 +135,11 @@ fun SensorScreen(
     modifier: Modifier = Modifier,
     securityState: SecurityUiState = SecurityUiState(),
     securityContent: @Composable () -> Unit = {},
+    fireAlarmState: FireAlarmState = FireAlarmState(),
+    onToggleFireDemo: () -> Unit = {},
+    settingsSecurityContent: @Composable () -> Unit = {},
 ) {
-    var selectedTab by rememberSaveable { mutableStateOf(StitchTab.MAIN) }
+    var selectedTab by rememberSaveable { mutableStateOf(StitchTab.ENERGY) }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -131,6 +151,7 @@ fun SensorScreen(
                 onTabSelected = { selectedTab = it },
                 isDemoMode = uiState.isDemoMode,
                 onToggleDemoMode = onToggleDemoMode,
+                onToggleFireDemo = onToggleFireDemo,
             )
         },
     ) { paddingValues ->
@@ -140,20 +161,30 @@ fun SensorScreen(
                 .padding(paddingValues),
         ) {
             when (selectedTab) {
-                StitchTab.MAIN -> StitchMainTab(uiState = uiState, securityState = securityState)
-                StitchTab.DEBUG -> StitchDebugTab(
+                StitchTab.ENERGY -> StitchMainTab(
                     uiState = uiState,
-                    onScanUsb = onScanUsb,
-                    onStartPerception = onStartPerception,
-                    onStopPerception = onStopPerception,
-                    onDebugCapture = onDebugCapture,
-                    onSendPhotoMqtt = onSendPhotoMqtt,
+                    securityState = securityState,
+                )
+                StitchTab.FIRE -> StitchFireTab(
+                    uiState = uiState,
+                    fireAlarmState = fireAlarmState,
                 )
                 StitchTab.SECURITY -> securityContent()
                 StitchTab.SETTINGS -> StitchSettingsTab(
                     uiState = uiState,
                     onUpdateMqttConfig = onUpdateMqttConfig,
                     onOpenSetupGuide = onOpenSetupGuide,
+                    securitySettingsContent = settingsSecurityContent,
+                    diagnosticsContent = {
+                        DiagnosticsSection(
+                            uiState = uiState,
+                            onScanUsb = onScanUsb,
+                            onStartPerception = onStartPerception,
+                            onStopPerception = onStopPerception,
+                            onDebugCapture = onDebugCapture,
+                            onSendPhotoMqtt = onSendPhotoMqtt,
+                        )
+                    },
                 )
             }
         }
@@ -234,9 +265,8 @@ private fun StitchBottomBar(
     onTabSelected: (StitchTab) -> Unit,
     isDemoMode: Boolean,
     onToggleDemoMode: (Boolean) -> Unit,
+    onToggleFireDemo: () -> Unit,
 ) {
-    val context = LocalContext.current
-
     NavigationBar(
         containerColor = Color.White,
         tonalElevation = 8.dp,
@@ -249,26 +279,25 @@ private fun StitchBottomBar(
                 onClick = { onTabSelected(tab) },
                 icon = {
                     val icon = when (tab) {
-                        StitchTab.MAIN -> Icons.Outlined.Speed
-                        StitchTab.DEBUG -> Icons.Outlined.CameraAlt
+                        StitchTab.ENERGY -> Icons.Outlined.Bolt
+                        StitchTab.FIRE -> Icons.Outlined.LocalFireDepartment
                         StitchTab.SECURITY -> Icons.Outlined.Shield
                         StitchTab.SETTINGS -> Icons.Outlined.Settings
                     }
                     Box(
-                        modifier = if (tab == StitchTab.SETTINGS) {
-                            Modifier.combinedClickable(
+                        modifier = when (tab) {
+                            // Hidden: long-press SETTINGS toggles Demo Mode (no pop-up message).
+                            StitchTab.SETTINGS -> Modifier.combinedClickable(
                                 onClick = { onTabSelected(tab) },
-                                onLongClick = {
-                                    val nextState = !isDemoMode
-                                    onToggleDemoMode(nextState)
-                                    Toast.makeText(
-                                        context,
-                                        if (nextState) "Demo Mode Enabled" else "Demo Mode Disabled",
-                                        Toast.LENGTH_SHORT,
-                                    ).show()
-                                },
+                                onLongClick = { onToggleDemoMode(!isDemoMode) },
                             )
-                        } else Modifier,
+                            // Hidden: long-press FIRE = fire demo (simulated rise → real fire alarm, no MQTT, no pop-up).
+                            StitchTab.FIRE -> Modifier.combinedClickable(
+                                onClick = { onTabSelected(tab) },
+                                onLongClick = onToggleFireDemo,
+                            )
+                            else -> Modifier
+                        },
                     ) {
                         Icon(
                             imageVector = icon,
@@ -342,8 +371,211 @@ private fun SecurityShieldBadge(security: SecurityUiState) {
     }
 }
 
+/**
+ * VOC Index and NOx Index gauges (Sensirion Gas Index values — unitless, 0..500). Shows "--" when no
+ * reading arrived recently, i.e. on modules without an SGP41. Cards turn red above the fire
+ * threshold or while the fire alarm is active.
+ */
 @Composable
-private fun StitchMainTab(uiState: SensorNodeUiState, securityState: SecurityUiState) {
+private fun GasGaugeRow(
+    gas: GasReading?,
+    nowMillis: Long,
+    fireAlarmActive: Boolean,
+) {
+    val fresh = gas?.takeIf { nowMillis - it.capturedAtMillis <= FireThreshold.STALE_AFTER_MS }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        GasGaugeCard(
+            label = "VOC INDEX",
+            value = fresh?.vocIndex,
+            level = fresh?.vocIndex?.let(::vocLevel),
+            colors = listOf(Color(0xFF8B5CF6), Color(0xFFEC4899)),
+            fireAlarmActive = fireAlarmActive,
+            modifier = Modifier.weight(1f),
+        )
+        GasGaugeCard(
+            label = "NOx INDEX",
+            value = fresh?.noxIndex,
+            level = fresh?.noxIndex?.let(::noxLevel),
+            colors = listOf(Color(0xFFF59E0B), Color(0xFFEA580C)),
+            fireAlarmActive = fireAlarmActive,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
+private fun GasGaugeCard(
+    label: String,
+    value: Int?,
+    level: GasLevel?,
+    colors: List<Color>,
+    fireAlarmActive: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val shownLevel = if (fireAlarmActive) GasLevel.DANGER else level
+    val high = shownLevel == GasLevel.DANGER
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = if (high) Color(0xFFFEE2E2) else Color(0xFFECEEEF)),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = label,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (high) Color(0xFFB91C1C) else Color(0xFF374151),
+                letterSpacing = 0.5.sp,
+            )
+            Spacer(Modifier.height(16.dp))
+            // The traffic-light pill sits in the ring's open bottom gap, so the card keeps exactly the
+            // same height as the Temperature/Humidity cards.
+            Box(contentAlignment = Alignment.BottomCenter) {
+                StitchRingGauge(
+                    value = (value ?: 0).toFloat(),
+                    maxValue = GAS_INDEX_MAX,
+                    centerText = value?.toString() ?: "--",
+                    subText = if (value != null) "Index" else null,
+                    gradientColors = if (high) listOf(Color(0xFFF87171), Color(0xFFB91C1C)) else colors,
+                    isDataAvailable = value != null,
+                )
+                BreathingTrafficPill(level = shownLevel, modifier = Modifier.padding(bottom = 8.dp))
+            }
+        }
+    }
+}
+
+/**
+ * Small traffic-light pill: green = safe, amber = caution, red = danger. It softly "breathes"
+ * (opacity only), a little faster as the level rises. Grey and still when there is no reading.
+ */
+@Composable
+private fun BreathingTrafficPill(level: GasLevel?, modifier: Modifier = Modifier) {
+    val color = when (level) {
+        GasLevel.SAFE -> Color(0xFF22C55E)
+        GasLevel.CAUTION -> Color(0xFFF59E0B)
+        GasLevel.DANGER -> Color(0xFFEF4444)
+        null -> Color(0xFFD1D5DB)
+    }
+    val alpha = if (level == null) {
+        1f
+    } else {
+        val periodMs = when (level) {
+            GasLevel.DANGER -> 700
+            GasLevel.CAUTION -> 1_200
+            GasLevel.SAFE -> 2_400
+        }
+        val breath by rememberInfiniteTransition(label = "gasBreath").animateFloat(
+            initialValue = 0.45f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(tween(periodMs, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+            label = "gasBreathAlpha",
+        )
+        breath
+    }
+    Box(
+        modifier = modifier
+            .size(width = 22.dp, height = 4.dp)
+            .clip(RoundedCornerShape(50))
+            .background(color.copy(alpha = alpha)),
+    )
+}
+
+private const val GAS_INDEX_MAX = 500f
+
+// ── TAB 2: FIRE ───────────────────────────────────────────────────────────────
+
+@Composable
+private fun StitchFireTab(
+    uiState: SensorNodeUiState,
+    fireAlarmState: FireAlarmState,
+) {
+    val alarm = fireAlarmState.active
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 20.dp, vertical = 12.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Text("Fire Safety", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color(0xFF09090B))
+
+        // Status card: NORMAL / FIRE ALERT
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = if (alarm) Color(0xFFFEE2E2) else Color(0xFFECEEEF)),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(if (alarm) Color(0xFFB91C1C) else Color(0xFFDCFCE7)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        Icons.Outlined.LocalFireDepartment,
+                        contentDescription = null,
+                        tint = if (alarm) Color.White else Color(0xFF15803D),
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = if (alarm) "FIRE ALERT" else "NORMAL",
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Black,
+                        color = if (alarm) Color(0xFFB91C1C) else Color(0xFF15803D),
+                    )
+                    Text(
+                        text = fireAlarmState.atMillis?.let {
+                            "Last alarm " + java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT)
+                                .format(java.util.Date(it))
+                        } ?: "No alarms",
+                        fontSize = 12.sp,
+                        color = Color(0xFF6B7280),
+                    )
+                }
+            }
+        }
+
+        // VOC / NOx gauges with traffic-light pills ("--" when the module has no SGP41)
+        GasGaugeRow(
+            gas = uiState.sensorState.latestGas,
+            nowMillis = uiState.nowMillis,
+            fireAlarmActive = alarm,
+        )
+
+        Text(
+            text = "Alarm when VOC Index ≥ ${FireThreshold.VOC_INDEX} or NOx Index ≥ ${FireThreshold.NOX_INDEX} for 2 s",
+            fontSize = 12.sp,
+            color = Color(0xFF6B7280),
+        )
+    }
+}
+
+// ── TAB 1: ENERGY ─────────────────────────────────────────────────────────────
+
+@Composable
+private fun StitchMainTab(
+    uiState: SensorNodeUiState,
+    securityState: SecurityUiState,
+) {
     val telemetry = uiState.sensorState.latestTelemetry
     val perception = uiState.perceptionState
     val isDemo = uiState.isDemoMode
@@ -701,10 +933,10 @@ private fun StitchRingGauge(
     }
 }
 
-// ── TAB 2: DEBUG ("Diagnostics") ──────────────────────────────────────────────
+// ── SETTINGS → DIAGNOSTICS (formerly the DEBUG tab) ───────────────────────────
 
 @Composable
-private fun StitchDebugTab(
+private fun DiagnosticsSection(
     uiState: SensorNodeUiState,
     onScanUsb: () -> Unit,
     onStartPerception: (CaptureStartSource) -> Unit,
@@ -718,16 +950,9 @@ private fun StitchDebugTab(
     val isDemo = uiState.isDemoMode
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 20.dp, vertical = 12.dp)
-            .verticalScroll(rememberScrollState()),
+        modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Column {
-            Text("Diagnostics", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color(0xFF09090B))
-            Text("Real-time system telemetry and perception debugging.", fontSize = 13.sp, color = Color(0xFF6B7280))
-        }
 
         // USB Status Card
         Card(
@@ -935,7 +1160,10 @@ private fun StitchSettingsTab(
     uiState: SensorNodeUiState,
     onUpdateMqttConfig: (String, Int, String, String, String) -> Unit,
     onOpenSetupGuide: () -> Unit,
+    securitySettingsContent: @Composable () -> Unit,
+    diagnosticsContent: @Composable () -> Unit,
 ) {
+    var diagnosticsExpanded by rememberSaveable { mutableStateOf(false) }
     var host by remember { mutableStateOf(uiState.mqttState.brokerHost) }
     var portText by remember { mutableStateOf("8883") }
     var user by remember { mutableStateOf("") }
@@ -949,8 +1177,9 @@ private fun StitchSettingsTab(
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
+        Text("Settings", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color(0xFF09090B))
         Column {
-            Text("MQTT Configuration", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color(0xFF09090B))
+            Text("MQTT Configuration", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF09090B))
             Text("Connect your ReWatt unit to your local broker.", fontSize = 13.sp, color = Color(0xFF6B7280))
         }
 
@@ -1075,5 +1304,35 @@ private fun StitchSettingsTab(
             Spacer(Modifier.width(8.dp))
             Text("Quick Setup Guide", fontSize = 15.sp, fontWeight = FontWeight.Bold)
         }
+
+        // Security camera settings + permissions (moved here from the SECURITY tab)
+        securitySettingsContent()
+
+        // Diagnostics (formerly the DEBUG tab) — collapsed by default to keep Settings tidy
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { diagnosticsExpanded = !diagnosticsExpanded },
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFECEEEF)),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Outlined.Tune, contentDescription = null, tint = Color(0xFF09090B), modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(10.dp))
+                Text("Diagnostics", fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Color(0xFF09090B), modifier = Modifier.weight(1f))
+                Icon(
+                    if (diagnosticsExpanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                    contentDescription = null,
+                    tint = Color(0xFF6B7280),
+                )
+            }
+        }
+        if (diagnosticsExpanded) diagnosticsContent()
+        Spacer(Modifier.height(8.dp))
     }
 }

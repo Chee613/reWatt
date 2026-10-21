@@ -15,6 +15,8 @@ import com.rewatt.app.perception.DetectionBox
 import com.rewatt.app.perception.ObjectDetection
 import com.rewatt.app.perception.PerceptionStateHolder
 import com.rewatt.app.perception.PerceptionUiState
+import com.rewatt.app.telemetry.FireThreshold
+import com.rewatt.app.telemetry.GasReading
 import com.rewatt.app.telemetry.RadarTelemetry
 import com.rewatt.app.usb.UsbConnectionStatus
 import java.io.ByteArrayOutputStream
@@ -102,7 +104,18 @@ class SensorViewModel(
             )
         }
     }.combine(nowMillisFlow) { state: SensorNodeUiState, now: Long ->
-        state.copy(nowMillis = now)
+        if (state.isDemoMode) {
+            // Simulated SGP41 (refreshed every tick so it never goes stale): normal air ≈ VOC 100, NOx 1.
+            // While the long-press fire demo runs, show its readings instead.
+            val demoGas = if (telemetryRepository.gasDemoActive) {
+                telemetryRepository.telemetryState.value.latestGas
+            } else {
+                GasReading(vocIndex = 100 + ((tickCount % 11) - 5).toInt(), noxIndex = 1, capturedAtMillis = now)
+            }
+            state.copy(nowMillis = now, sensorState = state.sensorState.copy(latestGas = demoGas))
+        } else {
+            state.copy(nowMillis = now)
+        }
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
@@ -193,6 +206,13 @@ class SensorViewModel(
             put("exposureEv", perception.exposureEv)
             put("radar", radarObj)
             put("batteryPercent", batteryPct)
+            // Optional SGP41 — only included when a recent reading exists, so existing consumers see no change.
+            state.sensorState.latestGas
+                ?.takeIf { now - it.capturedAtMillis <= FireThreshold.STALE_AFTER_MS }
+                ?.let { gas ->
+                    gas.vocIndex?.let { put("vocIndex", it) }
+                    gas.noxIndex?.let { put("noxIndex", it) }
+                }
         }
 
         mqttRepository.publishTelemetryJson(json.toString(), state.roomId)

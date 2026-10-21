@@ -278,7 +278,7 @@
     <string name="sec_armed">ARMED</string>
     <string name="sec_disarmed">DISARMED</string>
     <string name="sec_arm_desc_disarmed">Arm it when the house is empty or at night.</string>
-    <string name="sec_arm_hint_no_faces">Register at least one FAMILY face before arming.</string>
+    <string name="sec_arm_hint_no_faces">Register at least one FAMILY face in Settings before arming.</string>
     <string name="sec_arm_hint_radar">Radar module not connected — the camera can\'t detect motion.</string>
     <string name="sec_status">Live status</string>
     <string name="sec_phase_idle">Idle</string>
@@ -299,7 +299,7 @@
     <string name="sec_clear_all">Clear all</string>
     <string name="sec_strictness">Match strictness</string>
     <string name="sec_strictness_desc">Raw cosine similarity at which a face counts as FAMILY (calibrated confidence reaches 85\u0025). Higher = stricter: fewer wrong FAMILY matches, more false alarms. Default 0.40.</string>
-    <string name="sec_test_alarm">Test alarm</string>
+    <string name="sec_test_alarm">Test intruder alarm</string>
     <string name="sec_storage">Storage: %1$s used of 2 GB · kept up to 7 days</string>
     <string name="sec_history">Event history</string>
     <string name="sec_history_empty">No events yet. FAMILY visits and empty triggers are not kept.</string>
@@ -355,5 +355,15 @@
     <string name="setup_sec_phone_confirmed">Phone settings confirmed</string>
     <string name="setup_sec_next_tip">After setup, open the SECURITY tab to register FAMILY faces, then turn on Armed.</string>
     <string name="sec_calibration_line">C(s) = 1 / (1 + e^(−k(s − s0))) · s0 %1$s · k %2$s · FAMILY when C ≥ %3$s</string>
+    <string name="fire_channel">Fire alerts</string>
+    <string name="fire_alert_title">Fire alert</string>
+    <string name="fire_alert_text">Possible fire detected in %1$s</string>
+    <string name="fire_alert_heading">FIRE ALERT</string>
+    <string name="fire_alert_detail">%1$s · VOC Index %2$s · NOx Index %3$s</string>
+    <string name="fire_alert_test">%1$s · Test alarm</string>
+    <string name="settings_security_header">Security &amp; permissions</string>
+    <string name="settings_all_permissions_ok">All permissions allowed</string>
+    <string name="settings_tests_header">Tests</string>
+    <string name="settings_test_fire_alarm">Test fire alarm</string>
 </resources>
 

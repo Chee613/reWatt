@@ -181,7 +181,10 @@ class CameraCaptureService : LifecycleService() {
                 // recommendation on the Admin side (see DashboardViewModel.notifyNowActions).
             },
             onError = { message -> stateHolder.update { it.copy(yoloMessage = message) } },
-        ).also { it.attach(this) }
+        ).also {
+            it.attach(this)
+            appGraph.torchRouter.controller = it // fire strobe goes through CameraX while we hold the camera
+        }
     }
 
     private fun loadDetectors() {
@@ -366,6 +369,7 @@ class CameraCaptureService : LifecycleService() {
         monitor?.abort()
         monitor = null
         appGraph.intrusionAlarm.dismiss()
+        if (appGraph.torchRouter.controller === cameraController) appGraph.torchRouter.controller = null
         cameraController?.close()
         cameraController = null
         yoloDetector?.close()

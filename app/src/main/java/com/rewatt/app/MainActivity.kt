@@ -18,6 +18,7 @@ import com.rewatt.app.perception.CaptureStartSource
 import com.rewatt.app.perception.PerceptionViewModel
 import com.rewatt.app.perception.PerceptionViewModelFactory
 import com.rewatt.app.ui.SetupGuideDialog
+import com.rewatt.app.ui.security.SecuritySettingsSection
 import com.rewatt.app.ui.security.SecurityTab
 import com.rewatt.app.ui.security.SecurityViewModel
 import com.rewatt.app.ui.security.SecurityViewModelFactory
@@ -94,7 +95,11 @@ class MainActivity : AppCompatActivity() {
             ReWattTheme {
                 val uiState by sensorViewModel.uiState.collectAsStateWithLifecycle()
                 val securityState by securityViewModel.state.collectAsStateWithLifecycle()
-                var showSetupGuide by remember { mutableStateOf(false) }
+                val appGraph = (application as ReWattApplication).appGraph
+                val fireAlarm by appGraph.fireMonitor.alarm.state.collectAsStateWithLifecycle()
+                // The Quick Setup Guide opens by itself the first time the app is launched.
+                val appPrefs = remember { getSharedPreferences(APP_PREFS, MODE_PRIVATE) }
+                var showSetupGuide by remember { mutableStateOf(!appPrefs.getBoolean(KEY_SETUP_GUIDE_SEEN, false)) }
 
                 SensorScreen(
                     uiState = uiState,
@@ -107,11 +112,20 @@ class MainActivity : AppCompatActivity() {
                     onToggleDemoMode = sensorViewModel::toggleDemoMode,
                     onOpenSetupGuide = { showSetupGuide = true },
                     securityState = securityState,
+                    fireAlarmState = fireAlarm,
+                    onToggleFireDemo = appGraph.gasFireDemo::toggle,
                     securityContent = {
                         SecurityTab(
                             viewModel = securityViewModel,
                             onRequestArm = ::requestSecurityPermissionsThenArm,
+                        )
+                    },
+                    settingsSecurityContent = {
+                        SecuritySettingsSection(
+                            viewModel = securityViewModel,
+                            onRequestMicrophone = { securityCameraPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO) },
                             onRequestCamera = { securityCameraPermissionLauncher.launch(Manifest.permission.CAMERA) },
+                            onTestFireAlarm = { appGraph.fireMonitor.alarm.trigger(vocIndex = null, noxIndex = null, test = true) },
                         )
                     },
                 )
@@ -119,6 +133,7 @@ class MainActivity : AppCompatActivity() {
                 if (showSetupGuide) {
                     SetupGuideDialog(onDismiss = { name, capacity ->
                         showSetupGuide = false
+                        appPrefs.edit().putBoolean(KEY_SETUP_GUIDE_SEEN, true).apply()
                         if (name != null) {
                             sensorViewModel.updateMqttConfig(
                                 sensorViewModel.mqttRepository.host,
@@ -179,4 +194,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun hasPermission(permission: String): Boolean =
         ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
+
+    private companion object {
+        const val APP_PREFS = "rewatt_app_prefs"
+        const val KEY_SETUP_GUIDE_SEEN = "setup_guide_seen"
+    }
 }

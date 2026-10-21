@@ -44,4 +44,36 @@ object UsbDataParser {
             null
         }
     }
+
+    private val phonixGasPattern = Regex("""VOC:(-?\d+),NOX:(-?\d+)""")
+
+    /**
+     * Optional SGP41 gas reading. Primary format: `"voc"` / `"nox"` fields in the module's JSON line;
+     * fallback: Phonix-style `VOC:102,NOX:1` lines (last match wins, so glued chunks still parse).
+     * Returns null when the line carries no gas data — i.e. modules without an SGP41 are unaffected.
+     */
+    fun parseGas(
+        line: String,
+        capturedAtMillis: Long = System.currentTimeMillis(),
+    ): GasReading? {
+        val trimmed = line.trim()
+        if (trimmed.startsWith("{")) {
+            val root = runCatching { JSONObject(trimmed) }.getOrNull() ?: return null
+            if (!root.has("voc") && !root.has("nox")) return null
+            return GasReading(
+                vocIndex = root.optInt("voc", -1).toValidIndex(),
+                noxIndex = root.optInt("nox", -1).toValidIndex(),
+                capturedAtMillis = capturedAtMillis,
+            )
+        }
+        val match = phonixGasPattern.findAll(trimmed).lastOrNull() ?: return null
+        return GasReading(
+            vocIndex = match.groupValues[1].toIntOrNull()?.toValidIndex(),
+            noxIndex = match.groupValues[2].toIntOrNull()?.toValidIndex(),
+            capturedAtMillis = capturedAtMillis,
+        )
+    }
+
+    /** Gas indices are 0..500; anything negative (firmware sends -1 on a failed read) means "no value". */
+    private fun Int.toValidIndex(): Int? = takeIf { it >= 0 }
 }

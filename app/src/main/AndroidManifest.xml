@@ -84,6 +84,10 @@
             android:theme="@style/Theme.ReWatt.Alert" />
 
         <receiver
+            android:name=".safety.FireDismissReceiver"
+            android:exported="false" />
+
+        <receiver
             android:name=".notify.ScheduledActionReceiver"
             android:exported="true">
             <intent-filter>

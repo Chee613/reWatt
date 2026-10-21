@@ -34,6 +34,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.FaceRetouchingNatural
+import androidx.compose.material.icons.outlined.LocalFireDepartment
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.Button
@@ -90,39 +91,20 @@ private val Muted = Color(0xFF6B7280)
 private val Danger = Color(0xFFB91C1C)
 private val Ok = Color(0xFF15803D)
 
-/** TAB: SECURITY — CCTV arm switch, live status, FAMILY faces, settings and event history. */
+/**
+ * TAB: SECURITY — CCTV arm switch, live status and event history. FAMILY faces, permissions,
+ * strictness and the test tools live in Settings → Security & permissions.
+ */
 @Composable
 fun SecurityTab(
     viewModel: SecurityViewModel,
     onRequestArm: () -> Unit,
-    onRequestCamera: () -> Unit,
 ) {
     val context = LocalContext.current
     val state by viewModel.state.collectAsStateWithLifecycle()
     val faces by viewModel.familyFaces.collectAsStateWithLifecycle()
     val events by viewModel.events.collectAsStateWithLifecycle()
-    val threshold by viewModel.threshold.collectAsStateWithLifecycle()
-    val radarConnected by viewModel.radarConnected.collectAsStateWithLifecycle()
-    var showRegistration by remember { mutableStateOf(false) }
     var openEvent by remember { mutableStateOf<SecurityEvent?>(null) }
-
-    val phoneSetupConfirmed by viewModel.phoneSetupConfirmed.collectAsStateWithLifecycle()
-
-    // Re-check every time the user comes back (e.g. from the Settings screen a "Fix" button opened),
-    // so warnings disappear as soon as the permission is granted.
-    var resumeTick by remember { mutableIntStateOf(0) }
-    LifecycleResumeEffect(Unit) {
-        resumeTick++
-        onPauseOrDispose { }
-    }
-    val cameraGranted = remember(resumeTick) {
-        ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
-    }
-    val micGranted = remember(resumeTick) {
-        ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-    }
-    val fullScreenAllowed = remember(resumeTick) { viewModel.canUseFullScreenIntent() }
-    val batteryUnrestricted = remember(resumeTick) { viewModel.isIgnoringBatteryOptimizations() }
 
     Column(
         modifier = Modifier
@@ -132,42 +114,6 @@ fun SecurityTab(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text(stringResource(R.string.sec_title), fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Ink)
-
-        // ── Permission / device warnings ──
-        if (!fullScreenAllowed) {
-            WarningCard(stringResource(R.string.sec_perm_fullscreen)) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                    context.startActivity(
-                        Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, Uri.parse("package:${context.packageName}")),
-                    )
-                }
-            }
-        }
-        if (!cameraGranted) WarningCard(stringResource(R.string.sec_perm_camera), onRequestCamera)
-        if (state.armed && !micGranted) WarningCard(stringResource(R.string.sec_perm_mic), onRequestArm)
-        if (!batteryUnrestricted) {
-            WarningCard(stringResource(R.string.sec_perm_battery)) {
-                runCatching {
-                    context.startActivity(
-                        Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}")),
-                    )
-                }.onFailure {
-                    context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
-                }
-            }
-        }
-        // Phone-maker restrictions (lock-screen pop-ups, autostart) can't be read by any app, so the
-        // user confirms them once with "Done" instead of the card staying forever.
-        if (!phoneSetupConfirmed) {
-            PhoneSetupCard(
-                onOpenSettings = {
-                    context.startActivity(
-                        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")),
-                    )
-                },
-                onDone = viewModel::confirmPhoneSetup,
-            )
-        }
 
         // ── Arm / Disarm ──
         val canArm = faces.isNotEmpty()
@@ -200,10 +146,6 @@ fun SecurityTab(
                     else -> stringResource(R.string.sec_arm_desc_disarmed)
                 }
                 armHint?.let { Text(text = it, fontSize = 13.sp, color = Muted) }
-                if (!radarConnected) {
-                    Text(stringResource(R.string.sec_arm_hint_radar), fontSize = 12.sp, color = Color(0xFFB45309), fontWeight = FontWeight.SemiBold)
-                }
-                state.statusMessage?.let { Text(it, fontSize = 12.sp, color = Danger) }
             }
         }
 
@@ -244,6 +186,125 @@ fun SecurityTab(
                     )
                 }
             }
+        }
+
+        // ── Event history ──
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(stringResource(R.string.sec_history), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Ink)
+            Text(
+                stringResource(R.string.sec_storage, Formatter.formatShortFileSize(context, events.sumOf { it.sizeBytes })),
+                fontSize = 12.sp,
+                color = Muted,
+            )
+            val finished = events.filter { it.result == EventResult.STRANGER || it.result == EventResult.NO_FACE || it.id == state.activeEventId }
+            if (finished.isEmpty()) {
+                Text(stringResource(R.string.sec_history_empty), fontSize = 13.sp, color = Muted)
+            }
+            finished.forEach { event ->
+                EventRow(event = event, onClick = { openEvent = event })
+            }
+        }
+
+        Spacer(Modifier.height(8.dp))
+    }
+
+    openEvent?.let { event ->
+        EventDetailDialog(
+            event = event,
+            clips = viewModel.clipFiles(event.id),
+            photos = viewModel.photoFiles(event.id),
+            onDelete = {
+                viewModel.deleteEvent(event.id)
+                openEvent = null
+            },
+            onClose = { openEvent = null },
+        )
+    }
+}
+
+/**
+ * Settings → "Security & permissions": everything that used to clutter the SECURITY tab — the
+ * permission/phone-setup fixes (re-checked whenever the user returns), FAMILY faces, the
+ * match-strictness slider and the test tools (CCTV check, intruder alarm, fire alarm).
+ */
+@Composable
+fun SecuritySettingsSection(
+    viewModel: SecurityViewModel,
+    onRequestMicrophone: () -> Unit,
+    onRequestCamera: () -> Unit,
+    onTestFireAlarm: () -> Unit,
+) {
+    val context = LocalContext.current
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    val faces by viewModel.familyFaces.collectAsStateWithLifecycle()
+    val threshold by viewModel.threshold.collectAsStateWithLifecycle()
+    val phoneSetupConfirmed by viewModel.phoneSetupConfirmed.collectAsStateWithLifecycle()
+    var showRegistration by remember { mutableStateOf(false) }
+
+    var resumeTick by remember { mutableIntStateOf(0) }
+    LifecycleResumeEffect(Unit) {
+        resumeTick++
+        onPauseOrDispose { }
+    }
+    val cameraGranted = remember(resumeTick) {
+        ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+    }
+    val micGranted = remember(resumeTick) {
+        ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+    }
+    val fullScreenAllowed = remember(resumeTick) { viewModel.canUseFullScreenIntent() }
+    val batteryUnrestricted = remember(resumeTick) { viewModel.isIgnoringBatteryOptimizations() }
+    val allGood = cameraGranted && micGranted && fullScreenAllowed && batteryUnrestricted && phoneSetupConfirmed
+
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(stringResource(R.string.settings_security_header), fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Ink)
+
+        if (allGood) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFDCFCE7)),
+            ) {
+                Row(Modifier.padding(horizontal = 14.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Outlined.Shield, contentDescription = null, tint = Ok, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.settings_all_permissions_ok), fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Ok)
+                }
+            }
+        }
+        if (!fullScreenAllowed) {
+            WarningCard(stringResource(R.string.sec_perm_fullscreen)) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    context.startActivity(
+                        Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, Uri.parse("package:${context.packageName}")),
+                    )
+                }
+            }
+        }
+        if (!cameraGranted) WarningCard(stringResource(R.string.sec_perm_camera), onRequestCamera)
+        if (!micGranted) WarningCard(stringResource(R.string.sec_perm_mic), onRequestMicrophone)
+        if (!batteryUnrestricted) {
+            WarningCard(stringResource(R.string.sec_perm_battery)) {
+                runCatching {
+                    context.startActivity(
+                        Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}")),
+                    )
+                }.onFailure {
+                    context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                }
+            }
+        }
+        // Phone-maker restrictions (lock-screen pop-ups, autostart) can't be read by any app, so the
+        // user confirms them once with "Done".
+        if (!phoneSetupConfirmed) {
+            PhoneSetupCard(
+                onOpenSettings = {
+                    context.startActivity(
+                        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${context.packageName}")),
+                    )
+                },
+                onDone = viewModel::confirmPhoneSetup,
+            )
         }
 
         // ── FAMILY faces ──
@@ -308,36 +369,42 @@ fun SecurityTab(
             }
         }
 
-        // ── Event history (above the test tools) ──
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(stringResource(R.string.sec_history), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Ink)
-            Text(
-                stringResource(R.string.sec_storage, Formatter.formatShortFileSize(context, events.sumOf { it.sizeBytes })),
-                fontSize = 12.sp,
-                color = Muted,
-            )
-            val finished = events.filter { it.result == EventResult.STRANGER || it.result == EventResult.NO_FACE || it.id == state.activeEventId }
-            if (finished.isEmpty()) {
-                Text(stringResource(R.string.sec_history_empty), fontSize = 13.sp, color = Muted)
-            }
-            finished.forEach { event ->
-                EventRow(event = event, onClick = { openEvent = event })
-            }
-        }
-
-        // ── Test alarm ──
-        OutlinedButton(
-            onClick = viewModel::testAlarm,
-            modifier = Modifier.fillMaxWidth().height(48.dp),
-            shape = RoundedCornerShape(14.dp),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = Danger),
+        // Match strictness (moved from the SECURITY tab)
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = CardGrey),
         ) {
-            Icon(Icons.Outlined.WarningAmber, contentDescription = null, modifier = Modifier.size(16.dp))
-            Spacer(Modifier.width(6.dp))
-            Text(stringResource(R.string.sec_test_alarm), fontWeight = FontWeight.Bold)
+            Column(Modifier.padding(16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(stringResource(R.string.sec_strictness), fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Ink, modifier = Modifier.weight(1f))
+                    Text("%.2f".format(threshold), fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Ink)
+                }
+                Slider(
+                    value = threshold,
+                    onValueChange = { viewModel.setThreshold((it * 100).toInt() / 100f) },
+                    valueRange = SecurityViewModel.THRESHOLD_RANGE,
+                )
+                Text(stringResource(R.string.sec_strictness_desc), fontSize = 12.sp, color = Muted)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    stringResource(
+                        R.string.sec_calibration_line,
+                        "%.2f".format(MatchCalibration.s0For(threshold)),
+                        "%.2f".format(MatchCalibration.K),
+                        "%.0f%%".format(MatchCalibration.PASS_CONFIDENCE * 100),
+                    ),
+                    fontSize = 11.sp,
+                    color = Muted,
+                )
+            }
         }
 
-        // ── Test CCTV check (one photo, result only) ──
+        // ── Tests ──
+        Spacer(Modifier.height(4.dp))
+        Text(stringResource(R.string.settings_tests_header), fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Ink)
+
+        // Test CCTV check (one photo, result only)
         val test = state.testCheck
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -402,53 +469,33 @@ fun SecurityTab(
             }
         }
 
-        // ── Match strictness (bottom of page) ──
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = CardGrey),
+        // Intruder alarm: siren, red screen, vibration, strobe.
+        OutlinedButton(
+            onClick = viewModel::testAlarm,
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+            shape = RoundedCornerShape(14.dp),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = Danger),
         ) {
-            Column(Modifier.padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(R.string.sec_strictness), fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Ink, modifier = Modifier.weight(1f))
-                    Text("%.2f".format(threshold), fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Ink)
-                }
-                Slider(
-                    value = threshold,
-                    onValueChange = { viewModel.setThreshold((it * 100).toInt() / 100f) },
-                    valueRange = SecurityViewModel.THRESHOLD_RANGE,
-                )
-                Text(stringResource(R.string.sec_strictness_desc), fontSize = 12.sp, color = Muted)
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    stringResource(
-                        R.string.sec_calibration_line,
-                        "%.2f".format(MatchCalibration.s0For(threshold)),
-                        "%.2f".format(MatchCalibration.K),
-                        "%.0f%%".format(MatchCalibration.PASS_CONFIDENCE * 100),
-                    ),
-                    fontSize = 11.sp,
-                    color = Muted,
-                )
-            }
+            Icon(Icons.Outlined.WarningAmber, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(stringResource(R.string.sec_test_alarm), fontWeight = FontWeight.Bold)
         }
-        Spacer(Modifier.height(8.dp))
+
+        // Fire alarm: full fire-alert path without the SGP41; no MQTT.
+        OutlinedButton(
+            onClick = onTestFireAlarm,
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+            shape = RoundedCornerShape(14.dp),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = Danger),
+        ) {
+            Icon(Icons.Outlined.LocalFireDepartment, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(stringResource(R.string.settings_test_fire_alarm), fontWeight = FontWeight.Bold)
+        }
     }
 
     if (showRegistration) {
         FaceRegistrationDialog(viewModel = viewModel, onClose = { showRegistration = false })
-    }
-    openEvent?.let { event ->
-        EventDetailDialog(
-            event = event,
-            clips = viewModel.clipFiles(event.id),
-            photos = viewModel.photoFiles(event.id),
-            onDelete = {
-                viewModel.deleteEvent(event.id)
-                openEvent = null
-            },
-            onClose = { openEvent = null },
-        )
     }
 }
 

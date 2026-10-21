@@ -125,6 +125,21 @@ The ESP32-C6 firmware emits **one JSON object per line at 115200 baud**:
 
 Parsing lives in `telemetry/UsbDataParser.kt`; malformed lines are counted and dropped.
 
+**Optional SGP41 gas sensor (fire detection).** Modules fitted with a Sensirion SGP41 add two fields to the same line:
+
+```json
+{"radar":{...},"temp":26.5,"hum":58.2,"voc":102,"nox":1}
+```
+
+- `voc` / `nox`: Sensirion Gas Index values. They're unitless, not ppm. VOC ≈ 100 and NOx ≈ 1 mean this room's normal air.
+- `-1`: the sensor read failed.
+- Missing: the module has no SGP41. MAIN then shows `--`, and nothing else changes.
+- A Phonix-style `VOC:102,NOX:1` line is also accepted.
+- **Fire rule:**
+  - **Trigger:** VOC ≥ 130 **or** NOx ≥ 5 for **2 consecutive ~1 s samples** sets off the fire alarm. It's always on and runs in the background (`safety/FireMonitor.kt`).
+  - **Alert:** siren, red full-screen FIRE ALERT, vibration and torch strobe, plus MQTT `rewatt/sensors/<room>/fire`.
+  - **After Dismiss:** it re-arms once the air has been normal for 10 s, or after 5 min.
+
 ---
 
 ## Security camera (CCTV mode)

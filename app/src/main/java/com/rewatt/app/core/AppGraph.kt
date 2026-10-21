@@ -7,6 +7,11 @@ import com.rewatt.app.data.ReWattDatabase
 import com.rewatt.app.data.TelemetryRepository
 import com.rewatt.app.data.WeatherRepository
 import com.rewatt.app.perception.PerceptionStateHolder
+import com.rewatt.app.safety.FireAlarm
+import com.rewatt.app.safety.FireMonitor
+import com.rewatt.app.safety.GasFireDemo
+import com.rewatt.app.safety.TorchRouter
+import com.rewatt.app.security.AlarmOutputs
 import com.rewatt.app.security.DeterrentVoice
 import com.rewatt.app.security.FaceRecognizer
 import com.rewatt.app.security.FamilyFaceStore
@@ -79,7 +84,29 @@ class AppGraph(context: Context) {
         SecurityTestCheck(appContext, faceRecognizer, securitySettings, securityStateHolder)
     }
 
+    /** Siren / volume / vibration / strobe shared by the intruder and fire alarms. */
+    val alarmOutputs: AlarmOutputs by lazy {
+        AlarmOutputs(appContext)
+    }
+
     val intrusionAlarm: IntrusionAlarm by lazy {
-        IntrusionAlarm(appContext, securityStateHolder, intrusionNotifier, deterrentVoice)
+        IntrusionAlarm(securityStateHolder, intrusionNotifier, deterrentVoice, alarmOutputs)
+    }
+
+    // ── Fire (optional SGP41 gas sensor) ──
+    val torchRouter: TorchRouter by lazy {
+        TorchRouter(appContext)
+    }
+
+    val fireMonitor: FireMonitor by lazy {
+        FireMonitor(
+            telemetryRepository = telemetryRepository,
+            alarm = FireAlarm(alarmOutputs, intrusionNotifier, torchRouter, mqttSyncRepository),
+        )
+    }
+
+    /** Long-press VOC INDEX: simulated fire through the real pipeline (no MQTT). */
+    val gasFireDemo: GasFireDemo by lazy {
+        GasFireDemo(telemetryRepository, fireMonitor)
     }
 }

@@ -60,8 +60,38 @@ class IntrusionAlertActivity : ComponentActivity() {
         showOverLockScreen()
 
         val graph = (application as ReWattApplication).appGraph
-        val eventId = intent.getStringExtra(EXTRA_EVENT_ID).orEmpty()
         val roomId = intent.getStringExtra(EXTRA_ROOM_ID).orEmpty()
+
+        if (intent.getStringExtra(EXTRA_KIND) == KIND_FIRE) {
+            val voc = intent.getIntExtra(EXTRA_VOC, -1).takeIf { it >= 0 }
+            val nox = intent.getIntExtra(EXTRA_NOX, -1).takeIf { it >= 0 }
+            val test = intent.getBooleanExtra(EXTRA_TEST, false)
+            setContent {
+                val fire by graph.fireMonitor.alarm.state.collectAsStateWithLifecycle()
+                LaunchedEffect(fire.active) {
+                    if (!fire.active) finish()
+                }
+                IntrusionAlertScreen(
+                    heading = stringResource(R.string.fire_alert_heading),
+                    message = stringResource(R.string.fire_alert_text, roomId),
+                    photoPath = null,
+                    detailFor = { time ->
+                        if (test) {
+                            stringResource(R.string.fire_alert_test, time)
+                        } else {
+                            stringResource(R.string.fire_alert_detail, time, voc?.toString() ?: "--", nox?.toString() ?: "--")
+                        }
+                    },
+                    onDismiss = {
+                        graph.fireMonitor.dismiss()
+                        finish()
+                    },
+                )
+            }
+            return
+        }
+
+        val eventId = intent.getStringExtra(EXTRA_EVENT_ID).orEmpty()
         val photoName = intent.getStringExtra(EXTRA_PHOTO)
         val score = intent.getFloatExtra(EXTRA_SCORE, Float.NaN).takeUnless { it.isNaN() }
         val photoPath = photoName?.let { graph.securityEventStore.photoFile(eventId, it).absolutePath }
@@ -72,9 +102,16 @@ class IntrusionAlertActivity : ComponentActivity() {
                 if (!state.alarmActive) finish()
             }
             IntrusionAlertScreen(
-                roomId = roomId,
+                heading = stringResource(R.string.cctv_alert_heading),
+                message = stringResource(R.string.cctv_alert_text, roomId),
                 photoPath = photoPath,
-                score = score,
+                detailFor = { time ->
+                    if (score != null) {
+                        stringResource(R.string.cctv_alert_detail_score, time, "%.2f".format(score))
+                    } else {
+                        stringResource(R.string.cctv_alert_detail, time)
+                    }
+                },
                 onDismiss = {
                     if (graph.securitySettings.armed) {
                         // The service also releases the camera / records the dismissal on the event.
@@ -103,6 +140,13 @@ class IntrusionAlertActivity : ComponentActivity() {
             .also { runCatching { it.acquire(WAKE_MS) } }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // singleTask: a second alert (e.g. fire while the intruder screen is up) replaces the content.
+        setIntent(intent)
+        recreate()
+    }
+
     override fun onDestroy() {
         wakeLock?.let { if (it.isHeld) runCatching { it.release() } }
         super.onDestroy()
@@ -113,7 +157,21 @@ class IntrusionAlertActivity : ComponentActivity() {
         private const val EXTRA_ROOM_ID = "room_id"
         private const val EXTRA_PHOTO = "photo"
         private const val EXTRA_SCORE = "score"
+        private const val EXTRA_KIND = "kind"
+        private const val EXTRA_VOC = "voc"
+        private const val EXTRA_NOX = "nox"
+        private const val EXTRA_TEST = "test"
+        private const val KIND_FIRE = "fire"
         private const val WAKE_MS = 8_000L
+
+        fun fireIntent(context: Context, roomId: String, vocIndex: Int?, noxIndex: Int?, test: Boolean): Intent =
+            Intent(context, IntrusionAlertActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_USER_ACTION)
+                .putExtra(EXTRA_KIND, KIND_FIRE)
+                .putExtra(EXTRA_ROOM_ID, roomId)
+                .putExtra(EXTRA_VOC, vocIndex ?: -1)
+                .putExtra(EXTRA_NOX, noxIndex ?: -1)
+                .putExtra(EXTRA_TEST, test)
 
         fun intent(context: Context, eventId: String, roomId: String, photoName: String?, score: Float?): Intent =
             Intent(context, IntrusionAlertActivity::class.java)
@@ -127,9 +185,10 @@ class IntrusionAlertActivity : ComponentActivity() {
 
 @Composable
 private fun IntrusionAlertScreen(
-    roomId: String,
+    heading: String,
+    message: String,
     photoPath: String?,
-    score: Float?,
+    detailFor: @Composable (time: String) -> String,
     onDismiss: () -> Unit,
 ) {
     val pulse by rememberInfiniteTransition(label = "pulse").animateFloat(
@@ -152,7 +211,7 @@ private fun IntrusionAlertScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         Text(
-            text = stringResource(R.string.cctv_alert_heading),
+            text = heading,
             color = Color.White,
             fontSize = 34.sp,
             fontWeight = FontWeight.Black,
@@ -160,7 +219,7 @@ private fun IntrusionAlertScreen(
             modifier = Modifier.alpha(pulse),
         )
         Text(
-            text = stringResource(R.string.cctv_alert_text, roomId),
+            text = message,
             color = Color.White,
             fontSize = 16.sp,
             textAlign = TextAlign.Center,
@@ -180,11 +239,7 @@ private fun IntrusionAlertScreen(
             Spacer(Modifier.weight(1f))
         }
         Text(
-            text = if (score != null) {
-                stringResource(R.string.cctv_alert_detail_score, time, "%.2f".format(score))
-            } else {
-                stringResource(R.string.cctv_alert_detail, time)
-            },
+            text = detailFor(time),
             color = Color.White,
             fontSize = 14.sp,
             textAlign = TextAlign.Center,
