@@ -15,6 +15,7 @@ import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
+import androidx.camera.core.Preview
 import androidx.camera.core.resolutionselector.AspectRatioStrategy
 import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -67,6 +68,8 @@ class CameraCaptureController(
     private val onFramePreview: (Bitmap, ExposureReading?, String) -> Unit,
     private val onFrameAnalyzed: (Bitmap?, List<ObjectDetection>, String, ExposureReading?, String) -> Unit,
     private val onError: (String) -> Unit,
+    /** Live view: a Preview use case is bound while it holds a surface; also the pinch (camera) zoom. */
+    private val liveView: LivePreviewHub? = null,
 ) : Closeable {
     private val analysisExecutor: ExecutorService = Executors.newFixedThreadPool(2)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -76,6 +79,7 @@ class CameraCaptureController(
     private var camera: Camera? = null
     private var activeImageCapture: ImageCapture? = null
     private var videoCapture: VideoCapture<Recorder>? = null
+    private var preview: Preview? = null
     private var recording: Recording? = null
 
     @Volatile
@@ -121,7 +125,55 @@ class CameraCaptureController(
         ContextCompat.getMainExecutor(context).execute {
             runCatching { if (orientationListener.canDetectOrientation()) orientationListener.enable() }
         }
+        liveView?.let { hub ->
+            scope.launch { hub.surfaceProvider.collect { surface -> cameraMutex.withLock { applyPreview(surface) } } }
+            scope.launch { hub.zoomRatio.collect { withContext(Dispatchers.Main.immediate) { applyZoom() } } }
+        }
     }
+
+    /** Apply the pinch zoom to the bound camera and publish its zoom limits; call after every bind. */
+    private fun applyZoom() {
+        val hub = liveView ?: return
+        val bound = camera ?: return
+        bound.cameraInfo.zoomState.value?.let { hub.setZoomRange(it.minZoomRatio, it.maxZoomRatio) }
+        runCatching { bound.cameraControl.setZoomRatio(hub.zoomRatio.value) }
+    }
+
+    // ── Live view (ENERGY tab) ───────────────────────────────────────────────────────────────
+
+    /** Bind a Preview to [surface], or unbind it when null / paused; must hold [cameraMutex]. */
+    private suspend fun applyPreview(surface: Preview.SurfaceProvider?) = withContext(Dispatchers.Main.immediate) {
+        val owner = lifecycleOwner ?: return@withContext
+        if (closed) return@withContext
+        if (surface == null || paused) {
+            preview?.let { p ->
+                cameraProvider?.let { runCatching { it.unbind(p) } }
+                p.setSurfaceProvider(null)
+            }
+            preview = null
+            if (activeImageCapture == null && videoCapture == null) camera = null
+            return@withContext
+        }
+        runCatching {
+            val provider = cameraProvider ?: ProcessCameraProvider.awaitInstance(context).also { cameraProvider = it }
+            val p = preview ?: buildPreview().also { preview = it }
+            p.setSurfaceProvider(surface)
+            if (!provider.isBound(p)) {
+                camera = provider.bindToLifecycle(owner, CameraSelector.DEFAULT_BACK_CAMERA, p)
+            }
+            applyTorch()
+            applyZoom()
+        }.onFailure { Log.w(TAG, "Live preview could not bind", it) }
+    }
+
+    private fun buildPreview(): Preview =
+        Preview.Builder()
+            .setResolutionSelector(
+                ResolutionSelector.Builder()
+                    .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
+                    .build(),
+            )
+            .build()
 
     // ── Occupancy (illuminance + headcount) ──────────────────────────────────────────────────
 
@@ -278,7 +330,7 @@ class CameraCaptureController(
                 if (!keepImageBound) {
                     activeImageCapture?.let { runCatching { provider.unbind(it) } }
                     activeImageCapture = null
-                    camera = null
+                    if (preview == null) camera = null // the live view keeps the camera open
                 }
             }
         }
@@ -292,7 +344,9 @@ class CameraCaptureController(
                 recording?.stop()
                 recording = null
                 val provider = cameraProvider ?: return@withContext
-                listOfNotNull(activeImageCapture, videoCapture).forEach { runCatching { provider.unbind(it) } }
+                listOfNotNull(activeImageCapture, videoCapture, preview).forEach { runCatching { provider.unbind(it) } }
+                preview?.setSurfaceProvider(null)
+                preview = null
                 activeImageCapture = null
                 videoCapture = null
                 camera = null
@@ -302,6 +356,7 @@ class CameraCaptureController(
 
     fun resumeAfterExternalCamera() {
         paused = false
+        liveView?.let { hub -> scope.launch { cameraMutex.withLock { applyPreview(hub.surfaceProvider.value) } } }
     }
 
     // ── Shared camera plumbing ───────────────────────────────────────────────────────────────
@@ -317,12 +372,13 @@ class CameraCaptureController(
         val newImage = image ?: buildImageCapture()
         val newVideo = if (wantVideo) video ?: buildVideoCapture() else null
         if (image == null) {
-            // Cold start, as before: clear any stale binding (e.g. a closed preview screen).
+            // Cold start, as before: clear any stale binding (e.g. a closed preview screen). The
+            // ENERGY live view (if showing) is re-bound together with the capture use cases.
             provider.unbindAll()
             camera = provider.bindToLifecycle(
                 owner,
                 CameraSelector.DEFAULT_BACK_CAMERA,
-                *listOfNotNull(newImage, newVideo).toTypedArray(),
+                *listOfNotNull(preview, newImage, newVideo).toTypedArray(),
             )
         } else if (newVideo != null) {
             camera = provider.bindToLifecycle(owner, CameraSelector.DEFAULT_BACK_CAMERA, newVideo)
@@ -330,6 +386,7 @@ class CameraCaptureController(
         activeImageCapture = newImage
         videoCapture = newVideo ?: video
         applyTorch()
+        applyZoom()
         newImage
     }
 
@@ -402,6 +459,8 @@ class CameraCaptureController(
                 camera?.cameraControl?.enableTorch(false)
                 cameraProvider?.unbindAll()
                 cameraProvider = null
+                preview?.setSurfaceProvider(null)
+                preview = null
                 activeImageCapture = null
                 videoCapture = null
                 camera = null

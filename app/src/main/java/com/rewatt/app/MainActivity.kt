@@ -1,13 +1,16 @@
 package com.rewatt.app
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.compose.setContent
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
+import androidx.camera.core.Preview
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -18,10 +21,12 @@ import com.rewatt.app.perception.CaptureStartSource
 import com.rewatt.app.perception.PerceptionViewModel
 import com.rewatt.app.perception.PerceptionViewModelFactory
 import com.rewatt.app.ui.SetupGuideDialog
+import com.rewatt.app.ui.security.SecurityPreview
 import com.rewatt.app.ui.security.SecuritySettingsSection
 import com.rewatt.app.ui.security.SecurityTab
 import com.rewatt.app.ui.security.SecurityViewModel
 import com.rewatt.app.ui.security.SecurityViewModelFactory
+import com.rewatt.app.ui.sensor.EnergyDemoControls
 import com.rewatt.app.ui.sensor.SensorScreen
 import com.rewatt.app.ui.sensor.SensorViewModel
 import com.rewatt.app.ui.sensor.SensorViewModelFactory
@@ -53,6 +58,18 @@ class MainActivity : AppCompatActivity() {
         }
     private val securityCameraPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
+    // ENERGY demo: a gallery video to loop in the camera box (system photo picker, no permission).
+    private val demoVideoPicker =
+        registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+            if (uri != null) (application as ReWattApplication).appGraph.energyDemo.setVideo(uri)
+        }
+
+    // SECURITY tab: a gallery video to loop in its camera box.
+    private val securityVideoPicker =
+        registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+            if (uri != null) (application as ReWattApplication).appGraph.securityPreviewVideo.value = uri
+        }
 
     private val securityViewModel: SecurityViewModel by viewModels {
         SecurityViewModelFactory(
@@ -90,6 +107,11 @@ class MainActivity : AppCompatActivity() {
         if ((application as ReWattApplication).appGraph.securitySettings.armed && hasPermission(Manifest.permission.CAMERA)) {
             securityViewModel.arm()
         }
+        // ENERGY tab: the live camera view and the motion → photo → YOLO occupancy flow need the
+        // camera service, so start it whenever the app opens (only if the camera is already allowed).
+        if (hasPermission(Manifest.permission.CAMERA)) {
+            perceptionViewModel.startPerception(CaptureStartSource.Auto)
+        }
 
         setContent {
             ReWattTheme {
@@ -97,6 +119,14 @@ class MainActivity : AppCompatActivity() {
                 val securityState by securityViewModel.state.collectAsStateWithLifecycle()
                 val appGraph = (application as ReWattApplication).appGraph
                 val fireAlarm by appGraph.fireMonitor.alarm.state.collectAsStateWithLifecycle()
+                val energyState by appGraph.energyStateHolder.state.collectAsStateWithLifecycle()
+                val applianceStates by appGraph.energyStateHolder.appliances.collectAsStateWithLifecycle()
+                val energyDemoState by appGraph.energyDemo.state.collectAsStateWithLifecycle()
+                val securityVideo by appGraph.securityPreviewVideo.collectAsStateWithLifecycle()
+                val previewZoom by appGraph.livePreviewHub.zoomRatio.collectAsStateWithLifecycle()
+                val onLivePreviewSurface: (Preview.SurfaceProvider, Boolean) -> Unit = { provider, attached ->
+                    if (attached) appGraph.livePreviewHub.attach(provider) else appGraph.livePreviewHub.detach(provider)
+                }
                 // The Quick Setup Guide opens by itself the first time the app is launched.
                 val appPrefs = remember { getSharedPreferences(APP_PREFS, MODE_PRIVATE) }
                 var showSetupGuide by remember { mutableStateOf(!appPrefs.getBoolean(KEY_SETUP_GUIDE_SEEN, false)) }
@@ -109,15 +139,52 @@ class MainActivity : AppCompatActivity() {
                     onDebugCapture = perceptionViewModel::captureNow,
                     onSendPhotoMqtt = sensorViewModel::publishCurrentPhoto,
                     onUpdateMqttConfig = sensorViewModel::updateMqttConfig,
-                    onToggleDemoMode = sensorViewModel::toggleDemoMode,
                     onOpenSetupGuide = { showSetupGuide = true },
                     securityState = securityState,
                     fireAlarmState = fireAlarm,
+                    energyState = energyState,
+                    onLivePreviewSurface = onLivePreviewSurface,
+                    previewZoom = previewZoom,
+                    onPreviewZoom = appGraph.livePreviewHub::zoomBy,
+                    onDismissPhoto = { appGraph.energyStateHolder.update { it.copy(photoPinned = false) } },
                     onToggleFireDemo = appGraph.gasFireDemo::toggle,
-                    securityContent = {
+                    applianceStates = applianceStates,
+                    onUpdateAppliances = appGraph.energyStateHolder::updateAppliances,
+                    energyDemo = EnergyDemoControls(
+                        state = energyDemoState,
+                        onToggle = appGraph.energyDemo::toggle,
+                        onAddDegree = appGraph.energyDemo::addDegree,
+                        onResetTemperature = appGraph.energyDemo::resetTemperature,
+                        onAddPerson = appGraph.energyDemo::addPerson,
+                        onResetPeople = appGraph.energyDemo::resetPeople,
+                        onCameraLongPress = {
+                            if (energyDemoState.videoUri != null) {
+                                appGraph.energyDemo.setVideo(null)
+                            } else {
+                                demoVideoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
+                            }
+                        },
+                    ),
+                    securityContent = { energyCameraHeight ->
                         SecurityTab(
                             viewModel = securityViewModel,
                             onRequestArm = ::requestSecurityPermissionsThenArm,
+                            preview = SecurityPreview(
+                                cameraOn = uiState.perceptionState.isRunning,
+                                video = securityVideo,
+                                onSurface = onLivePreviewSurface,
+                                onStartCamera = { requestPerceptionPermissionsThenStart(CaptureStartSource.Manual) },
+                                onLongPress = {
+                                    if (securityVideo != null) {
+                                        appGraph.securityPreviewVideo.value = null
+                                    } else {
+                                        securityVideoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
+                                    }
+                                },
+                                portraitHeight = energyCameraHeight,
+                                zoomRatio = previewZoom,
+                                onZoom = appGraph.livePreviewHub::zoomBy,
+                            ),
                         )
                     },
                     settingsSecurityContent = {
@@ -147,6 +214,14 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    // Plugging in the module (USB_DEVICE_ATTACHED) reuses this screen instead of stacking a second
+    // dashboard on top (which used to steal and freeze the live camera view).
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        startUsbService()
     }
 
     private fun requestNotificationPermissionIfNeeded() {

@@ -1,11 +1,15 @@
 package com.rewatt.app.core
 
 import android.content.Context
+import android.net.Uri
 import com.rewatt.app.data.AuthRepository
 import com.rewatt.app.data.MqttSyncRepository
 import com.rewatt.app.data.ReWattDatabase
 import com.rewatt.app.data.TelemetryRepository
 import com.rewatt.app.data.WeatherRepository
+import com.rewatt.app.energy.EnergyDemo
+import com.rewatt.app.energy.EnergyStateHolder
+import com.rewatt.app.perception.LivePreviewHub
 import com.rewatt.app.perception.PerceptionStateHolder
 import com.rewatt.app.safety.FireAlarm
 import com.rewatt.app.safety.FireMonitor
@@ -21,6 +25,7 @@ import com.rewatt.app.security.SecurityEventStore
 import com.rewatt.app.security.SecuritySettings
 import com.rewatt.app.security.SecurityStateHolder
 import com.rewatt.app.security.SecurityTestCheck
+import kotlinx.coroutines.flow.MutableStateFlow
 
 class AppGraph(context: Context) {
     private val appContext = context.applicationContext
@@ -49,6 +54,23 @@ class AppGraph(context: Context) {
 
     val perceptionStateHolder: PerceptionStateHolder by lazy {
         PerceptionStateHolder()
+    }
+
+    // ── Energy (motion → photo → YOLO occupancy, live camera view) ──
+    val livePreviewHub: LivePreviewHub by lazy {
+        LivePreviewHub()
+    }
+
+    val energyStateHolder: EnergyStateHolder by lazy {
+        EnergyStateHolder()
+    }
+
+    /** SECURITY tab: gallery video looping in the camera box (null = live view); long-press to set. */
+    val securityPreviewVideo = MutableStateFlow<Uri?>(null)
+
+    /** ENERGY demo mode (off at start; long-press the ENERGY tab icon to switch). */
+    val energyDemo: EnergyDemo by lazy {
+        EnergyDemo(energyStateHolder)
     }
 
     // ── CCTV (security camera) ──
@@ -105,7 +127,7 @@ class AppGraph(context: Context) {
         )
     }
 
-    /** Long-press VOC INDEX: simulated fire through the real pipeline (no MQTT). */
+    /** Long-press the FIRE tab icon: simulated fire through the real pipeline (no MQTT). */
     val gasFireDemo: GasFireDemo by lazy {
         GasFireDemo(telemetryRepository, fireMonitor)
     }

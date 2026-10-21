@@ -17,6 +17,7 @@ import com.rewatt.app.security.SecuritySettings
 import com.rewatt.app.security.SecurityUiState
 import com.rewatt.app.usb.UsbConnectionStatus
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -44,8 +45,12 @@ class SecurityViewModel(
 
     val roomId: String get() = graph.mqttSyncRepository.roomId
 
+    private var demoAlertJob: Job? = null
+
     init {
         graph.securityEventStore.refresh()
+        // Warm up text-to-speech so the hidden alert demo's first "You are being recorded" is heard.
+        graph.deterrentVoice.prepare()
     }
 
     /** Caller must have requested camera (+ microphone) permission first. */
@@ -98,6 +103,29 @@ class SecurityViewModel(
             torch = {},
             torchRestore = {},
         )
+    }
+
+    /**
+     * Hidden demo (long-press the ARMED / DISARMED card): "You are being recorded" right away, then
+     * after [DEMO_ALERT_DELAY_MS] the full intruder alert — siren + red full-screen — exactly like
+     * Test intruder alarm (no MQTT, no event saved). Dismiss it from the alert screen as usual.
+     */
+    fun demoIntruderAlert() {
+        if (demoAlertJob?.isActive == true || graph.intrusionAlarm.alarmActive) return
+        graph.deterrentVoice.prepare()
+        graph.intrusionAlarm.announceRecording()
+        demoAlertJob = viewModelScope.launch {
+            delay(DEMO_ALERT_DELAY_MS)
+            graph.intrusionAlarm.trigger(
+                eventId = TEST_EVENT_ID,
+                roomId = roomId,
+                photoName = null,
+                score = null,
+                torch = {},
+                torchRestore = {},
+                speakDeterrent = false,
+            )
+        }
     }
 
     /** 5 s countdown (time to step in front of the back camera), then one full CCTV check. */
@@ -153,6 +181,7 @@ class SecurityViewModel(
 
     companion object {
         const val TEST_EVENT_ID = "TEST"
+        private const val DEMO_ALERT_DELAY_MS = 4_000L
         private const val TEST_COUNTDOWN_S = 5
         private const val TEST_TIMEOUT_MS = 45_000L
         val THRESHOLD_RANGE = SecuritySettings.MIN_THRESHOLD..SecuritySettings.MAX_THRESHOLD

@@ -156,10 +156,6 @@ class MqttSyncRepository(context: Context) {
         }
     }
 
-    /** Set while hidden Demo Mode is on, so fake sessions never publish real CCTV events. */
-    @Volatile
-    var publishingSuppressed: Boolean = false
-
     fun publishTelemetryJson(jsonPayload: String, targetRoomId: String = roomId) {
         publishJson(getTopicForRoom(targetRoomId), jsonPayload)
     }

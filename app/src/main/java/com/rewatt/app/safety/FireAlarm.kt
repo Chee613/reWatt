@@ -57,7 +57,6 @@ class FireAlarm(
     }
 
     private fun publish(vocIndex: Int?, noxIndex: Int?, atMillis: Long) {
-        if (mqtt.publishingSuppressed) return
         val payload = JSONObject().apply {
             put("nodeId", mqtt.nodeId)
             put("roomId", mqtt.roomId)

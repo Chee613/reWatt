@@ -59,6 +59,10 @@ data class PerceptionUiState(
     val lightsOn: Boolean? = null,
     val exposureMessage: String = "Exposure is waiting for camera capture.",
     val selectedYoloModel: YoloModel = YoloModel.Yolo26n1920,
+    /** When the camera pipeline last finished a capture (success or failure). */
+    val analyzedAtMillis: Long? = null,
+    /** True when that capture produced a frame AND YOLO actually ran on it (so a 0 count is real). */
+    val analysisOk: Boolean = false,
 ) {
     val peopleDetections: List<ObjectDetection> = yoloDetections.filter { it.isPerson }
     val personCount: Int = peopleDetections.size

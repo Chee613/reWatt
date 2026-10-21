@@ -368,7 +368,6 @@ class IntrusionMonitor(
     // ── MQTT ─────────────────────────────────────────────────────────────────────────────────
 
     private fun publishIntrusion(id: String, annotated: Bitmap, result: FaceCheckResult.Stranger) {
-        if (mqtt.publishingSuppressed) return
         val jpeg = ByteArrayOutputStream().also { out ->
             val small = annotated.scaledToMaxSide(MQTT_IMAGE_MAX_SIDE)
             small.compress(Bitmap.CompressFormat.JPEG, 70, out)
@@ -391,7 +390,6 @@ class IntrusionMonitor(
     }
 
     private fun publishEventSummary(id: String, endedAt: Long) {
-        if (mqtt.publishingSuppressed) return
         val event = eventStore.events.value.firstOrNull { it.id == id } ?: return
         val payload = JSONObject().apply {
             put("eventId", id)

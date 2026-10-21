@@ -22,6 +22,7 @@ import com.rewatt.app.ReWattApplication
 import com.rewatt.app.core.AppGraph
 import com.rewatt.app.data.PerceptionSyncSummary
 import com.rewatt.app.data.TelemetryRepository
+import com.rewatt.app.energy.EnergyMonitor
 import com.rewatt.app.security.IntrusionMonitor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -59,6 +60,7 @@ class CameraCaptureService : LifecycleService() {
     private var started = false
     private var armed = false
     private var monitor: IntrusionMonitor? = null
+    private var energyMonitor: EnergyMonitor? = null
 
     @Volatile
     private var testCheckRunning = false
@@ -121,12 +123,22 @@ class CameraCaptureService : LifecycleService() {
         ensureController()
         loadDetectors()
         // Do NOT capture immediately — the first capture fires at the next 10-minute boundary.
-        // Immediate capture is only done via the explicit "Capture Now" (ACTION_CAPTURE_NOW).
+        // Immediate capture is only done via the explicit "Capture Now" (ACTION_CAPTURE_NOW)
+        // or by the ENERGY flow when the radar sees someone enter / leave.
         scheduleNextCaptureAlarm()
+        energyMonitor = EnergyMonitor(
+            scope = serviceScope,
+            perception = stateHolder,
+            security = appGraph.securityStateHolder,
+            holder = appGraph.energyStateHolder,
+            requestCapture = { cameraController?.capture() },
+        ).also { it.start() }
     }
 
     private fun stopPerception() {
         started = false
+        energyMonitor?.stop()
+        energyMonitor = null
         appGraph.securitySettings.perceptionActive = false
         runCatching { alarmManager.cancel(capturePendingIntent()) }
         stateHolder.update { it.copy(isRunning = false, statusMessage = "Perception is stopped.") }
@@ -160,8 +172,11 @@ class CameraCaptureService : LifecycleService() {
                 }
             },
             onFrameAnalyzed = { bitmap, detections, yoloMessage, exposureReading, exposureMessage ->
+                val yoloRan = bitmap != null && yoloDetector != null
                 val newState = stateHolder.updateAndGet {
                     it.copy(
+                        analyzedAtMillis = System.currentTimeMillis(),
+                        analysisOk = yoloRan,
                         latestFrame = bitmap ?: it.latestFrame,
                         latestFrameAtMillis = if (bitmap != null) System.currentTimeMillis() else it.latestFrameAtMillis,
                         yoloDetections = detections,
@@ -181,6 +196,7 @@ class CameraCaptureService : LifecycleService() {
                 // recommendation on the Admin side (see DashboardViewModel.notifyNowActions).
             },
             onError = { message -> stateHolder.update { it.copy(yoloMessage = message) } },
+            liveView = appGraph.livePreviewHub,
         ).also {
             it.attach(this)
             appGraph.torchRouter.controller = it // fire strobe goes through CameraX while we hold the camera
@@ -209,7 +225,8 @@ class CameraCaptureService : LifecycleService() {
         val wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, WAKELOCK_TAG)
         runCatching { wakeLock.acquire(WAKELOCK_TIMEOUT_MS) }
         try {
-            cameraController?.capture()
+            // ENERGY demo mode: no automatic photos (the presenter drives the values).
+            if (!appGraph.energyDemo.state.value.active) cameraController?.capture()
         } finally {
             scheduleNextCaptureAlarm()
             if (wakeLock.isHeld) runCatching { wakeLock.release() }
@@ -368,6 +385,8 @@ class CameraCaptureService : LifecycleService() {
         runCatching { alarmManager.cancel(capturePendingIntent()) }
         monitor?.abort()
         monitor = null
+        energyMonitor?.stop()
+        energyMonitor = null
         appGraph.intrusionAlarm.dismiss()
         if (appGraph.torchRouter.controller === cameraController) appGraph.torchRouter.controller = null
         cameraController?.close()

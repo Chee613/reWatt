@@ -18,8 +18,9 @@ import kotlinx.coroutines.launch
 /**
  * Long-press FIRE tab icon demo: simulated SGP41 readings that rise from normal air into the danger zone
  * and go through the REAL fire pipeline (same detection rule, siren, red screen, strobe) — but never
- * MQTT. Works without an SGP41 attached. Timeline (1 sample / s):
- *   0–7 s normal (VOC 100, NOx 1) → VOC +9/s, NOx +0.6/s → amber ≈ 8 s → red ≈ 10 s → alarm ≈ 11 s
+ * MQTT. Works without an SGP41 attached. Starts rising at once from the normal baseline the FIRE
+ * tab already shows (VOC 100, NOx 1). Timeline (1 sample / s):
+ *   VOC +9/s, NOx +0.6/s → amber ≈ 1 s → red ≈ 3 s → alarm ≈ 4 s
  *   → holds high until the alarm is dismissed → falls back to normal → demo ends by itself.
  * Long-press again to stop early.
  */
@@ -43,7 +44,6 @@ class GasFireDemo(
         job = scope.launch {
             var voc = BASE_VOC
             var nox = BASE_NOX
-            var tick = 0
             var alarmSeen = false
             var settledTicks = 0
             while (isActive) {
@@ -56,7 +56,6 @@ class GasFireDemo(
                         nox = max(BASE_NOX, nox - 1.0)
                         if (voc <= BASE_VOC && nox <= BASE_NOX && ++settledTicks >= SETTLED_TICKS) break
                     }
-                    tick < BASELINE_TICKS -> Unit
                     else -> {
                         voc = min(PEAK_VOC, voc + 9.0)
                         nox = min(PEAK_NOX, nox + 0.6)
@@ -65,7 +64,6 @@ class GasFireDemo(
                 telemetry.injectGas(
                     GasReading(voc.toInt(), nox.toInt(), System.currentTimeMillis(), simulated = true),
                 )
-                tick++
                 delay(1_000)
             }
             finish()
@@ -85,11 +83,10 @@ class GasFireDemo(
     }
 
     companion object {
-        private const val BASE_VOC = 100.0
-        private const val BASE_NOX = 1.0
+        private const val BASE_VOC = GasReading.NORMAL_VOC_INDEX.toDouble()
+        private const val BASE_NOX = GasReading.NORMAL_NOX_INDEX.toDouble()
         private const val PEAK_VOC = 185.0
         private const val PEAK_NOX = 9.0
-        private const val BASELINE_TICKS = 7
         private const val SETTLED_TICKS = 3
     }
 }
