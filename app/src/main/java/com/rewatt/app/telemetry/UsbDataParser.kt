@@ -45,11 +45,11 @@ object UsbDataParser {
         }
     }
 
-    private val phonixGasPattern = Regex("""VOC:(-?\d+),NOX:(-?\d+)""")
+    private val plainGasPattern = Regex("""VOC:(-?\d+),NOX:(-?\d+)""")
 
     /**
      * Optional SGP41 gas reading. Primary format: `"voc"` / `"nox"` fields in the module's JSON line;
-     * fallback: Phonix-style `VOC:102,NOX:1` lines (last match wins, so glued chunks still parse).
+     * fallback: plain-text `VOC:102,NOX:1` lines (last match wins, so glued chunks still parse).
      * Returns null when the line carries no gas data — i.e. modules without an SGP41 are unaffected.
      */
     fun parseGas(
@@ -66,7 +66,7 @@ object UsbDataParser {
                 capturedAtMillis = capturedAtMillis,
             )
         }
-        val match = phonixGasPattern.findAll(trimmed).lastOrNull() ?: return null
+        val match = plainGasPattern.findAll(trimmed).lastOrNull() ?: return null
         return GasReading(
             vocIndex = match.groupValues[1].toIntOrNull()?.toValidIndex(),
             noxIndex = match.groupValues[2].toIntOrNull()?.toValidIndex(),

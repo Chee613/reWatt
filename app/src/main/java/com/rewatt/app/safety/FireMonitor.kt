@@ -11,8 +11,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 /**
- * Fire detection from the optional SGP41 (ported from Phonix FireViewModel, but process-wide so it
- * keeps working with the screen off or on another tab). Always active whenever gas data arrives.
+ * Fire detection from the optional SGP41, process-wide so it keeps working with the screen off or
+ * on another tab. Always active whenever gas data arrives.
  *
  * Rule: a ~1 s sample is a hit when VOC Index ≥ 130 OR NOx Index ≥ 5; 2 consecutive hits sound the
  * alarm. Any normal sample or a sensor error (-1) resets the count. Samples closer than ~1 s are

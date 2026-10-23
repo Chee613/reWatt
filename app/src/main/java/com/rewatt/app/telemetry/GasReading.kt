@@ -31,7 +31,7 @@ fun noxLevel(noxIndex: Int): GasLevel = when {
     else -> GasLevel.SAFE
 }
 
-/** Fire rule ported from the Phonix SGP41 project. */
+/** Fire rule for the SGP41 Gas Index values. */
 object FireThreshold {
     const val VOC_INDEX = 130
     const val NOX_INDEX = 5

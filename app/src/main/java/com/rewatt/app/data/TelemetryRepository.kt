@@ -60,7 +60,7 @@ class TelemetryRepository(
 
         val telemetry = UsbDataParser.parseTelemetry(rawPacket, capturedAtMillis)
         if (telemetry == null && gas != null) {
-            // Phonix-style gas-only line (VOC:x,NOX:y): valid data, not a malformed packet.
+            // Plain-text gas-only line (VOC:x,NOX:y): valid data, not a malformed packet.
             mutableState.update { it.copy(latestGas = gas) }
             return
         }
