@@ -2,5 +2,6 @@
     "java.configuration.updateBuildConfiguration": "interactive",
     "java.import.gradle.enabled": true,
     "android-dev-ext.sdk.root": "C:/Users/yongj/AppData/Local/Android/Sdk",
-    "android-dev-ext.adbPort": 5037
+    "android-dev-ext.adbPort": 5037,
+    "liveServer.settings.port": 5501
 }
