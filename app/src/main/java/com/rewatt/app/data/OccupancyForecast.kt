@@ -35,8 +35,7 @@ class PlaceholderOccupancyForecastProvider : OccupancyForecastProvider {
 }
 
 /**
- * Reads Prophet forecast results written by forecast.py from
- * `rewatt_users/{uid}/rooms/{hallLabel}/forecast/latest`.
+ * Reads Prophet forecast results from `rewatt_users/{uid}/rooms/{hallLabel}/forecast/latest`.
  * Falls back to a neutral "no forecast yet" value if the document doesn't exist.
  */
 class FirebaseOccupancyForecastProvider : OccupancyForecastProvider {
