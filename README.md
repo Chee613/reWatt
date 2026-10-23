@@ -16,13 +16,21 @@
   <a href="https://junonnnnn.github.io/reWatt-deck/">Pitch deck</a> ·
   <a href="https://www.youtube.com/watch?v=paHZ6IuO2EI">Watch on YouTube</a> ·
   <a href="docs/user-manual/reWatt-User-Manual.pdf">User manual</a> ·
-  <a href="#hardware">Hardware</a> ·
+  <a href="#the-rewatt-module">Hardware</a> ·
   <a href="#mqtt-integration">MQTT integration</a>
 </p>
 
 Built for the **Sime Darby Property University Hackathon 2026 · Planet / People Track**.
 reWatt reuses a phone's camera, processor, and connectivity, pairing them with an
 ESP32-C6 sensor module to make room monitoring more accessible and reduce e-waste.
+
+| **RM149** | **Android 6.0+** | **0 rewiring** | **100% on-device AI** |
+| --- | --- | --- | --- |
+| per module | any old phone | magnetic or adhesive mount | nothing uploaded |
+
+Product overview from the [pitch deck](https://junonnnnn.github.io/reWatt-deck/#2).
+People counting and face recognition run on the phone. **Optional MQTT can send
+readings, alerts, and images** to a broker you configure; see [data and privacy](#data-and-privacy).
 
 ## One phone, three roles
 
@@ -31,9 +39,6 @@ ESP32-C6 sensor module to make room monitoring more accessible and reduce e-wast
 | **Energy monitoring** | Temperature, humidity, YOLO people counts, and a camera-based estimate of whether lights are on. |
 | **Gas alerts** | VOC and NOx Index readings, with a siren, vibration, torch, and MQTT alert when the application thresholds are met. |
 | **Security camera** | Radar-triggered events, on-device family face recognition, local evidence recording, and intrusion alerts while armed. |
-
-People counting and face recognition run on the phone. **Optional MQTT can send
-readings, alerts, and images** to a broker you configure; see [data and privacy](#data-and-privacy).
 
 ## App preview
 
@@ -59,6 +64,18 @@ readings, alerts, and images** to a broker you configure; see [data and privacy]
 Screenshots from the included user manual. The app has **ENERGY**, **FIRE**,
 **SECURITY**, and **SETTINGS** tabs, with English and Bahasa Melayu support.
 
+One Android app runs on the mounted phone:
+
+| Tab | What you see |
+| --- | --- |
+| **ENERGY** | Temperature, humidity, headcount (EMPTY at 0), lights · fan · AC status, and a live camera view. |
+| **FIRE** | NORMAL / FIRE ALERT, with VOC Index and NOx Index gauges. |
+| **SECURITY** | ARMED switch, live camera view, and alert history. |
+| **SETTINGS** | MQTT configuration, Quick Setup Guide, security permissions, FAMILY faces, and alarm tests. |
+
+The header badge shows **ONLINE** while the module is connected and **OFFLINE**
+when it is not. Turn the phone sideways on ENERGY or SECURITY for a bigger live view.
+
 ## Quick start
 
 ### Prerequisites
@@ -68,7 +85,7 @@ Screenshots from the included user manual. The app has **ENERGY**, **FIRE**,
   for the sensor module, as described in the [pitch deck (slide 2)](https://junonnnnn.github.io/reWatt-deck/#2)
   and [user manual](docs/user-manual/reWatt-User-Manual.pdf).
 - Android SDK Platform-Tools (`adb`) on your PATH and USB debugging enabled for command-line installation.
-- For live readings, the [hardware module](#hardware) running compatible firmware.
+- For live readings, the [hardware module](#the-rewatt-module) running compatible firmware.
   **ESP32 firmware is not included** in this repository.
 
 ### Build and install
@@ -106,14 +123,20 @@ Launch **reWatt** on the phone to complete setup.
 
 ### First run
 
-1. Follow the **Quick Setup Guide**; reopen it from **Settings → Quick Setup Guide**.
-2. Grant camera and location access, and allow background operation as prompted.
-3. Mount the phone facing the room, connect the module, and approve USB access.
-4. Confirm the header shows **ONLINE** and temperature/humidity readings arrive.
-   This badge describes the USB module connection, not MQTT connectivity.
-5. To use security, disarm it first, register family under **Settings → FAMILY faces**,
-   grant microphone, notification, and full-screen alert access, then enable **ARMED**.
-6. Configure [MQTT](#mqtt-integration) if another device needs readings or alerts.
+The **Quick Setup Guide** opens on first launch; reopen it from
+**Settings → Quick Setup Guide**:
+
+1. Allow Camera & Location.
+2. Turn off Battery Saver for reWatt.
+3. Allow security camera permissions: notifications, microphone, full-screen alerts, and background operation.
+4. Mount the phone on a wall or metal surface, camera facing the centre of the room.
+5. Check the sensor view.
+6. Name your space (for example, `Room1`, living room, or community hall).
+7. Done.
+
+Connect the module, approve USB access, and confirm **ONLINE** with live
+temperature/humidity readings. Configure [MQTT](#mqtt-integration) if another
+device needs readings or alerts, then follow [security setup](#security) to arm the camera.
 
 Occupancy analysis is scheduled at the next ten-minute clock boundary (`:00`,
 `:10`, `:20`, and so on). A live preview does not imply a newly calculated headcount.
@@ -122,23 +145,67 @@ Timing can be less precise when exact-alarm access is unavailable.
 The [PDF user manual](docs/user-manual/reWatt-User-Manual.pdf) covers mounting,
 permissions, screens, and sensor readings in more detail.
 
-## Hardware
+## The reWatt module
+
+Three sensors, one ESP32-C6, one old phone, one app. The module clips onto the back
+of the phone and connects to its charging port with a 180° adapter, so the phone
+stays charged while it reads the sensors.
 
 <p align="center">
   <img src="docs/user-manual/assets/module-open-clean.png" alt="Inside the reWatt sensor module, showing its boards and USB connections" width="240">
 </p>
 
-| Component | Purpose |
+The hardware specifications below describe the product design in the pitch deck.
+
+| Part | What it does |
 | --- | --- |
-| **ESP32-C6** | Streams sensor data to the phone over USB serial. |
-| **LD2412 · 24 GHz mmWave radar** | Supplies moving and stationary presence readings for monitoring and armed security events. |
-| **SHT31** | Measures temperature and relative humidity. |
-| **SGP41** | Supplies optional VOC and NOx Gas Index values. |
-| **USB adapter and charge/data splitter** | Connects the module while allowing a compatible phone to charge. |
+| **LD2412** — 24 GHz mmWave radar | Senses people, even when they sit still. Wakes the camera only when someone is there. |
+| **SHT31** — temperature & humidity | Always on. Measures the room's comfort. |
+| **SGP41** — VOC + NOx gas sensor | Always on. Watches for fire gases 24/7. |
+| **ESP32-C6** — controller | All three sensors connect to it; it streams their data to the phone. |
+| **Type-C 180° adapter** | Plugs the module into the phone's charging port. |
+| **Type-C 1-to-2 splitter** (charge + USB) | Charges the phone and carries the sensor data at the same time. |
+
+Power: **0.26 W** on standby; **3.4 W** only during a 15-second AI burst after the
+radar senses someone. Camera and AI stay off in an empty room.
 
 Module firmware, wiring, and smart-home actuator integration must be supplied separately.
 
-### USB sensor protocol
+## How it works
+
+The diagram describes the product design. See [monitoring behavior](#monitoring-behavior)
+for the features currently connected in this Android node checkout.
+
+```text
+                 ┌──────────────── TRIGGER ────────────────┐
+                 │  LD2412 mmWave radar senses a person    │
+                 └───────────────┬─────────────────────────┘
+                                 │ wakes the camera + on-device AI
+              ┌──────────────────┴──────────────────┐
+              ▼                                     ▼
+   ENERGY OPTIMISATION                     SECURITY CAMERA
+   presence → headcount (YOLO26n)          presence → person seen (YOLO26n)
+   + temperature & humidity (SHT31)        → face check (InsightFace buffalo_s)
+   → right AC setting                      → family: stays silent
+   → no one for 5 min: appliances off      → stranger: siren, flashing light + alert
+
+   ALWAYS ON:  SHT31 temperature & humidity · SGP41 fire gases
+              ▼
+   FIRE ALARM
+   gas sensing 24/7 → VOC spike (early warning) → NOx rise (flaming) → loud siren + alert
+```
+
+- **Energy optimisation.** The product design uses headcount to choose an AC setting
+  and switches off lights, fan, and AC when the room is empty.
+- **Security camera.** A person without a visible face is recorded. Registered
+  family stays silent; an unrecognized face triggers the recording warning,
+  siren, flashing light, and alert.
+- **Fire alarm.** The design uses VOC changes as an early warning and NOx changes
+  as a possible burning indicator. The application responds to the thresholds below.
+- **Privacy.** People counting and face checks run **100% on the phone**.
+  Optional MQTT transmission is described under [data and privacy](#data-and-privacy).
+
+## USB sensor protocol
 
 Send **one JSON object per line at 115200 baud, 8 data bits, no parity, 1 stop bit**:
 
@@ -157,6 +224,10 @@ Send **one JSON object per line at 115200 baud, 8 data bits, no parity, 1 stop b
 Gas fields are optional. The parser also accepts `VOC:102,NOX:1` lines; gas
 gauges show `--` when readings are unavailable or stale. Malformed telemetry
 is counted and dropped. See [UsbDataParser](app/src/main/java/com/rewatt/app/telemetry/UsbDataParser.kt).
+
+VOC and NOx are Sensirion **Gas Index** values: unitless (not ppm), relative to
+the room's baseline. Typical baseline values are approximately **100** for VOC
+and **1** for NOx.
 
 ## Monitoring behavior
 
@@ -183,23 +254,41 @@ and [FireMonitor.kt](app/src/main/java/com/rewatt/app/safety/FireMonitor.kt).
 
 ### Security
 
+**Setup:**
+
+1. Disarm security, then add five front-camera photos of each family member under
+   **Settings → FAMILY faces**.
+2. Turn on **ARMED** in **SECURITY** when leaving or at night.
+3. Allow full-screen alerts. On Xiaomi/HyperOS, also allow **Show on Lock screen**
+   and **Display pop-up windows while running in the background**.
+
 While armed, fresh radar motion starts an event and face checks run approximately
 every two seconds:
 
-| Observation | Response |
-| --- | --- |
-| No person detected | Continue checking without recording evidence. |
-| Person detected, no usable face | Record a clip and play the recording warning; no intrusion siren. |
-| Registered family member | Stay silent and discard the event recording. |
-| Unrecognized face | Record evidence, play the warning, trigger the alarm, and send an MQTT intrusion alert if connected. |
+```text
+radar motion → event starts → photo every ~2 s
+  no person                → keep checking (nothing recorded)
+  person, no face          → record a clip + "You are being recorded" (no siren)
+  face → check against FAMILY
+        ✓ family           → silent; the clip is deleted
+        ✗ stranger/masked  → "You are being recorded" + siren + flashing torch + alert + MQTT
+nobody for 5 s → event ends, camera released
+```
 
 An event ends after five seconds without presence. Evidence is stored under
 `files/security/events/<eventId>/`, with video parts, face-check photos, and
 `event.json`. Retention removes older completed events after seven days or to
 keep storage within 2 GiB; the active event is preserved.
 
+Video is recorded as FHD 30 fps clips with audio in five-minute parts, subject to
+device camera capabilities. Face-check models are bundled at
+`app/src/main/assets/face/det_500m.onnx` and `face/w600k_mbf.onnx`, from
+InsightFace [buffalo_s](https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_s.zip),
+and run with ONNX Runtime. See [model terms](#license-and-model-terms).
+
 After a reboot or force-stop, open the app again to resume camera operation.
-Recognition depends on lighting, camera placement, and enrollment quality.
+Recognition depends on lighting, camera placement, and enrollment quality;
+night-time face checks rely on room light or the torch.
 
 ## MQTT integration
 
@@ -236,20 +325,35 @@ Keep local credentials out of version control.
 
 **Kotlin · Jetpack Compose / Material 3 · CameraX · Room · TensorFlow Lite · ONNX Runtime · HiveMQ MQTT**
 
+- **Android:** `minSdk 26`, `target/compileSdk 36`, Java 17; English and Bahasa Melayu.
+- **Sensing:** `usb-serial-for-android` for USB CDC and CameraX for camera capture.
+- **On-device AI:** TensorFlow Lite for YOLO26n and ONNX Runtime for InsightFace buffalo_s.
+- **Messaging:** HiveMQ MQTT client, with TLS on the default port 8883.
+- **Background operation:** foreground services for USB sensing and camera capture;
+  process-wide gas monitoring while readings arrive, including with the screen off.
+- **Smart-home design:** the module uses the ESP-Matter SDK for integration;
+  firmware is maintained separately from this Android repository.
+
 Build configuration: [app/build.gradle.kts](app/build.gradle.kts) ·
 [dependency versions](gradle/libs.versions.toml).
 
-Paths below are relative to `app/src/main/java/com/rewatt/app/` unless stated otherwise.
+### Project structure
 
-| Path | Responsibility |
-| --- | --- |
-| [`core/`](app/src/main/java/com/rewatt/app/core/) | Shared application dependencies and locale management. |
-| [`usb/`](app/src/main/java/com/rewatt/app/usb/) · [`telemetry/`](app/src/main/java/com/rewatt/app/telemetry/) | USB service, payload parsing, and sensor freshness. |
-| [`perception/`](app/src/main/java/com/rewatt/app/perception/) · [`energy/`](app/src/main/java/com/rewatt/app/energy/) | Camera capture, YOLO, light estimation, and energy state. |
-| [`safety/`](app/src/main/java/com/rewatt/app/safety/) · [`security/`](app/src/main/java/com/rewatt/app/security/) | Gas monitoring, alarms, family recognition, and evidence storage. |
-| [`data/`](app/src/main/java/com/rewatt/app/data/) · [`ui/`](app/src/main/java/com/rewatt/app/ui/) | Repositories, persistence, MQTT, and Compose screens. |
-| [`app/src/main/assets/`](app/src/main/assets/) (repository root) | Bundled YOLO and face-recognition models. |
-| [`docs/user-manual/`](docs/user-manual/) (repository root) | HTML manual, PDF, and product assets. |
+```text
+app/src/main/java/com/rewatt/app/
+├─ MainActivity.kt, ReWattApplication.kt
+├─ core/         AppGraph (manual DI), LocaleManager
+├─ usb/          UsbSentinelService — reads the module over USB serial
+├─ telemetry/    UsbDataParser, radar / gas readings, freshness
+├─ energy/       EnergyMonitor, appliance + occupancy state
+├─ safety/       FireMonitor, FireAlarm, torch
+├─ security/     IntrusionMonitor, face recognition, FAMILY faces, alarm, evidence
+├─ perception/   CameraCaptureService, YOLO, live preview, light estimation
+├─ data/         Telemetry + MQTT repositories, local database
+└─ ui/           SensorScreen (ENERGY / FIRE / SECURITY / SETTINGS), setup, theme
+app/src/main/assets/   yolo26n-1920.tflite, face/det_500m.onnx, face/w600k_mbf.onnx
+docs/user-manual/      HTML source, build-pdf.ps1, PDF, and product assets
+```
 
 ### Checks
 
@@ -271,11 +375,20 @@ To rebuild the manual on Windows with Microsoft Edge installed:
 .\docs\user-manual\build-pdf.ps1
 ```
 
-## Future direction
+## Roadmap
 
-The project vision includes smart-home actuator integration, township-wide
-monitoring, and broader language support. These are future goals; this repository
-currently provides the Android sensor node.
+Planned milestones from the product roadmap:
+
+- **Q4 2026 — Smart-home ecosystem:** integrate beyond the ESP-Matter SDK,
+  including Apple Home and Xiaomi Home.
+- **Township-wide monitoring:** a live dashboard for reWatt nodes across a township.
+- **Q1 2028 — Global expansion:** full multi-language support and regional adaptations.
+
+## Impact
+
+**People · Planet** — reWatt aims to keep unused phones out of landfill, reduce
+electricity wasted in empty rooms, and help monitor homes for fire and intruders
+using hardware people already own.
 
 ## License and model terms
 
