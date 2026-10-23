@@ -86,6 +86,9 @@ data class SecurityUiState(
     val lastCheck: LastFaceCheck? = null,
     val alarmActive: Boolean = false,
     val alarmEventId: String? = null,
+    /** Stranger photo / match score of the ringing alarm (shown on the in-app alert page). */
+    val alarmPhotoName: String? = null,
+    val alarmScore: Float? = null,
     val statusMessage: String? = null,
 )
 

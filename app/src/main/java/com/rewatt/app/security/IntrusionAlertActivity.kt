@@ -184,7 +184,7 @@ class IntrusionAlertActivity : ComponentActivity() {
 }
 
 @Composable
-private fun IntrusionAlertScreen(
+internal fun IntrusionAlertScreen(
     heading: String,
     message: String,
     photoPath: String?,

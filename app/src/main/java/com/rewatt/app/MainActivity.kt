@@ -20,6 +20,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rewatt.app.perception.CaptureStartSource
 import com.rewatt.app.perception.PerceptionViewModel
 import com.rewatt.app.perception.PerceptionViewModelFactory
+import com.rewatt.app.security.InAppAlarmOverlay
 import com.rewatt.app.ui.SetupGuideDialog
 import com.rewatt.app.ui.security.SecurityPreview
 import com.rewatt.app.ui.security.SecuritySettingsSection
@@ -197,6 +198,10 @@ class MainActivity : AppCompatActivity() {
                     },
                 )
 
+                // Fire / intruder alarm: in-app full-screen page on top of everything (no extra
+                // activity → no lag before the siren; follows the current orientation).
+                InAppAlarmOverlay(appGraph)
+
                 if (showSetupGuide) {
                     SetupGuideDialog(onDismiss = { name ->
                         showSetupGuide = false
@@ -216,6 +221,17 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // While the app is on screen, alarms use the in-app page instead of a full-screen notification.
+    override fun onStart() {
+        super.onStart()
+        (application as ReWattApplication).appGraph.intrusionNotifier.appInForeground = true
+    }
+
+    override fun onStop() {
+        (application as ReWattApplication).appGraph.intrusionNotifier.appInForeground = false
+        super.onStop()
+    }
+
     // Plugging in the module (USB_DEVICE_ATTACHED) reuses this screen instead of stacking a second
     // dashboard on top (which used to steal and freeze the live camera view).
     override fun onNewIntent(intent: Intent) {

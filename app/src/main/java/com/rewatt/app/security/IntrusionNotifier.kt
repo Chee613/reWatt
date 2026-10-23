@@ -16,10 +16,18 @@ import com.rewatt.app.core.LocaleManager
 import com.rewatt.app.perception.CameraCaptureService
 import java.util.Locale
 
-/** Full-screen "Intruder alert" notification (wakes the screen over the lock screen) + a resume hint. */
+/**
+ * Full-screen "Intruder alert" / "Fire alert" notification (wakes the screen over the lock screen)
+ * + a resume hint. While the app is on screen ([appInForeground]) nothing is posted: MainActivity
+ * shows the alert as an in-app full-screen page instead (no new activity → no lag before the siren).
+ */
 class IntrusionNotifier(context: Context) {
     private val appContext = context.applicationContext
     private val manager = appContext.getSystemService(NotificationManager::class.java)
+
+    /** Set by MainActivity (onStart / onStop). */
+    @Volatile
+    var appInForeground: Boolean = false
 
     fun ensureChannels() {
         val text = localizedContext(appContext)
@@ -40,6 +48,7 @@ class IntrusionNotifier(context: Context) {
         Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE || manager.canUseFullScreenIntent()
 
     fun showIntrusion(eventId: String, roomId: String, photoName: String?, score: Float?) {
+        if (appInForeground) return // shown as the in-app alert page
         ensureChannels()
         val text = localizedContext(appContext)
         val alertIntent = IntrusionAlertActivity.intent(appContext, eventId, roomId, photoName, score)
@@ -70,8 +79,8 @@ class IntrusionNotifier(context: Context) {
             .build()
         runCatching { NotificationManagerCompat.from(appContext).notify(INTRUSION_NOTIFICATION_ID, notification) }
 
-        // If the app is in the foreground Android allows a direct launch; otherwise the full-screen
-        // intent above wakes the screen. Either way the red alert appears.
+        // Background: the full-screen intent above wakes the screen; the direct launch covers phones
+        // that still allow it.
         runCatching { appContext.startActivity(alertIntent) }
     }
 
@@ -81,6 +90,7 @@ class IntrusionNotifier(context: Context) {
 
     /** Full-screen "Fire alert" (SGP41). The Dismiss action works without any service running. */
     fun showFire(roomId: String, vocIndex: Int?, noxIndex: Int?, test: Boolean) {
+        if (appInForeground) return // shown as the in-app alert page
         val text = localizedContext(appContext)
         manager.createNotificationChannel(
             NotificationChannel(FIRE_CHANNEL, text.getString(R.string.fire_channel), NotificationManager.IMPORTANCE_HIGH).apply {
