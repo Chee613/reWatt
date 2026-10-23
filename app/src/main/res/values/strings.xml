@@ -135,7 +135,7 @@
     <string name="setup_batt_on">Battery Saver is on — set it to Off!</string>
     <string name="setup_allow_always_on">Open Battery Saver settings</string>
     <string name="setup_s3_title">4. Mount the Sensor Phone</string>
-    <string name="setup_s3_body">Use the wall mount in the kit to attach this phone to the classroom wall or whiteboard. Point the camera toward the centre of the room.</string>
+    <string name="setup_s3_body">Use the wall mount in the kit to attach this phone to a wall or metal surface. Point the camera toward the centre of the room.</string>
     <string name="setup_mount_photo">Mount photo — coming soon</string>
     <string name="setup_s3_tip1">Attach the mount at shoulder height or above.</string>
     <string name="setup_s3_tip2">Make sure the camera faces the seating area.</string>
@@ -148,11 +148,9 @@
     <string name="setup_s4_tip2">Avoid pointing at bright light sources.</string>
     <string name="setup_s4_tip3">If the angle is wrong, re-adjust the mount and check again.</string>
     <string name="setup_s5_title">6. Name Your Space</string>
-    <string name="setup_s5_body">Give this sensor a name and seating capacity — e.g. the room, hall or lab it monitors and how many people it holds. reWatt uses the capacity to estimate energy use.</string>
+    <string name="setup_s5_body">Give this sensor a name — e.g. the room, community hall or residence area it monitors.</string>
     <string name="setup_space_name">Space name</string>
     <string name="setup_space_name_hint">e.g. Room1, Living room, Community hall</string>
-    <string name="setup_capacity">Capacity (pax)</string>
-    <string name="setup_capacity_hint">e.g. 300</string>
     <string name="setup_s6_title">7. You\'re All Set!</string>
     <string name="setup_s6_body">Everything is ready. reWatt will now watch the room and help manage energy automatically. You can come back to this guide anytime from the Settings tab.</string>
     <string name="setup_complete">Setup complete</string>

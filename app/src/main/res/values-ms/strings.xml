@@ -135,7 +135,7 @@
     <string name="setup_batt_on">Mod penjimat bateri hidup — tetapkan ke Mati!</string>
     <string name="setup_allow_always_on">Buka tetapan penjimat bateri</string>
     <string name="setup_s3_title">4. Pasang Telefon Penderia</string>
-    <string name="setup_s3_body">Gunakan pelekap dinding dalam kit untuk memasang telefon ini pada dinding bilik darjah atau papan putih. Halakan kamera ke tengah bilik.</string>
+    <string name="setup_s3_body">Gunakan pelekap dinding dalam kit untuk memasang telefon ini pada dinding atau permukaan logam. Halakan kamera ke tengah bilik.</string>
     <string name="setup_mount_photo">Foto pelekap — akan datang</string>
     <string name="setup_s3_tip1">Pasang pelekap pada paras bahu atau lebih tinggi.</string>
     <string name="setup_s3_tip2">Pastikan kamera menghadap kawasan tempat duduk.</string>
@@ -148,11 +148,9 @@
     <string name="setup_s4_tip2">Elakkan menghala ke sumber cahaya terang.</string>
     <string name="setup_s4_tip3">Jika sudut salah, laraskan semula pelekap dan semak lagi.</string>
     <string name="setup_s5_title">6. Namakan Ruang Anda</string>
-    <string name="setup_s5_body">Beri penderia ini nama dan kapasiti tempat duduk — cth. bilik, dewan atau makmal yang dipantau dan berapa ramai yang boleh dimuatkan. reWatt menggunakan kapasiti untuk menganggar penggunaan tenaga.</string>
+    <string name="setup_s5_body">Beri penderia ini nama — cth. bilik, dewan komuniti atau kawasan kediaman yang dipantau.</string>
     <string name="setup_space_name">Nama ruang</string>
     <string name="setup_space_name_hint">cth. Room1, Ruang tamu, Dewan komuniti</string>
-    <string name="setup_capacity">Kapasiti (pax)</string>
-    <string name="setup_capacity_hint">cth. 300</string>
     <string name="setup_s6_title">7. Anda Sudah Sedia!</string>
     <string name="setup_s6_body">Semuanya sedia. reWatt kini akan memerhati bilik dan membantu mengurus tenaga secara automatik. Anda boleh kembali ke panduan ini bila-bila masa dari tab Tetapan.</string>
     <string name="setup_complete">Persediaan selesai</string>

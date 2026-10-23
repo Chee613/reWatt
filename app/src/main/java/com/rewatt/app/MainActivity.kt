@@ -198,7 +198,7 @@ class MainActivity : AppCompatActivity() {
                 )
 
                 if (showSetupGuide) {
-                    SetupGuideDialog(onDismiss = { name, capacity ->
+                    SetupGuideDialog(onDismiss = { name ->
                         showSetupGuide = false
                         appPrefs.edit().putBoolean(KEY_SETUP_GUIDE_SEEN, true).apply()
                         if (name != null) {

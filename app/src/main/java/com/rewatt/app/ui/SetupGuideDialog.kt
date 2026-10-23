@@ -33,7 +33,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
@@ -69,7 +68,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -86,15 +84,13 @@ private const val TOTAL_STEPS = 7
 private const val STEP_NAME_SPACE = 5
 
 @Composable
-fun SetupGuideDialog(onDismiss: (spaceName: String?, capacity: Int?) -> Unit) {
+fun SetupGuideDialog(onDismiss: (spaceName: String?) -> Unit) {
     var step by remember { mutableStateOf(0) }
     var spaceName by remember { mutableStateOf("") }
-    var capacityText by remember { mutableStateOf("") }
     var isProcessingSwipe by remember { mutableStateOf(false) }
-    val capacity = capacityText.toIntOrNull()
 
     Dialog(
-        onDismissRequest = { onDismiss(null, null) },
+        onDismissRequest = { onDismiss(null) },
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
             dismissOnBackPress = true,
@@ -134,7 +130,7 @@ fun SetupGuideDialog(onDismiss: (spaceName: String?, capacity: Int?) -> Unit) {
                         )
                     }
 
-                    TextButton(onClick = { onDismiss(null, null) }) {
+                    TextButton(onClick = { onDismiss(null) }) {
                         Text("Skip", fontWeight = FontWeight.Bold, color = Color(0xFF6B7280), fontSize = 14.sp)
                     }
                 }
@@ -194,8 +190,6 @@ fun SetupGuideDialog(onDismiss: (spaceName: String?, capacity: Int?) -> Unit) {
                         STEP_NAME_SPACE -> NameYourSpaceStep(
                             spaceName = spaceName,
                             onSpaceNameChange = { spaceName = it },
-                            capacityText = capacityText,
-                            onCapacityChange = { capacityText = it },
                         )
                         6 -> DoneStep()
                     }
@@ -229,7 +223,7 @@ fun SetupGuideDialog(onDismiss: (spaceName: String?, capacity: Int?) -> Unit) {
 
                     Button(
                         onClick = {
-                            if (step < TOTAL_STEPS - 1) step++ else onDismiss(spaceName.ifBlank { null }, capacity)
+                            if (step < TOTAL_STEPS - 1) step++ else onDismiss(spaceName.ifBlank { null })
                         },
                         modifier = Modifier
                             .weight(1f)
@@ -655,8 +649,6 @@ private fun VerifyViewStep() {
 private fun NameYourSpaceStep(
     spaceName: String,
     onSpaceNameChange: (String) -> Unit,
-    capacityText: String,
-    onCapacityChange: (String) -> Unit,
 ) {
     StepHeader(
         title = stringResource(R.string.setup_s5_title),
@@ -669,21 +661,6 @@ private fun NameYourSpaceStep(
         label = { Text(stringResource(R.string.setup_space_name)) },
         placeholder = { Text(stringResource(R.string.setup_space_name_hint)) },
         singleLine = true,
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedContainerColor = Color.White,
-            unfocusedContainerColor = Color.White,
-        ),
-    )
-
-    OutlinedTextField(
-        value = capacityText,
-        onValueChange = { input -> onCapacityChange(input.filter { it.isDigit() }.take(5)) },
-        label = { Text(stringResource(R.string.setup_capacity)) },
-        placeholder = { Text(stringResource(R.string.setup_capacity_hint)) },
-        singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
         colors = OutlinedTextFieldDefaults.colors(
