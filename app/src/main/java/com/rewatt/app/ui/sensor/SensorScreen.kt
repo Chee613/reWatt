@@ -811,7 +811,7 @@ private fun CameraTabs(
                 onStartCamera = onStartCamera,
                 onDismissPhoto = onDismissPhoto,
                 roomChip = uiState.roomId.ifBlank { "Room1" }.takeIf { landscape && energyTab },
-                roomOnline = usbConnected,
+                moduleOnline = usbConnected,
                 armed = security.armed && !energyTab,
                 zoomRatio = previewZoom,
                 onZoom = onPreviewZoom,
@@ -1409,7 +1409,8 @@ private fun IlluminanceCard(perception: PerceptionUiState) {
  *  - ENERGY: the checked photo with YOLO boxes (until tapped), capture/YOLO chip, Room1 chip in
  *    landscape.
  *  - SECURITY: ARMED chip.
- * A tap starts the camera if it is off; pinch zooms the real camera.
+ * A tap starts the camera if it is off; pinch zooms the real camera. While the reWatt module is not
+ * plugged into this phone, a reminder card sits at the bottom (both tabs).
  */
 @Composable
 private fun SharedCameraBox(
@@ -1420,7 +1421,7 @@ private fun SharedCameraBox(
     onStartCamera: () -> Unit,
     onDismissPhoto: () -> Unit,
     roomChip: String?,
-    roomOnline: Boolean,
+    moduleOnline: Boolean,
     armed: Boolean,
     zoomRatio: Float,
     onZoom: (Float) -> Unit,
@@ -1488,14 +1489,70 @@ private fun SharedCameraBox(
         }
         chip?.let { (text, dot) -> CameraChip(text, dot, Modifier.align(Alignment.TopStart)) }
 
-        if (liveShown) ZoomChip(zoomRatio, Modifier.align(Alignment.BottomEnd))
+        if (liveShown) {
+            // Lifted above the module reminder while that is showing.
+            ZoomChip(
+                zoomRatio,
+                Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(bottom = if (moduleOnline) 0.dp else 64.dp),
+            )
+        }
 
         when {
             armed -> CameraChip(stringResource(R.string.sec_armed), Color(0xFFB91C1C), Modifier.align(Alignment.TopEnd))
             roomChip != null -> CameraChip(
                 roomChip,
-                if (roomOnline) Color(0xFF22C55E) else Color(0xFFF59E0B),
+                if (moduleOnline) Color(0xFF22C55E) else Color(0xFFF59E0B),
                 Modifier.align(Alignment.TopEnd),
+            )
+        }
+
+        AnimatedVisibility(
+            visible = !moduleOnline,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.BottomCenter),
+        ) {
+            ModuleMissingReminder()
+        }
+    }
+}
+
+/** Bottom card on the camera box: the reWatt module isn't plugged into this phone. */
+@Composable
+private fun ModuleMissingReminder() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(10.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color(0xCC111827))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(30.dp)
+                .clip(CircleShape)
+                .background(Color(0x33F59E0B)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Outlined.Usb, contentDescription = null, tint = Color(0xFFFBBF24), modifier = Modifier.size(18.dp))
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                stringResource(R.string.preview_module_missing_title),
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+            )
+            Text(
+                stringResource(R.string.preview_module_missing_body),
+                fontSize = 11.sp,
+                color = Color(0xFFD1D5DB),
+                lineHeight = 14.sp,
             )
         }
     }

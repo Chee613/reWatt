@@ -274,6 +274,8 @@
     <string name="sec_title">Security Camera</string>
     <string name="sec_subtitle">Radar motion → person check → FAMILY face check.</string>
     <string name="sec_armed">ARMED</string>
+    <string name="preview_module_missing_title">reWatt module not connected</string>
+    <string name="preview_module_missing_body">Plug the module into this phone to read temperature, humidity, motion and gas.</string>
     <string name="sec_disarmed">DISARMED</string>
     <string name="sec_arm_desc_disarmed">Arm it when the house is empty or at night.</string>
     <string name="sec_arm_hint_no_faces">Register at least one FAMILY face in Settings before arming.</string>

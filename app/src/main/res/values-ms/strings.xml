@@ -274,6 +274,8 @@
     <string name="sec_title">Kamera Keselamatan</string>
     <string name="sec_subtitle">Gerakan radar → semak orang → semak wajah FAMILY.</string>
     <string name="sec_armed">AKTIF</string>
+    <string name="preview_module_missing_title">Modul reWatt tidak disambung</string>
+    <string name="preview_module_missing_body">Pasang modul pada telefon ini untuk membaca suhu, kelembapan, pergerakan dan gas.</string>
     <string name="sec_disarmed">TIDAK AKTIF</string>
     <string name="sec_arm_desc_disarmed">Aktifkan apabila rumah kosong atau pada waktu malam.</string>
     <string name="sec_arm_hint_no_faces">Daftar sekurang-kurangnya satu wajah FAMILY dalam Tetapan sebelum mengaktifkan.</string>
