@@ -11,19 +11,16 @@ import android.provider.Settings
 import android.text.format.Formatter
 import android.widget.MediaController
 import android.widget.VideoView
-import androidx.camera.core.Preview
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -35,7 +32,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.CameraAlt
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.FaceRetouchingNatural
 import androidx.compose.material.icons.outlined.LocalFireDepartment
@@ -70,7 +66,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -80,16 +75,10 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rewatt.app.R
-import com.rewatt.app.security.EventPhase
 import com.rewatt.app.security.EventResult
 import com.rewatt.app.security.MatchCalibration
 import com.rewatt.app.security.SecurityEvent
 import com.rewatt.app.security.SecurityUiState
-import com.rewatt.app.ui.sensor.LivePreview
-import com.rewatt.app.ui.sensor.LoopingVideo
-import com.rewatt.app.ui.sensor.ZoomChip
-import com.rewatt.app.ui.sensor.hiddenPress
-import com.rewatt.app.ui.sensor.pinchToZoom
 import java.io.File
 import java.text.DateFormat
 import java.util.Date
@@ -102,107 +91,51 @@ private val Muted = Color(0xFF6B7280)
 private val Danger = Color(0xFFB91C1C)
 private val Ok = Color(0xFF15803D)
 
-/** What the SECURITY tab's camera box needs from the camera service and the picker. */
-data class SecurityPreview(
-    val cameraOn: Boolean = false,
-    /** Gallery video looping in place of the live view (null = live view). */
-    val video: Uri? = null,
-    val onSurface: (Preview.SurfaceProvider, Boolean) -> Unit = { _, _ -> },
-    val onStartCamera: () -> Unit = {},
-    /** Long-press on the box: pick a looping gallery video, or stop it. */
-    val onLongPress: () -> Unit = {},
-    /** The ENERGY tab's portrait camera height, so both previews are the same size. */
-    val portraitHeight: Dp? = null,
-    /** Real camera zoom ratio (pinch on the live view; photos and clips use it too). */
-    val zoomRatio: Float = 1f,
-    val onZoom: (Float) -> Unit = {},
-)
-
 /**
- * TAB: SECURITY — CCTV arm switch, live camera box, live status and event history. Rotates like the
- * ENERGY tab: in landscape the arm switch + status sit in a slim left column and the camera takes
- * 80% of the width (same size as ENERGY). FAMILY faces, permissions, strictness and the test tools
- * live in Settings → Security & permissions.
+ * SECURITY tab, side panel: title (portrait) + the CCTV arm card. The tab shares its camera box with
+ * ENERGY (laid out by SensorScreen), so only this panel and [SecurityHistorySection] change when
+ * switching tabs. [compact] = the slim landscape column. FAMILY faces, permissions, strictness and
+ * the test tools live in Settings → Security & permissions.
  */
 @Composable
-fun SecurityTab(
+fun SecuritySidePanel(
     viewModel: SecurityViewModel,
     onRequestArm: () -> Unit,
-    preview: SecurityPreview = SecurityPreview(),
+    compact: Boolean,
 ) {
-    val context = LocalContext.current
     val state by viewModel.state.collectAsStateWithLifecycle()
     val faces by viewModel.familyFaces.collectAsStateWithLifecycle()
-    val events by viewModel.events.collectAsStateWithLifecycle()
-    var openEvent by remember { mutableStateOf<SecurityEvent?>(null) }
     val canArm = faces.isNotEmpty()
     val onArmChange: (Boolean) -> Unit = { checked -> if (checked) onRequestArm() else viewModel.disarm() }
+    if (!compact) {
+        Text(stringResource(R.string.sec_title), fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Ink)
+    }
+    ArmCard(state = state, canArm = canArm, onArmChange = onArmChange, compact = compact)
+}
 
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        if (maxWidth > maxHeight) {
-            Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Column(
-                    modifier = Modifier
-                        .weight(0.2f)
-                        .fillMaxHeight()
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    ArmCard(state = state, canArm = canArm, onArmChange = onArmChange, compact = true, onLongPress = viewModel::demoIntruderAlert)
-                    if (state.armed) LiveStatusCard(state = state, compact = true)
-                }
-                SecurityCameraBox(
-                    preview = preview,
-                    armed = state.armed,
-                    modifier = Modifier
-                        .weight(0.8f)
-                        .fillMaxHeight(),
-                )
-            }
-        } else {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 20.dp, vertical = 12.dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                Text(stringResource(R.string.sec_title), fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Ink)
-                ArmCard(state = state, canArm = canArm, onArmChange = onArmChange, compact = false, onLongPress = viewModel::demoIntruderAlert)
-                SecurityCameraBox(
-                    preview = preview,
-                    armed = state.armed,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(preview.portraitHeight ?: 360.dp),
-                )
-                if (state.armed) LiveStatusCard(state = state, compact = false)
+/** SECURITY tab, below the shared camera box (portrait): CCTV event history + its detail dialog. */
+@Composable
+fun SecurityHistorySection(viewModel: SecurityViewModel) {
+    val context = LocalContext.current
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    val events by viewModel.events.collectAsStateWithLifecycle()
+    var openEvent by remember { mutableStateOf<SecurityEvent?>(null) }
 
-                // ── Event history ──
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(stringResource(R.string.sec_history), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Ink)
-                    Text(
-                        stringResource(R.string.sec_storage, Formatter.formatShortFileSize(context, events.sumOf { it.sizeBytes })),
-                        fontSize = 12.sp,
-                        color = Muted,
-                    )
-                    val finished = events.filter { it.result == EventResult.STRANGER || it.result == EventResult.NO_FACE || it.id == state.activeEventId }
-                    if (finished.isEmpty()) {
-                        Text(stringResource(R.string.sec_history_empty), fontSize = 13.sp, color = Muted)
-                    }
-                    finished.forEach { event ->
-                        EventRow(event = event, onClick = { openEvent = event })
-                    }
-                }
-
-                Spacer(Modifier.height(8.dp))
-            }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(stringResource(R.string.sec_history), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Ink)
+        Text(
+            stringResource(R.string.sec_storage, Formatter.formatShortFileSize(context, events.sumOf { it.sizeBytes })),
+            fontSize = 12.sp,
+            color = Muted,
+        )
+        val finished = events.filter { it.result == EventResult.STRANGER || it.result == EventResult.NO_FACE || it.id == state.activeEventId }
+        if (finished.isEmpty()) {
+            Text(stringResource(R.string.sec_history_empty), fontSize = 13.sp, color = Muted)
         }
+        finished.forEach { event ->
+            EventRow(event = event, onClick = { openEvent = event })
+        }
+        Spacer(Modifier.height(8.dp))
     }
 
     openEvent?.let { event ->
@@ -219,22 +152,16 @@ fun SecurityTab(
     }
 }
 
-/**
- * Arm / Disarm card. [compact] (landscape column): smaller, no hint text. Hidden long-press on the
- * card (no ripple): [onLongPress] — the "You are being recorded" → full alert demo.
- */
+/** Arm / Disarm card. [compact] (landscape column): smaller, no hint text. */
 @Composable
 private fun ArmCard(
     state: SecurityUiState,
     canArm: Boolean,
     onArmChange: (Boolean) -> Unit,
     compact: Boolean,
-    onLongPress: () -> Unit,
 ) {
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .hiddenPress(onTap = {}, onLongPress = onLongPress),
+        modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(if (compact) 20.dp else 24.dp),
         colors = CardDefaults.cardColors(containerColor = if (state.armed) Color(0xFFFEE2E2) else CardGrey),
     ) {
@@ -279,121 +206,6 @@ private fun ArmCard(
                 armHint?.let { Text(text = it, fontSize = 13.sp, color = Muted) }
             }
         }
-    }
-}
-
-/** Live CCTV status while Armed. [compact] (landscape column): pills stacked, smaller text. */
-@Composable
-private fun LiveStatusCard(state: SecurityUiState, compact: Boolean) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = CardGrey),
-    ) {
-        Column(Modifier.padding(if (compact) 12.dp else 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(stringResource(R.string.sec_status), fontWeight = FontWeight.Bold, fontSize = if (compact) 13.sp else 15.sp, color = Ink)
-            val pills: @Composable () -> Unit = {
-                Pill(
-                    text = stringResource(
-                        when (state.phase) {
-                            EventPhase.IDLE -> R.string.sec_phase_idle
-                            EventPhase.MOTION -> R.string.sec_phase_motion
-                            EventPhase.GRACE -> R.string.sec_phase_grace
-                        },
-                    ),
-                    bg = if (state.phase == EventPhase.IDLE) Color.White else Color(0xFFFEF3C7),
-                    fg = if (state.phase == EventPhase.IDLE) Muted else Color(0xFFB45309),
-                )
-                if (state.recording) Pill("● " + stringResource(R.string.sec_recording), Color(0xFFFEE2E2), Danger)
-                if (state.torchOn) Pill(stringResource(R.string.sec_torch), Color(0xFFFEF9C3), Color(0xFF854D0E))
-            }
-            if (compact) {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) { pills() }
-            } else {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) { pills() }
-            }
-            val check = state.lastCheck
-            Text(
-                text = stringResource(R.string.sec_last_check) + ": " + if (check == null) {
-                    stringResource(R.string.sec_no_checks)
-                } else {
-                    resultLabel(check.result) + scoreSuffix(check.score, check.confidence) +
-                        " · " + DateFormat.getTimeInstance(DateFormat.MEDIUM).format(Date(check.atMillis))
-                },
-                fontSize = if (compact) 11.sp else 13.sp,
-                color = Ink,
-            )
-        }
-    }
-}
-
-/**
- * Live back-camera box (or a looping gallery video). Hidden long-press: pick a video to loop /
- * stop it and go back to the live view. A tap starts the camera if it is off.
- */
-@Composable
-private fun SecurityCameraBox(preview: SecurityPreview, armed: Boolean, modifier: Modifier = Modifier) {
-    val video = preview.video
-    val liveShown = video == null && preview.cameraOn
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(24.dp))
-            .background(Color(0xFF111827))
-            .then(if (liveShown) Modifier.pinchToZoom(preview.onZoom) else Modifier),
-    ) {
-        if (video != null) {
-            key(video) { LoopingVideo(uri = video, modifier = Modifier.fillMaxSize()) }
-        } else if (preview.cameraOn) {
-            LivePreview(onLivePreviewSurface = preview.onSurface, modifier = Modifier.fillMaxSize())
-        } else {
-            Column(
-                modifier = Modifier.align(Alignment.Center),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Icon(Icons.Outlined.CameraAlt, contentDescription = null, tint = Color(0xFF9CA3AF), modifier = Modifier.size(28.dp))
-                Spacer(Modifier.height(6.dp))
-                Text("Camera off", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                Text("Tap to start", fontSize = 11.sp, color = Color(0xFF9CA3AF))
-            }
-        }
-
-        Box(
-            Modifier
-                .fillMaxSize()
-                .hiddenPress(
-                    onTap = { if (video == null && !preview.cameraOn) preview.onStartCamera() },
-                    onLongPress = preview.onLongPress,
-                ),
-        )
-
-        if (video != null || preview.cameraOn) {
-            CameraChip("LIVE", Color(0xFFEF4444), Modifier.align(Alignment.TopStart))
-        }
-        if (armed) {
-            CameraChip(stringResource(R.string.sec_armed), Danger, Modifier.align(Alignment.TopEnd))
-        }
-        if (liveShown) ZoomChip(preview.zoomRatio, Modifier.align(Alignment.BottomEnd))
-    }
-}
-
-@Composable
-private fun CameraChip(text: String, dot: Color, modifier: Modifier = Modifier) {
-    Row(
-        modifier = modifier
-            .padding(10.dp)
-            .clip(RoundedCornerShape(50))
-            .background(Color(0x99000000))
-            .padding(horizontal = 10.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            Modifier
-                .size(6.dp)
-                .clip(CircleShape)
-                .background(dot),
-        )
-        Spacer(Modifier.width(6.dp))
-        Text(text, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
     }
 }
 

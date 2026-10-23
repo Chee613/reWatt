@@ -54,14 +54,6 @@ class FireMonitor(
         alarm.dismiss()
     }
 
-    /** Fresh start for the long-press demo (clears hits and any post-Dismiss re-arm wait). */
-    fun resetForDemo() = synchronized(lock) {
-        hits = 0
-        lastCountedAt = 0L
-        rearmPending = false
-        normalSince = null
-    }
-
     private fun onSample(gas: GasReading) = synchronized(lock) {
         val now = gas.capturedAtMillis
         if (now - lastCountedAt < MIN_SAMPLE_GAP_MS) return@synchronized
@@ -89,7 +81,7 @@ class FireMonitor(
         if (hits >= FireThreshold.CONSECUTIVE_HITS && !rearmPending && !alarm.state.value.active) {
             Log.w(TAG, "FIRE: VOC=${gas.vocIndex} NOx=${gas.noxIndex}")
             hits = 0
-            alarm.trigger(gas.vocIndex, gas.noxIndex, publish = !gas.simulated)
+            alarm.trigger(gas.vocIndex, gas.noxIndex)
         }
     }
 

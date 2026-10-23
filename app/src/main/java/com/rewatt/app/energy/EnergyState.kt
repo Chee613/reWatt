@@ -27,7 +27,7 @@ enum class EnergyPhase {
 }
 
 data class EnergyBanner(val id: Long, val kind: Kind, val atMillis: Long) {
-    enum class Kind { MOTION, NO_MOTION, ROOM_EMPTY, APPLIANCES_OFF, LOWER_AC_TEMPERATURE }
+    enum class Kind { MOTION, NO_MOTION, ROOM_EMPTY }
 }
 
 /** The three round buttons in the occupancy box (true = green / on). */
@@ -79,8 +79,4 @@ class EnergyStateHolder {
     val appliances: StateFlow<ApplianceStates> = mutableAppliances.asStateFlow()
 
     fun updateAppliances(transform: (ApplianceStates) -> ApplianceStates) = mutableAppliances.update(transform)
-
-    fun setAllAppliances(on: Boolean) {
-        mutableAppliances.value = ApplianceStates(lights = on, fan = on, aircond = on)
-    }
 }

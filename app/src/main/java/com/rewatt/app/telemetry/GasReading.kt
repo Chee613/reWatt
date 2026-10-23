@@ -9,19 +9,11 @@ data class GasReading(
     val vocIndex: Int?,
     val noxIndex: Int?,
     val capturedAtMillis: Long,
-    /** True for the long-press fire demo: goes through the real detection, but never publishes MQTT. */
-    val simulated: Boolean = false,
 ) {
     val isError: Boolean get() = vocIndex == null && noxIndex == null
 
     val isFireHit: Boolean
         get() = (vocIndex ?: 0) >= FireThreshold.VOC_INDEX || (noxIndex ?: 0) >= FireThreshold.NOX_INDEX
-
-    companion object {
-        /** Sensirion Gas Index baseline for normal air — the FIRE tab's default display and the demo start. */
-        const val NORMAL_VOC_INDEX = 100
-        const val NORMAL_NOX_INDEX = 1
-    }
 }
 
 /** Traffic-light level shown by the breathing line under each gas gauge. */

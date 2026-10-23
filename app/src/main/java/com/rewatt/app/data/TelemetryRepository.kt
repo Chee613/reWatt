@@ -51,35 +51,17 @@ class TelemetryRepository(
     @Volatile
     private var latestGas: GasReading? = null
 
-    /** While the long-press fire demo runs, real SGP41 readings are ignored so the two don't mix. */
-    @Volatile
-    var gasDemoActive: Boolean = false
-
-    /** Feed a simulated reading through the same path as real SGP41 data (fire demo). */
-    fun injectGas(gas: GasReading) {
-        latestGas = gas
-        mutableGasSamples.tryEmit(gas)
-        mutableState.update { it.copy(latestGas = gas) }
-    }
-
-    /** Forget the last gas reading (dashboard goes back to "--" until real data arrives). */
-    fun clearGas() {
-        latestGas = null
-        mutableState.update { it.copy(latestGas = null) }
-    }
-
     suspend fun acceptRawPacket(rawPacket: String, capturedAtMillis: Long = System.currentTimeMillis()) {
-        val parsedGas = UsbDataParser.parseGas(rawPacket, capturedAtMillis)
-        val gas = parsedGas?.takeUnless { gasDemoActive }
+        val gas = UsbDataParser.parseGas(rawPacket, capturedAtMillis)
         if (gas != null) {
             latestGas = gas
             mutableGasSamples.tryEmit(gas)
         }
 
         val telemetry = UsbDataParser.parseTelemetry(rawPacket, capturedAtMillis)
-        if (telemetry == null && parsedGas != null) {
+        if (telemetry == null && gas != null) {
             // Phonix-style gas-only line (VOC:x,NOX:y): valid data, not a malformed packet.
-            if (gas != null) mutableState.update { it.copy(latestGas = gas) }
+            mutableState.update { it.copy(latestGas = gas) }
             return
         }
         if (telemetry == null) {

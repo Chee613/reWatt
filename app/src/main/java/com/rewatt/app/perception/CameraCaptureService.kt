@@ -225,8 +225,7 @@ class CameraCaptureService : LifecycleService() {
         val wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, WAKELOCK_TAG)
         runCatching { wakeLock.acquire(WAKELOCK_TIMEOUT_MS) }
         try {
-            // ENERGY demo mode: no automatic photos (the presenter drives the values).
-            if (!appGraph.energyDemo.state.value.active) cameraController?.capture()
+            cameraController?.capture()
         } finally {
             scheduleNextCaptureAlarm()
             if (wakeLock.isHeld) runCatching { wakeLock.release() }

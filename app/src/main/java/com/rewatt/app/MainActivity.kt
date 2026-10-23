@@ -6,7 +6,6 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.compose.setContent
-import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
@@ -22,12 +21,12 @@ import com.rewatt.app.perception.PerceptionViewModel
 import com.rewatt.app.perception.PerceptionViewModelFactory
 import com.rewatt.app.security.InAppAlarmOverlay
 import com.rewatt.app.ui.SetupGuideDialog
-import com.rewatt.app.ui.security.SecurityPreview
 import com.rewatt.app.ui.security.SecuritySettingsSection
-import com.rewatt.app.ui.security.SecurityTab
+import com.rewatt.app.ui.security.SecurityHistorySection
+import com.rewatt.app.ui.security.SecuritySidePanel
 import com.rewatt.app.ui.security.SecurityViewModel
 import com.rewatt.app.ui.security.SecurityViewModelFactory
-import com.rewatt.app.ui.sensor.EnergyDemoControls
+import com.rewatt.app.ui.sensor.SecurityTabParts
 import com.rewatt.app.ui.sensor.SensorScreen
 import com.rewatt.app.ui.sensor.SensorViewModel
 import com.rewatt.app.ui.sensor.SensorViewModelFactory
@@ -59,18 +58,6 @@ class MainActivity : AppCompatActivity() {
         }
     private val securityCameraPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
-
-    // ENERGY demo: a gallery video to loop in the camera box (system photo picker, no permission).
-    private val demoVideoPicker =
-        registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-            if (uri != null) (application as ReWattApplication).appGraph.energyDemo.setVideo(uri)
-        }
-
-    // SECURITY tab: a gallery video to loop in its camera box.
-    private val securityVideoPicker =
-        registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-            if (uri != null) (application as ReWattApplication).appGraph.securityPreviewVideo.value = uri
-        }
 
     private val securityViewModel: SecurityViewModel by viewModels {
         SecurityViewModelFactory(
@@ -122,8 +109,6 @@ class MainActivity : AppCompatActivity() {
                 val fireAlarm by appGraph.fireMonitor.alarm.state.collectAsStateWithLifecycle()
                 val energyState by appGraph.energyStateHolder.state.collectAsStateWithLifecycle()
                 val applianceStates by appGraph.energyStateHolder.appliances.collectAsStateWithLifecycle()
-                val energyDemoState by appGraph.energyDemo.state.collectAsStateWithLifecycle()
-                val securityVideo by appGraph.securityPreviewVideo.collectAsStateWithLifecycle()
                 val previewZoom by appGraph.livePreviewHub.zoomRatio.collectAsStateWithLifecycle()
                 val onLivePreviewSurface: (Preview.SurfaceProvider, Boolean) -> Unit = { provider, attached ->
                     if (attached) appGraph.livePreviewHub.attach(provider) else appGraph.livePreviewHub.detach(provider)
@@ -148,46 +133,19 @@ class MainActivity : AppCompatActivity() {
                     previewZoom = previewZoom,
                     onPreviewZoom = appGraph.livePreviewHub::zoomBy,
                     onDismissPhoto = { appGraph.energyStateHolder.update { it.copy(photoPinned = false) } },
-                    onToggleFireDemo = appGraph.gasFireDemo::toggle,
                     applianceStates = applianceStates,
                     onUpdateAppliances = appGraph.energyStateHolder::updateAppliances,
-                    energyDemo = EnergyDemoControls(
-                        state = energyDemoState,
-                        onToggle = appGraph.energyDemo::toggle,
-                        onAddDegree = appGraph.energyDemo::addDegree,
-                        onResetTemperature = appGraph.energyDemo::resetTemperature,
-                        onAddPerson = appGraph.energyDemo::addPerson,
-                        onResetPeople = appGraph.energyDemo::resetPeople,
-                        onCameraLongPress = {
-                            if (energyDemoState.videoUri != null) {
-                                appGraph.energyDemo.setVideo(null)
-                            } else {
-                                demoVideoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
-                            }
+                    securityParts = SecurityTabParts(
+                        armed = securityState.armed,
+                        side = { compact ->
+                            SecuritySidePanel(
+                                viewModel = securityViewModel,
+                                onRequestArm = ::requestSecurityPermissionsThenArm,
+                                compact = compact,
+                            )
                         },
+                        below = { SecurityHistorySection(securityViewModel) },
                     ),
-                    securityContent = { energyCameraHeight ->
-                        SecurityTab(
-                            viewModel = securityViewModel,
-                            onRequestArm = ::requestSecurityPermissionsThenArm,
-                            preview = SecurityPreview(
-                                cameraOn = uiState.perceptionState.isRunning,
-                                video = securityVideo,
-                                onSurface = onLivePreviewSurface,
-                                onStartCamera = { requestPerceptionPermissionsThenStart(CaptureStartSource.Manual) },
-                                onLongPress = {
-                                    if (securityVideo != null) {
-                                        appGraph.securityPreviewVideo.value = null
-                                    } else {
-                                        securityVideoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly))
-                                    }
-                                },
-                                portraitHeight = energyCameraHeight,
-                                zoomRatio = previewZoom,
-                                onZoom = appGraph.livePreviewHub::zoomBy,
-                            ),
-                        )
-                    },
                     settingsSecurityContent = {
                         SecuritySettingsSection(
                             viewModel = securityViewModel,
@@ -221,17 +179,17 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // While the app is on screen, alarms use the in-app page instead of a full-screen notification.
-    override fun onStart() {
-        super.onStart()
-        (application as ReWattApplication).appGraph.intrusionNotifier.appInForeground = true
-    }
-
-    override fun onStop() {
-        (application as ReWattApplication).appGraph.intrusionNotifier.appInForeground = false
-        super.onStop()
-    }
-
+    // While the app is on screen, alarms use the in-app page instead of a full-screen notification.
+    override fun onStart() {
+        super.onStart()
+        (application as ReWattApplication).appGraph.intrusionNotifier.appInForeground = true
+    }
+
+    override fun onStop() {
+        (application as ReWattApplication).appGraph.intrusionNotifier.appInForeground = false
+        super.onStop()
+    }
+
     // Plugging in the module (USB_DEVICE_ATTACHED) reuses this screen instead of stacking a second
     // dashboard on top (which used to steal and freeze the live camera view).
     override fun onNewIntent(intent: Intent) {

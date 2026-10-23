@@ -44,6 +44,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
@@ -126,7 +127,14 @@ class CameraCaptureController(
             runCatching { if (orientationListener.canDetectOrientation()) orientationListener.enable() }
         }
         liveView?.let { hub ->
-            scope.launch { hub.surfaceProvider.collect { surface -> cameraMutex.withLock { applyPreview(surface) } } }
+            scope.launch {
+                hub.surfaceProvider.collectLatest { surface ->
+                    // Switching tabs (ENERGY ⇄ SECURITY) briefly has no surface: keep the Preview
+                    // bound for a moment so the next screen just takes it over (no camera restart).
+                    if (surface == null) delay(PREVIEW_RELEASE_DELAY_MS)
+                    cameraMutex.withLock { applyPreview(surface) }
+                }
+            }
             scope.launch { hub.zoomRatio.collect { withContext(Dispatchers.Main.immediate) { applyZoom() } } }
         }
     }
@@ -539,6 +547,9 @@ class CameraCaptureController(
 
         /** Time for auto-exposure to settle after the torch is switched off for an occupancy photo. */
         private const val TORCH_SETTLE_MS = 800L
+
+        /** How long the live Preview stays bound after its screen goes away (tab switches). */
+        private const val PREVIEW_RELEASE_DELAY_MS = 1_500L
         private const val VIDEO_FPS = 30
 
         /** CCTV stills are decoded at about this size: plenty for faces, light on memory. */

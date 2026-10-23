@@ -6,14 +6,7 @@ import android.content.ContextWrapper
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
-import android.graphics.Matrix
-import android.graphics.SurfaceTexture
-import android.media.MediaMetadataRetriever
-import android.media.MediaPlayer
-import android.net.Uri
-import android.util.Log
-import android.view.Surface
-import android.view.TextureView
+import android.graphics.Bitmap
 import android.provider.Settings
 import androidx.camera.core.Preview
 import androidx.camera.view.PreviewView
@@ -30,12 +23,10 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -80,7 +71,6 @@ import androidx.compose.material.icons.outlined.Send
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material.icons.outlined.Speed
-import androidx.compose.material.icons.outlined.Thermostat
 import androidx.compose.material.icons.outlined.Usb
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.WbSunny
@@ -101,23 +91,31 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.composed
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -143,6 +141,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.Dp
@@ -152,13 +151,13 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Observer
 import androidx.lifecycle.compose.LifecycleStartEffect
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.rewatt.app.R
 import com.rewatt.app.data.MqttStatus
 import com.rewatt.app.energy.ApplianceStates
 import com.rewatt.app.energy.EnergyBanner
-import com.rewatt.app.energy.EnergyDemo
-import com.rewatt.app.energy.EnergyDemoState
 import com.rewatt.app.energy.EnergyMonitor
 import com.rewatt.app.energy.EnergyPhase
 import com.rewatt.app.energy.EnergyUiState
@@ -166,7 +165,6 @@ import com.rewatt.app.perception.CaptureStartSource
 import com.rewatt.app.perception.ObjectDetection
 import com.rewatt.app.perception.PerceptionUiState
 import kotlin.math.abs
-import kotlin.math.ceil
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import com.rewatt.app.safety.FireAlarmState
@@ -199,23 +197,20 @@ fun SensorScreen(
     onOpenSetupGuide: () -> Unit,
     modifier: Modifier = Modifier,
     securityState: SecurityUiState = SecurityUiState(),
-    /** SECURITY tab; gets the ENERGY tab's portrait camera height so both previews match. */
-    securityContent: @Composable (energyCameraHeight: Dp?) -> Unit = {},
+    /** SECURITY tab pieces placed around the camera box it shares with ENERGY. */
+    securityParts: SecurityTabParts = SecurityTabParts(),
     fireAlarmState: FireAlarmState = FireAlarmState(),
     settingsSecurityContent: @Composable () -> Unit = {},
     energyState: EnergyUiState = EnergyUiState(),
     onLivePreviewSurface: (Preview.SurfaceProvider, Boolean) -> Unit = { _, _ -> },
     onDismissPhoto: () -> Unit = {},
-    onToggleFireDemo: () -> Unit = {},
     applianceStates: ApplianceStates = ApplianceStates(),
     onUpdateAppliances: ((ApplianceStates) -> ApplianceStates) -> Unit = {},
-    energyDemo: EnergyDemoControls = EnergyDemoControls(),
     /** Real camera zoom ratio shown on the live previews; pinch calls [onPreviewZoom] with a factor. */
     previewZoom: Float = 1f,
     onPreviewZoom: (Float) -> Unit = {},
 ) {
     var selectedTab by rememberSaveable { mutableStateOf(StitchTab.ENERGY) }
-    var energyCameraHeight by remember { mutableStateOf<Dp?>(null) }
 
     // ENERGY and SECURITY follow the phone into landscape; the other tabs stay portrait.
     val activity = LocalContext.current.findActivity()
@@ -238,7 +233,7 @@ fun SensorScreen(
         }
     }
 
-    // Occupancy-box appliance buttons (tap switches green ⇄ red; the ENERGY demo can turn all red).
+    // Occupancy-box appliance buttons (tap switches green ⇄ red).
     val appliances = listOf(
         ApplianceToggle(Icons.Filled.Lightbulb, "Lights", applianceStates.lights) {
             onUpdateAppliances { it.copy(lights = !it.lights) }
@@ -265,9 +260,12 @@ fun SensorScreen(
         bottomBar = {
             StitchBottomBar(
                 selectedTab = selectedTab,
-                onTabSelected = { selectedTab = it },
-                onToggleEnergyDemo = energyDemo.onToggle,
-                onToggleFireDemo = onToggleFireDemo,
+                onTabSelected = {
+                    // Freeze every visible preview first, so the next tab can show that frame
+                    // until its own camera stream is rendering (no black flash).
+                    if (it != selectedTab) PreviewFrameCache.captureAll()
+                    selectedTab = it
+                },
             )
         },
     ) { paddingValues ->
@@ -276,17 +274,19 @@ fun SensorScreen(
                 .fillMaxSize()
                 .padding(paddingValues),
         ) {
+            // ENERGY and SECURITY are ONE layout sharing ONE live camera box: switching between
+            // them only swaps the panels around it, so the preview never stops or reloads.
             when (selectedTab) {
-                StitchTab.ENERGY -> StitchMainTab(
+                StitchTab.ENERGY, StitchTab.SECURITY -> CameraTabs(
+                    tab = selectedTab,
                     uiState = uiState,
                     securityState = securityState,
                     energyState = energyState,
                     appliances = appliances,
-                    demo = energyDemo,
+                    security = securityParts,
                     onLivePreviewSurface = onLivePreviewSurface,
                     onStartCamera = { onStartPerception(CaptureStartSource.Manual) },
                     onDismissPhoto = onDismissPhoto,
-                    onPortraitCameraHeight = { energyCameraHeight = it },
                     previewZoom = previewZoom,
                     onPreviewZoom = onPreviewZoom,
                 )
@@ -294,7 +294,6 @@ fun SensorScreen(
                     uiState = uiState,
                     fireAlarmState = fireAlarmState,
                 )
-                StitchTab.SECURITY -> securityContent(energyCameraHeight)
                 StitchTab.SETTINGS -> StitchSettingsTab(
                     uiState = uiState,
                     onUpdateMqttConfig = onUpdateMqttConfig,
@@ -399,13 +398,10 @@ private fun StitchHeader(moduleOnline: Boolean) {
 
 // ── BOTTOM NAVIGATION BAR ─────────────────────────────────────────────────────
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun StitchBottomBar(
     selectedTab: StitchTab,
     onTabSelected: (StitchTab) -> Unit,
-    onToggleEnergyDemo: () -> Unit,
-    onToggleFireDemo: () -> Unit,
 ) {
     NavigationBar(
         containerColor = Color.White,
@@ -424,28 +420,11 @@ private fun StitchBottomBar(
                         StitchTab.SECURITY -> Icons.Outlined.Shield
                         StitchTab.SETTINGS -> Icons.Outlined.Settings
                     }
-                    // Hidden long-presses (no pop-up, no ripple/highlight, tab selection unchanged):
-                    //   ENERGY → switch ENERGY demo mode ⇄ normal mode
-                    //   FIRE   → fire demo (simulated rise → real fire alarm, no MQTT)
-                    val onLongPress: (() -> Unit)? = when (tab) {
-                        StitchTab.ENERGY -> onToggleEnergyDemo
-                        StitchTab.FIRE -> onToggleFireDemo
-                        else -> null
-                    }
-                    Box(
-                        modifier = Modifier.combinedClickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = { onTabSelected(tab) },
-                            onLongClick = onLongPress,
-                        ),
-                    ) {
-                        Icon(
-                            imageVector = icon,
-                            contentDescription = tab.label,
-                            tint = if (selected) Color(0xFF09090B) else Color(0xFF9CA3AF),
-                        )
-                    }
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = tab.label,
+                        tint = if (selected) Color(0xFF09090B) else Color(0xFF9CA3AF),
+                    )
                 },
                 label = {
                     Text(
@@ -513,9 +492,9 @@ private fun SecurityShieldBadge(security: SecurityUiState) {
 }
 
 /**
- * VOC Index and NOx Index gauges (Sensirion Gas Index values — unitless, 0..500). Without a recent
- * reading (no SGP41, or before the fire demo starts) they show the normal-air baseline (VOC 100,
- * NOx 1). Cards turn red above the fire threshold or while the fire alarm is active.
+ * VOC Index and NOx Index gauges (Sensirion Gas Index values — unitless, 0..500). They show "--"
+ * when there is no recent reading (no SGP41 on the module). Cards turn red above the fire threshold
+ * or while the fire alarm is active.
  */
 @Composable
 private fun GasGaugeRow(
@@ -524,8 +503,8 @@ private fun GasGaugeRow(
     fireAlarmActive: Boolean,
 ) {
     val fresh = gas?.takeIf { nowMillis - it.capturedAtMillis <= FireThreshold.STALE_AFTER_MS }
-    val voc = fresh?.vocIndex ?: GasReading.NORMAL_VOC_INDEX
-    val nox = fresh?.noxIndex ?: GasReading.NORMAL_NOX_INDEX
+    val voc = fresh?.vocIndex
+    val nox = fresh?.noxIndex
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -533,7 +512,7 @@ private fun GasGaugeRow(
         GasGaugeCard(
             label = "VOC INDEX",
             value = voc,
-            level = vocLevel(voc),
+            level = voc?.let(::vocLevel),
             colors = listOf(Color(0xFF8B5CF6), Color(0xFFEC4899)),
             fireAlarmActive = fireAlarmActive,
             modifier = Modifier.weight(1f),
@@ -541,7 +520,7 @@ private fun GasGaugeRow(
         GasGaugeCard(
             label = "NOx INDEX",
             value = nox,
-            level = noxLevel(nox),
+            level = nox?.let(::noxLevel),
             colors = listOf(Color(0xFFF59E0B), Color(0xFFEA580C)),
             fireAlarmActive = fireAlarmActive,
             modifier = Modifier.weight(1f),
@@ -746,17 +725,6 @@ private data class ApplianceToggle(
     val onToggle: () -> Unit,
 )
 
-/** ENERGY demo state + the presenter's hidden controls (see [com.rewatt.app.energy.EnergyDemo]). */
-data class EnergyDemoControls(
-    val state: EnergyDemoState = EnergyDemoState(),
-    val onToggle: () -> Unit = {},
-    val onAddDegree: (realTemperatureC: Float?) -> Unit = {},
-    val onResetTemperature: () -> Unit = {},
-    val onAddPerson: () -> Unit = {},
-    val onResetPeople: () -> Unit = {},
-    /** Long-press on the camera box: pick a looping gallery video, or stop it. */
-    val onCameraLongPress: () -> Unit = {},
-)
 
 /**
  * Two-finger pinch on a live preview → [onZoom] with the zoom factor of each step. One-finger taps
@@ -793,80 +761,65 @@ internal fun ZoomChip(zoomRatio: Float, modifier: Modifier = Modifier) {
     }
 }
 
-/** Hidden tap / long-press (no ripple or highlight) for the ENERGY demo controls. */
-@OptIn(ExperimentalFoundationApi::class)
-internal fun Modifier.hiddenPress(onTap: () -> Unit, onLongPress: () -> Unit): Modifier = composed {
-    combinedClickable(
-        interactionSource = remember { MutableInteractionSource() },
-        indication = null,
-        onClick = onTap,
-        onLongClick = onLongPress,
-    )
-}
+/** What the SECURITY tab contributes around the camera box it shares with ENERGY (from MainActivity). */
+data class SecurityTabParts(
+    val armed: Boolean = false,
+    /** Title + arm card; `compact` = the slim landscape column. */
+    val side: @Composable (compact: Boolean) -> Unit = {},
+    /** Event history, below the camera (portrait). */
+    val below: @Composable () -> Unit = {},
+)
 
+/**
+ * ENERGY and SECURITY as ONE layout around ONE camera box. Only the panels change with [tab]; the
+ * live camera box is the same composable at the same place, so switching between the two tabs never
+ * stops, reloads or moves it.
+ *  - Portrait: tab panel on top (kept at the same height for both tabs) → camera → tab content below
+ *    (ENERGY: Illuminance; SECURITY: event history).
+ *  - Landscape: tab panel in a slim left column (20%) → camera taking 80% of the width.
+ */
 @Composable
-private fun StitchMainTab(
+private fun CameraTabs(
+    tab: StitchTab,
     uiState: SensorNodeUiState,
     securityState: SecurityUiState,
     energyState: EnergyUiState,
     appliances: List<ApplianceToggle>,
-    demo: EnergyDemoControls,
+    security: SecurityTabParts,
     onLivePreviewSurface: (Preview.SurfaceProvider, Boolean) -> Unit,
     onStartCamera: () -> Unit,
     onDismissPhoto: () -> Unit,
-    onPortraitCameraHeight: (Dp) -> Unit,
     previewZoom: Float,
     onPreviewZoom: (Float) -> Unit,
 ) {
+    val energyTab = tab == StitchTab.ENERGY
     val usbConnected = uiState.sensorState.connectionStatus == UsbConnectionStatus.Connected
     val telemetry = uiState.sensorState.latestTelemetry
-    val rawTemp = telemetry?.temperatureC
-    val rawHum = telemetry?.humidityPercent
-
-    // Demo mode: the real reading until the box is tapped (+1 °C) or long-pressed (23 °C).
-    val demoTemp = demo.state.temperatureC.takeIf { demo.state.active }
-    val temp = demoTemp ?: rawTemp
-    val tempAvailable = demoTemp != null || (rawTemp != null && usbConnected)
-    val tempPress = if (demo.state.active) {
-        Modifier.hiddenPress(onTap = { demo.onAddDegree(rawTemp) }, onLongPress = demo.onResetTemperature)
-    } else {
-        Modifier
-    }
-
-    val sensorRow: @Composable () -> Unit = {
-        SensorBoxesRow(
-            temp = temp,
-            tempAvailable = tempAvailable,
-            tempPress = tempPress,
-            hum = rawHum,
-            humAvailable = rawHum != null && usbConnected,
-            energyState = energyState,
-            nowMillis = uiState.nowMillis,
-            appliances = appliances,
-            demo = demo,
-        )
-    }
-    val camera: @Composable (Modifier, String?) -> Unit = { modifier, roomChip ->
-        LiveCameraCard(
-            perception = uiState.perceptionState,
-            energy = energyState,
-            onLivePreviewSurface = onLivePreviewSurface,
-            onStartCamera = onStartCamera,
-            onDismissPhoto = onDismissPhoto,
-            roomChip = roomChip,
-            roomOnline = usbConnected,
-            demoVideo = demo.state.videoUri.takeIf { demo.state.active },
-            onDemoLongPress = demo.onCameraLongPress.takeIf { demo.state.active },
-            zoomRatio = previewZoom,
-            onZoom = onPreviewZoom,
-            modifier = modifier,
-        )
-    }
+    val temp = telemetry?.temperatureC
+    val hum = telemetry?.humidityPercent
+    val tempAvailable = temp != null && usbConnected
+    val humAvailable = hum != null && usbConnected
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        if (maxWidth > maxHeight) {
-            // Landscape (no header / status bar): the three boxes stacked in a slim column on the
-            // left (20%), the live camera taking 80% of the width with a small Room1 chip.
+        val landscape = maxWidth > maxHeight
+        val camera: @Composable (Modifier) -> Unit = { modifier ->
+            SharedCameraBox(
+                energyTab = energyTab,
+                perception = uiState.perceptionState,
+                energy = energyState,
+                onLivePreviewSurface = onLivePreviewSurface,
+                onStartCamera = onStartCamera,
+                onDismissPhoto = onDismissPhoto,
+                roomChip = uiState.roomId.ifBlank { "Room1" }.takeIf { landscape && energyTab },
+                roomOnline = usbConnected,
+                armed = security.armed && !energyTab,
+                zoomRatio = previewZoom,
+                onZoom = onPreviewZoom,
+                modifier = modifier,
+            )
+        }
+
+        if (landscape) {
             Row(
                 modifier = Modifier
                     .fillMaxSize()
@@ -879,83 +832,104 @@ private fun StitchMainTab(
                         .fillMaxHeight(),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    WideGaugeBox(
-                        label = "TEMPERATURE",
-                        value = temp ?: 0f,
-                        maxValue = 50f,
-                        centerText = if (temp != null) "${temp.toInt()}°" else "--",
-                        subText = null,
-                        colors = listOf(Color(0xFF2563EB), Color(0xFF00E676)),
-                        available = tempAvailable,
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                            .then(tempPress),
-                    )
-                    WideGaugeBox(
-                        label = "HUMIDITY",
-                        value = rawHum ?: 0f,
-                        maxValue = 100f,
-                        centerText = if (rawHum != null) "${rawHum.toInt()}" else "--",
-                        subText = if (rawHum != null) "%" else null,
-                        colors = listOf(Color(0xFF06B6D4), Color(0xFF14B8A6)),
-                        available = rawHum != null && usbConnected,
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth(),
-                    )
-                    OccupancyCard(
-                        energy = energyState,
-                        nowMillis = uiState.nowMillis,
-                        appliances = appliances,
-                        demo = demo,
-                        wide = true,
-                        modifier = Modifier
-                            .weight(2f)
-                            .fillMaxWidth(),
-                    )
+                    if (energyTab) {
+                        WideGaugeBox(
+                            label = "TEMPERATURE",
+                            value = temp ?: 0f,
+                            maxValue = 50f,
+                            centerText = if (temp != null) "${temp.toInt()}°" else "--",
+                            subText = null,
+                            colors = listOf(Color(0xFF2563EB), Color(0xFF00E676)),
+                            available = tempAvailable,
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth(),
+                        )
+                        WideGaugeBox(
+                            label = "HUMIDITY",
+                            value = hum ?: 0f,
+                            maxValue = 100f,
+                            centerText = if (hum != null) "${hum.toInt()}" else "--",
+                            subText = if (hum != null) "%" else null,
+                            colors = listOf(Color(0xFF06B6D4), Color(0xFF14B8A6)),
+                            available = humAvailable,
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth(),
+                        )
+                        OccupancyCard(
+                            energy = energyState,
+                            nowMillis = uiState.nowMillis,
+                            appliances = appliances,
+                            wide = true,
+                            modifier = Modifier
+                                .weight(2f)
+                                .fillMaxWidth(),
+                        )
+                    } else {
+                        Column(
+                            modifier = Modifier.verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) { security.side(true) }
+                    }
                 }
+                // Same call site for both tabs → the same camera box stays alive across switches.
                 camera(
                     Modifier
                         .weight(0.8f)
                         .fillMaxHeight(),
-                    uiState.roomId.ifBlank { "Room1" },
                 )
             }
         } else {
-            // Portrait: Room1, the 3 sensor boxes and the live camera fill exactly one screen (the
-            // camera takes the height left under the measured boxes); Illuminance scrolls below.
+            // The top panel keeps the same height on both tabs (the taller one, ENERGY's), so the
+            // camera box doesn't move when switching.
             val density = LocalDensity.current
-            var topHeight by remember { mutableStateOf(0.dp) }
-            val cameraHeight = if (topHeight == 0.dp) {
+            var panelHeight by remember { mutableStateOf(0.dp) }
+            val cameraHeight = if (panelHeight == 0.dp) {
                 300.dp
             } else {
-                (maxHeight - topHeight - 8.dp - 12.dp - 12.dp).coerceIn(220.dp, 560.dp)
+                (maxHeight - panelHeight - 8.dp - 12.dp - 12.dp).coerceIn(220.dp, 560.dp)
             }
-            LaunchedEffect(cameraHeight, topHeight) {
-                if (topHeight != 0.dp) onPortraitCameraHeight(cameraHeight)
-            }
+            val scroll = rememberScrollState()
+            LaunchedEffect(tab) { scroll.scrollTo(0) }
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(horizontal = 16.dp, vertical = 8.dp)
-                    .verticalScroll(rememberScrollState()),
+                    .verticalScroll(scroll),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Column(
-                    modifier = Modifier.onSizeChanged { topHeight = with(density) { it.height.toDp() } },
+                    modifier = Modifier
+                        .heightIn(min = panelHeight)
+                        .onSizeChanged {
+                            val measured = with(density) { it.height.toDp() }
+                            if (measured > panelHeight) panelHeight = measured
+                        },
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    RoomCard(uiState = uiState, securityState = securityState, online = usbConnected)
-                    sensorRow()
+                    if (energyTab) {
+                        RoomCard(uiState = uiState, securityState = securityState, online = usbConnected)
+                        SensorBoxesRow(
+                            temp = temp,
+                            tempAvailable = tempAvailable,
+                            hum = hum,
+                            humAvailable = humAvailable,
+                            energyState = energyState,
+                            nowMillis = uiState.nowMillis,
+                            appliances = appliances,
+                        )
+                    } else {
+                        security.side(false)
+                    }
                 }
+                // Same call site for both tabs → the same camera box stays alive across switches.
                 camera(
                     Modifier
                         .fillMaxWidth()
                         .height(cameraHeight),
-                    null,
                 )
-                IlluminanceCard(perception = uiState.perceptionState)
+                if (energyTab) IlluminanceCard(perception = uiState.perceptionState) else security.below()
             }
         }
     }
@@ -1038,13 +1012,11 @@ private fun RoomCard(
 private fun SensorBoxesRow(
     temp: Float?,
     tempAvailable: Boolean,
-    tempPress: Modifier,
     hum: Float?,
     humAvailable: Boolean,
     energyState: EnergyUiState,
     nowMillis: Long,
     appliances: List<ApplianceToggle>,
-    demo: EnergyDemoControls,
 ) {
     Row(
         modifier = Modifier
@@ -1062,8 +1034,7 @@ private fun SensorBoxesRow(
             available = tempAvailable,
             modifier = Modifier
                 .weight(1f)
-                .fillMaxHeight()
-                .then(tempPress),
+                .fillMaxHeight(),
         )
         CompactGaugeCard(
             label = "HUMIDITY",
@@ -1081,7 +1052,6 @@ private fun SensorBoxesRow(
             energy = energyState,
             nowMillis = nowMillis,
             appliances = appliances,
-            demo = demo,
             modifier = Modifier
                 .weight(1f)
                 .fillMaxHeight(),
@@ -1129,6 +1099,7 @@ private fun CompactGaugeCard(
                 gradientColors = colors,
                 isDataAvailable = available,
                 gaugeSize = 76.dp,
+                subTextInline = true,
             )
             Spacer(Modifier.weight(1f))
         }
@@ -1177,6 +1148,7 @@ private fun WideGaugeBox(
                 isDataAvailable = available,
                 gaugeSize = 56.dp,
                 centerFontSize = 17.sp,
+                subTextInline = true,
             )
         }
     }
@@ -1186,42 +1158,20 @@ private fun WideGaugeBox(
  * Occupancy box: YOLO headcount + status, and round lights / fan / aircond buttons in a column on
  * the right. [wide] (landscape): the button column spans the full height beside title + count.
  * (Landscape gives this box a slim 20% column, so count and status stay stacked there too.)
- * ENERGY demo mode: the count is the presenter's (tap = +1, long-press = 0, no ripple) and the
- * empty countdown shows 5:00 m → 0:00 m.
  */
 @Composable
 private fun OccupancyCard(
     energy: EnergyUiState,
     nowMillis: Long,
     appliances: List<ApplianceToggle>,
-    demo: EnergyDemoControls,
     modifier: Modifier = Modifier,
     wide: Boolean = false,
 ) {
-    val demoOn = demo.state.active
-    val count: Int? = if (demoOn) demo.state.occupancy else energy.personCount
+    val count: Int? = energy.personCount
     val occupied = (count ?: 0) > 0
-
-    // Demo countdown: ticks smoothly (5 s shown as 5:00 m → 0:00 m).
-    val demoEndsAt = demo.state.countdownEndsAt.takeIf { demoOn }
-    var demoNow by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(demoEndsAt) {
-        demoNow = System.currentTimeMillis()
-        while (demoEndsAt != null && demoNow < demoEndsAt) {
-            delay(50)
-            demoNow = System.currentTimeMillis()
-        }
-    }
 
     val countdownLeft = energy.countdownEndsAt?.let { ((it - nowMillis + 999) / 1000).coerceAtLeast(0) }
     val (status, statusColor) = when {
-        demoEndsAt != null -> {
-            val remainingMs = (demoEndsAt - demoNow).coerceIn(0L, EnergyDemo.COUNTDOWN_MS)
-            val shown = ceil(remainingMs.toDouble() * EnergyDemo.COUNTDOWN_SHOWN_SECONDS / EnergyDemo.COUNTDOWN_MS).toInt()
-            "%d:%02d m".format(shown / 60, shown % 60) to Color(0xFF6B7280)
-        }
-        demoOn && occupied -> "OCCUPIED" to Color(0xFFD97706)
-        demoOn -> "EMPTY" to Color(0xFF6B7280)
         energy.pausedForCctv -> "CCTV" to Color(0xFFB91C1C)
         energy.phase == EnergyPhase.ENTERING || energy.phase == EnergyPhase.LEAVING -> "CHECKING" to Color(0xFFD97706)
         energy.phase == EnergyPhase.EMPTY_COUNTDOWN -> "EMPTY ${countdownLeft ?: 0}s" to Color(0xFF6B7280)
@@ -1252,21 +1202,15 @@ private fun OccupancyCard(
         }
     }
     val countBlock: @Composable () -> Unit = {
-        Column(
-            modifier = if (demoOn) Modifier.hiddenPress(onTap = demo.onAddPerson, onLongPress = demo.onResetPeople) else Modifier,
-            horizontalAlignment = Alignment.CenterHorizontally,
+        Box(
+            modifier = Modifier.height(COUNT_BLOCK_HEIGHT),
+            contentAlignment = Alignment.Center,
         ) {
             Text(
                 text = count?.toString() ?: "--",
                 fontSize = 34.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color(0xFF09090B),
-            )
-            Text(
-                text = if (count == 1) "person" else "people",
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Medium,
-                color = Color(0xFF6B7280),
             )
         }
     }
@@ -1356,6 +1300,9 @@ private fun OccupancyCard(
         }
     }
 }
+
+/** Height of the people count block (fits the 34 sp number). */
+private val COUNT_BLOCK_HEIGHT = 46.dp
 
 /** Round appliance button: glossy green (on) or red (off) disc with a white glyph; tap switches. */
 @Composable
@@ -1457,49 +1404,44 @@ private fun IlluminanceCard(perception: PerceptionUiState) {
 }
 
 /**
- * Live back-camera view (no title). After a check, its photo with YOLO person boxes stays here
- * until it is tapped, then the box returns to live video.
+ * The ONE live camera box shared by ENERGY and SECURITY. Its live view is the same composable on
+ * both tabs, so switching tabs never stops or reloads it — only the overlays change:
+ *  - ENERGY: the checked photo with YOLO boxes (until tapped), capture/YOLO chip, Room1 chip in
+ *    landscape.
+ *  - SECURITY: ARMED chip.
+ * A tap starts the camera if it is off; pinch zooms the real camera.
  */
 @Composable
-private fun LiveCameraCard(
+private fun SharedCameraBox(
+    energyTab: Boolean,
     perception: PerceptionUiState,
     energy: EnergyUiState,
     onLivePreviewSurface: (Preview.SurfaceProvider, Boolean) -> Unit,
     onStartCamera: () -> Unit,
     onDismissPhoto: () -> Unit,
+    roomChip: String?,
+    roomOnline: Boolean,
+    armed: Boolean,
+    zoomRatio: Float,
+    onZoom: (Float) -> Unit,
     modifier: Modifier = Modifier,
-    /** Landscape: "● Room1" chip in the top-right corner (the Room1 card is hidden there). */
-    roomChip: String? = null,
-    roomOnline: Boolean = false,
-    /** ENERGY demo: a gallery video looping in place of the live view. */
-    demoVideo: Uri? = null,
-    /** ENERGY demo: long-press on the box (pick / stop the looping video). */
-    onDemoLongPress: (() -> Unit)? = null,
-    zoomRatio: Float = 1f,
-    /** Pinch on the live view: real camera zoom (photos and clips use it too). */
-    onZoom: (Float) -> Unit = {},
 ) {
     val cameraOn = perception.isRunning
     val frame = perception.latestFrame
-    val showPhoto = demoVideo == null && frame != null && energy.photoPinned && !energy.capturing
-    val liveShown = demoVideo == null && cameraOn && !showPhoto
+    val showPhoto = energyTab && frame != null && energy.photoPinned && !energy.capturing
+    val liveShown = cameraOn && !showPhoto
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(24.dp))
             .background(Color(0xFF111827))
             .then(if (liveShown) Modifier.pinchToZoom(onZoom) else Modifier),
     ) {
-        if (demoVideo != null) {
-            key(demoVideo) { LoopingVideo(uri = demoVideo, modifier = Modifier.fillMaxSize()) }
-        } else if (cameraOn) {
+        // Base feed — identical on both tabs.
+        if (cameraOn) {
             LivePreview(onLivePreviewSurface = onLivePreviewSurface, modifier = Modifier.fillMaxSize())
         } else {
             Column(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .clip(RoundedCornerShape(16.dp))
-                    .clickable(onClick = onStartCamera)
-                    .padding(16.dp),
+                modifier = Modifier.align(Alignment.Center),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Icon(Icons.Outlined.CameraAlt, contentDescription = null, tint = Color(0xFF9CA3AF), modifier = Modifier.size(28.dp))
@@ -1521,79 +1463,105 @@ private fun LiveCameraCard(
                         onClick = onDismissPhoto,
                     ),
             )
-        }
-
-        // ENERGY demo: hidden long-press anywhere on the box (tap still starts a stopped camera).
-        if (onDemoLongPress != null) {
+        } else if (!cameraOn) {
+            // A tap starts a stopped camera.
             Box(
                 Modifier
                     .fillMaxSize()
-                    .hiddenPress(
-                        onTap = { if (demoVideo == null && !cameraOn) onStartCamera() },
-                        onLongPress = onDemoLongPress,
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onStartCamera,
                     ),
             )
         }
 
         // Status chip (top-left)
         val chip: Pair<String, Color>? = when {
-            energy.capturing -> "Capturing photo…" to Color(0xFFF59E0B)
+            energyTab && energy.capturing -> "Capturing photo…" to Color(0xFFF59E0B)
             showPhoto -> {
                 val n = perception.personCount
                 "YOLO · $n ${if (n == 1) "person" else "people"}" to Color(0xFF22C55E)
             }
-            cameraOn || demoVideo != null -> "LIVE" to Color(0xFFEF4444)
+            cameraOn -> "LIVE" to Color(0xFFEF4444)
             else -> null
         }
-        chip?.let { (text, dot) ->
-            Row(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(10.dp)
-                    .clip(RoundedCornerShape(50))
-                    .background(Color(0x99000000))
-                    .padding(horizontal = 10.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(
-                    Modifier
-                        .size(6.dp)
-                        .clip(CircleShape)
-                        .background(dot),
-                )
-                Spacer(Modifier.width(6.dp))
-                Text(text, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
-            }
-        }
+        chip?.let { (text, dot) -> CameraChip(text, dot, Modifier.align(Alignment.TopStart)) }
 
         if (liveShown) ZoomChip(zoomRatio, Modifier.align(Alignment.BottomEnd))
 
-        roomChip?.let { room ->
-            Row(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(10.dp)
-                    .clip(RoundedCornerShape(50))
-                    .background(Color(0x99000000))
-                    .padding(horizontal = 10.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(
-                    Modifier
-                        .size(6.dp)
-                        .clip(CircleShape)
-                        .background(if (roomOnline) Color(0xFF22C55E) else Color(0xFFF59E0B)),
-                )
-                Spacer(Modifier.width(6.dp))
-                Text(room, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
-            }
+        when {
+            armed -> CameraChip(stringResource(R.string.sec_armed), Color(0xFFB91C1C), Modifier.align(Alignment.TopEnd))
+            roomChip != null -> CameraChip(
+                roomChip,
+                if (roomOnline) Color(0xFF22C55E) else Color(0xFFF59E0B),
+                Modifier.align(Alignment.TopEnd),
+            )
         }
     }
 }
 
+/** Small dark pill with a coloured dot on a camera box ("● LIVE", "● Room1", "● ARMED"). */
+@Composable
+private fun CameraChip(text: String, dot: Color, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .padding(10.dp)
+            .clip(RoundedCornerShape(50))
+            .background(Color(0x99000000))
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier
+                .size(6.dp)
+                .clip(CircleShape)
+                .background(dot),
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(text, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
+    }
+}
+
+/**
+ * Last frame of each live preview box. Right before a tab switch every visible preview freezes what
+ * it shows ([captureAll]); the incoming tab shows that still frame until its own camera stream is
+ * rendering again, so the switch has no black flash.
+ */
+internal object PreviewFrameCache {
+    const val LIVE_KEY = "live"
+
+    private val frames = mutableMapOf<String, Bitmap>()
+    private val snapshotters = mutableMapOf<String, () -> Bitmap?>()
+
+    fun get(key: String): Bitmap? = frames[key]
+
+    fun register(key: String, snapshot: () -> Bitmap?) {
+        snapshotters[key] = snapshot
+    }
+
+    fun unregister(key: String, snapshot: () -> Bitmap?) {
+        if (snapshotters[key] === snapshot) snapshotters.remove(key)
+    }
+
+    /** Main thread, right before the tab changes. */
+    fun captureAll() {
+        snapshotters.forEach { (key, snapshot) -> runCatching { snapshot() }.getOrNull()?.let { frames[key] = it } }
+    }
+}
+
+/** The frozen frame drawn over a preview box until it renders again. */
+@Composable
+private fun FrozenFrame(frame: Bitmap?, visible: Boolean) {
+    if (!visible || frame == null) return
+    val image = remember(frame) { frame.asImageBitmap() }
+    Image(bitmap = image, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+}
+
 /**
  * CameraX PreviewView, publishing its surface only while the app is in the foreground. Uses a
- * TextureView (COMPATIBLE) so it is clipped exactly to the card's rounded shape.
+ * TextureView (COMPATIBLE) so it is clipped exactly to the card's rounded shape. Shows the last
+ * frozen live frame until the camera stream is running again (smooth tab switches).
  */
 @Composable
 internal fun LivePreview(
@@ -1601,10 +1569,23 @@ internal fun LivePreview(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val previewView = remember {
         PreviewView(context).apply {
             implementationMode = PreviewView.ImplementationMode.COMPATIBLE
             scaleType = PreviewView.ScaleType.FILL_CENTER
+        }
+    }
+    val frozen = remember { PreviewFrameCache.get(PreviewFrameCache.LIVE_KEY) }
+    var streaming by remember { mutableStateOf(false) }
+    DisposableEffect(previewView, lifecycleOwner) {
+        val observer = Observer<PreviewView.StreamState> { streaming = it == PreviewView.StreamState.STREAMING }
+        previewView.previewStreamState.observe(lifecycleOwner, observer)
+        val snapshot: () -> Bitmap? = { previewView.bitmap }
+        PreviewFrameCache.register(PreviewFrameCache.LIVE_KEY, snapshot)
+        onDispose {
+            previewView.previewStreamState.removeObserver(observer)
+            PreviewFrameCache.unregister(PreviewFrameCache.LIVE_KEY, snapshot)
         }
     }
     LifecycleStartEffect(previewView) {
@@ -1612,74 +1593,10 @@ internal fun LivePreview(
         onLivePreviewSurface(provider, true)
         onStopOrDispose { onLivePreviewSurface(provider, false) }
     }
-    AndroidView(factory = { previewView }, modifier = modifier)
-}
-
-/**
- * A gallery video looping forever (muted), cropped to fill like the live view. The player lives
- * with the TextureView's surface, so it is released when the box leaves the screen.
- */
-@Composable
-internal fun LoopingVideo(uri: Uri, modifier: Modifier = Modifier) {
-    AndroidView(
-        modifier = modifier,
-        factory = { ctx ->
-            val (videoW, videoH) = displaySize(ctx, uri)
-            TextureView(ctx).apply {
-                var player: MediaPlayer? = null
-                surfaceTextureListener = object : TextureView.SurfaceTextureListener {
-                    override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) {
-                        centerCrop(videoW, videoH)
-                        player = runCatching {
-                            MediaPlayer().apply {
-                                setDataSource(ctx, uri)
-                                setSurface(Surface(surface))
-                                isLooping = true
-                                setVolume(0f, 0f)
-                                setOnPreparedListener { it.start() }
-                                prepareAsync()
-                            }
-                        }.onFailure { Log.w("LoopingVideo", "Cannot play $uri", it) }.getOrNull()
-                    }
-
-                    override fun onSurfaceTextureSizeChanged(surface: SurfaceTexture, width: Int, height: Int) {
-                        centerCrop(videoW, videoH)
-                    }
-
-                    override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
-                        player?.release()
-                        player = null
-                        return true
-                    }
-
-                    override fun onSurfaceTextureUpdated(surface: SurfaceTexture) = Unit
-                }
-            }
-        },
-    )
-}
-
-/** Video size as displayed (rotation applied, e.g. a portrait phone clip stored as 1920×1080 + 90°). */
-private fun displaySize(context: Context, uri: Uri): Pair<Int, Int> = runCatching {
-    val retriever = MediaMetadataRetriever()
-    try {
-        retriever.setDataSource(context, uri)
-        val w = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 0
-        val h = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 0
-        val rotation = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
-        if (rotation % 180 != 0) h to w else w to h
-    } finally {
-        retriever.release()
+    Box(modifier) {
+        AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
+        FrozenFrame(frame = frozen, visible = !streaming)
     }
-}.getOrDefault(0 to 0)
-
-/** Scale the (stretched-to-fit) video about the centre so it fills the view without distortion. */
-private fun TextureView.centerCrop(videoW: Int, videoH: Int) {
-    if (videoW <= 0 || videoH <= 0 || width <= 0 || height <= 0) return
-    val viewW = width.toFloat()
-    val viewH = height.toFloat()
-    val scale = maxOf(viewW / videoW, viewH / videoH)
-    setTransform(Matrix().apply { setScale(videoW * scale / viewW, videoH * scale / viewH, viewW / 2f, viewH / 2f) })
 }
 
 /** The analysed photo, cropped to fill like the live view, with a box around each detected person. */
@@ -1749,16 +1666,6 @@ private fun EnergyBannerHost(
                 "No movement detected in $roomName",
                 "Checking if the room is empty",
             )
-            EnergyBanner.Kind.APPLIANCES_OFF -> Triple(
-                Icons.Outlined.PowerSettingsNew,
-                "Lights, fan and AC OFF",
-                "No one in $roomName",
-            )
-            EnergyBanner.Kind.LOWER_AC_TEMPERATURE -> Triple(
-                Icons.Outlined.Thermostat,
-                "Suggest lower AC temperature",
-                "$roomName is at ${EnergyDemo.HOT_TEMPERATURE_C.toInt()}°C",
-            )
             EnergyBanner.Kind.ROOM_EMPTY -> Triple(
                 Icons.Outlined.PowerSettingsNew,
                 "Turn OFF lights and aircond in $roomName",
@@ -1806,6 +1713,8 @@ private fun StitchRingGauge(
     isDataAvailable: Boolean = true,
     gaugeSize: Dp = 110.dp,
     centerFontSize: TextUnit = 24.sp,
+    /** Show [subText] beside the value (e.g. "58%") instead of under it — for the small rings. */
+    subTextInline: Boolean = false,
 ) {
     Box(
         modifier = Modifier.size(gaugeSize),
@@ -1844,20 +1753,41 @@ private fun StitchRingGauge(
             }
         }
 
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                text = centerText,
-                fontSize = centerFontSize,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF09090B),
-            )
-            if (subText != null) {
+        if (subTextInline) {
+            Row {
                 Text(
-                    text = subText,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFF6B7280),
+                    text = centerText,
+                    fontSize = centerFontSize,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF09090B),
+                    modifier = Modifier.alignByBaseline(),
                 )
+                if (subText != null) {
+                    Text(
+                        text = subText,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF6B7280),
+                        modifier = Modifier.alignByBaseline(),
+                    )
+                }
+            }
+        } else {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = centerText,
+                    fontSize = centerFontSize,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF09090B),
+                )
+                if (subText != null) {
+                    Text(
+                        text = subText,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF6B7280),
+                    )
+                }
             }
         }
     }

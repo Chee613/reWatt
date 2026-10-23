@@ -30,8 +30,6 @@ class IntrusionAlarm(
         score: Float?,
         torch: (Boolean) -> Unit,
         torchRestore: () -> Unit,
-        /** False when "You are being recorded" was already spoken: the siren starts at once. */
-        speakDeterrent: Boolean = true,
     ) {
         scope.launch {
             if (alarmActive) return@launch
@@ -41,10 +39,6 @@ class IntrusionAlarm(
             outputs.begin(AlarmReason.INTRUDER, torch, torchRestore)
             notifier.showIntrusion(eventId, roomId, photoName, score)
 
-            if (!speakDeterrent) {
-                outputs.startSiren()
-                return@launch
-            }
             // Deterrent first so it is heard clearly, then the siren (fallback if TTS never reports done).
             sirenJob = launch {
                 delay(VOICE_TIMEOUT_MS)
