@@ -1,7 +1,7 @@
 <p align="center">
-  <img src="app/src/main/res/drawable/ic_app_logo.png" alt="reWatt app logo" width="140">
+  <img src="docs/user-manual/assets/logo-transparent.png" alt="reWatt logo" width="140">
   <br>
-  <img src="docs/user-manual/assets/wordmark.png" alt="reWatt" width="280">
+  <img src="docs/user-manual/assets/wordmark-transparent.png" alt="reWatt" width="280">
 </p>
 
 <h1 align="center">Giving old phones a second life</h1>
@@ -176,6 +176,11 @@ Module firmware, wiring, and smart-home actuator integration must be supplied se
 The diagram describes the product design. See [monitoring behavior](#monitoring-behavior)
 for the features currently connected in this Android node checkout.
 
+![reWatt product flow: radar wakes on-device energy and security analysis; independent gas monitoring triggers threshold alerts](docs/user-manual/assets/how-it-works.png)
+
+<details>
+<summary>Read the product flow as text</summary>
+
 ```text
                  ┌──────────────── TRIGGER ────────────────┐
                  │  LD2412 mmWave radar senses a person    │
@@ -194,6 +199,8 @@ for the features currently connected in this Android node checkout.
    FIRE ALARM
    gas sensing 24/7 → VOC spike (early warning) → NOx rise (flaming) → loud siren + alert
 ```
+
+</details>
 
 - **Energy optimisation.** The product design uses headcount to choose an AC setting
   and switches off lights, fan, and AC when the room is empty.
@@ -265,6 +272,11 @@ and [FireMonitor.kt](app/src/main/java/com/rewatt/app/safety/FireMonitor.kt).
 While armed, fresh radar motion starts an event and face checks run approximately
 every two seconds:
 
+![Security flow: radar starts an event, person and face checks distinguish no person, no usable face, family, and unrecognized faces; the event ends after five seconds without presence](docs/user-manual/assets/security-flow.png)
+
+<details>
+<summary>Read the security flow as text</summary>
+
 ```text
 radar motion → event starts → photo every ~2 s
   no person                → keep checking (nothing recorded)
@@ -274,6 +286,8 @@ radar motion → event starts → photo every ~2 s
         ✗ stranger/masked  → "You are being recorded" + siren + flashing torch + alert + MQTT
 nobody for 5 s → event ends, camera released
 ```
+
+</details>
 
 An event ends after five seconds without presence. Evidence is stored under
 `files/security/events/<eventId>/`, with video parts, face-check photos, and
