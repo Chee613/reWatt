@@ -1,0 +1,1871 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>reWatt User Guide</title>
+    <style>
+      @page {
+        size: 148mm 210mm;
+        margin: 0;
+      }
+      :root {
+        --ink: #141414;
+        --mute: #5b5f66;
+        --line: #d9dcdf;
+        --soft: #f3f6f4;
+        --green: #2fae4f;
+        --green-dark: #1f8a3c;
+        --teal: #45b3c6;
+        --red: #d6332b;
+        --amber: #e08a00;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #fff;
+        color: var(--ink);
+        font-family: "Times New Roman", Times, serif;
+        font-size: 9.6pt;
+        line-height: 1.38;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      @media screen {
+        body {
+          background: #888;
+        }
+        .page {
+          margin: 6mm auto;
+          box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+        }
+      }
+      /* build-pdf.ps1: "#only=N" shows one page edge-to-edge so it can be captured as an image */
+      html.only body {
+        background: #fff;
+        overflow: hidden;
+      }
+      html.only .page {
+        display: none;
+        margin: 0;
+        box-shadow: none;
+      }
+      html.only .page.show {
+        display: block;
+      }
+      .page > img.flat {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 148mm;
+        height: 210mm;
+      }
+
+      .page {
+        width: 148mm;
+        height: 210mm;
+        position: relative;
+        overflow: hidden;
+        background: #fff;
+        padding: 13mm 12mm 16mm;
+        page-break-after: always;
+        break-after: page;
+      }
+      .page:last-child {
+        page-break-after: auto;
+        break-after: auto;
+      }
+
+      /* footer */
+      .foot {
+        position: absolute;
+        left: 12mm;
+        right: 12mm;
+        bottom: 8mm;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 7pt;
+        color: var(--mute);
+        border-top: 0.25mm solid var(--line);
+        padding-top: 2mm;
+      }
+      .foot b {
+        color: var(--ink);
+        font-weight: 600;
+      }
+      .foot .no {
+        font-weight: 700;
+        color: var(--green-dark);
+        font-size: 8pt;
+      }
+
+      /* headings */
+      .eyebrow {
+        font-size: 7.5pt;
+        letter-spacing: 0.18em;
+        font-weight: 700;
+        color: var(--green);
+        text-transform: uppercase;
+      }
+      h1 {
+        font-size: 19pt;
+        line-height: 1.12;
+        margin: 1.5mm 0 1.5mm;
+        letter-spacing: -0.01em;
+        font-weight: 800;
+      }
+      h2 {
+        font-size: 11pt;
+        margin: 0 0 1.5mm;
+        font-weight: 700;
+      }
+      .rule {
+        height: 0.6mm;
+        width: 14mm;
+        background: var(--green);
+        margin: 2.5mm 0 4mm;
+      }
+      .lead {
+        color: var(--mute);
+        font-size: 9.6pt;
+        margin: 0 0 4mm;
+      }
+      p {
+        margin: 0 0 2mm;
+      }
+      .small {
+        font-size: 8pt;
+        color: var(--mute);
+      }
+
+      /* numbered steps */
+      ol.steps {
+        list-style: none;
+        counter-reset: s;
+        margin: 0;
+        padding: 0;
+      }
+      ol.steps > li {
+        counter-increment: s;
+        position: relative;
+        padding: 0 0 0 9mm;
+        margin: 0 0 3.2mm;
+        min-height: 6mm;
+      }
+      ol.steps > li::before {
+        content: counter(s);
+        position: absolute;
+        left: 0;
+        top: -0.3mm;
+        width: 6mm;
+        height: 6mm;
+        border-radius: 50%;
+        background: var(--green);
+        color: #fff;
+        font-weight: 800;
+        font-size: 8.5pt;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      ol.steps > li b {
+        display: block;
+      }
+      ol.steps > li {
+        break-inside: avoid;
+      }
+      ol.steps.tight > li {
+        margin-bottom: 2.2mm;
+      }
+
+      ul.dots {
+        margin: 0;
+        padding: 0 0 0 4mm;
+      }
+      ul.dots li {
+        margin: 0 0 1.2mm;
+      }
+      ul.dots li::marker {
+        color: var(--green);
+      }
+
+      /* letter callouts */
+      .ltr {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 5mm;
+        height: 5mm;
+        border-radius: 50%;
+        background: var(--green);
+        color: #fff;
+        font-weight: 800;
+        font-size: 7.5pt;
+        flex: none;
+      }
+      .pin {
+        position: absolute;
+        transform: translate(-50%, -50%);
+        box-shadow: 0 0 0 0.5mm #fff;
+      }
+      .legend {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      .legend li {
+        display: flex;
+        gap: 2.5mm;
+        margin: 0 0 2.6mm;
+        align-items: flex-start;
+      }
+      .legend li .ltr {
+        margin-top: 0.2mm;
+      }
+      .legend li div b {
+        display: block;
+      }
+      .legend li div span {
+        color: var(--mute);
+        font-size: 8.4pt;
+      }
+      .legend li div span b {
+        display: inline;
+        color: var(--ink);
+      }
+
+      /* phone frame */
+      .phone {
+        position: relative;
+        border: 1.5mm solid #1b1b1b;
+        border-radius: 4.5mm;
+        overflow: hidden;
+        background: #fff;
+        flex: none;
+      }
+      .phone img {
+        display: block;
+        width: 100%;
+      }
+      .phone.wide {
+        border-radius: 3.5mm;
+      }
+      .cap {
+        font-size: 7.5pt;
+        color: var(--mute);
+        text-align: center;
+        margin-top: 1.5mm;
+      }
+
+      /* boxes */
+      .tip,
+      .warn {
+        border-radius: 2.5mm;
+        padding: 2.6mm 3.2mm;
+        font-size: 8.6pt;
+        display: flex;
+        gap: 2.5mm;
+        align-items: flex-start;
+      }
+      .tip {
+        background: var(--soft);
+        border-left: 1mm solid var(--green);
+      }
+      .warn {
+        background: #fdf0ee;
+        border-left: 1mm solid var(--red);
+      }
+      .tip b,
+      .warn b {
+        display: block;
+        font-size: 7.5pt;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+      .tip b {
+        color: var(--green-dark);
+      }
+      .warn b {
+        color: var(--red);
+      }
+      .ico {
+        width: 6mm;
+        height: 6mm;
+        flex: none;
+        stroke: currentColor;
+        fill: none;
+        stroke-width: 1.6;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .tip .ico {
+        color: var(--green-dark);
+      }
+      .warn .ico {
+        color: var(--red);
+      }
+
+      .row {
+        display: flex;
+        gap: 5mm;
+      }
+      .col {
+        flex: 1;
+        min-width: 0;
+      }
+      .card {
+        border: 0.3mm solid var(--line);
+        border-radius: 3mm;
+        padding: 3mm;
+      }
+
+      table.t {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 8.4pt;
+      }
+      table.t th {
+        text-align: left;
+        font-size: 7pt;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--green-dark);
+        border-bottom: 0.5mm solid var(--green);
+        padding: 1.4mm 1.5mm;
+      }
+      table.t td {
+        border-bottom: 0.25mm solid var(--line);
+        padding: 1.8mm 1.5mm;
+        vertical-align: top;
+      }
+      table.t td:first-child {
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
+      /* cover: the app is the hero — three tab screens fanned on a dark stage */
+      .cover {
+        padding: 0;
+      }
+      .cv-top {
+        position: absolute;
+        left: 12mm;
+        right: 12mm;
+        top: 11mm;
+        display: flex;
+        align-items: center;
+        gap: 3mm;
+      }
+      .cv-top .cv-logo {
+        width: 16mm;
+        height: 16mm;
+        border-radius: 3.5mm;
+        box-shadow: 0 1mm 3mm rgba(0, 40, 20, 0.12);
+      }
+      .cv-version {
+        position: absolute;
+        top: 5mm;
+        right: 6mm;
+        font-size: 5.6pt;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        font-weight: 600;
+        color: #9aa0a6;
+      }
+      .cv-word {
+        position: absolute;
+        left: 11mm;
+        top: 31mm;
+        width: 70mm;
+      }
+      .cv-title {
+        position: absolute;
+        left: 12mm;
+        top: 53mm;
+        font-size: 22pt;
+        font-weight: 800;
+        letter-spacing: -0.01em;
+      }
+      .cv-title::after {
+        content: "";
+        display: block;
+        width: 14mm;
+        height: 0.7mm;
+        background: linear-gradient(90deg, var(--green), var(--teal));
+        margin-top: 1.5mm;
+      }
+      /* the module: a small supporting shot beside the app screens */
+      .cv-module {
+        width: 31mm;
+        transform: rotate(-5deg);
+        /* muted light grey so the app icon stays the hero */
+        filter: grayscale(1) contrast(0.42) brightness(1.55) drop-shadow(0 1mm 1.5mm rgba(0, 0, 0, 0.1));
+      }
+      .cv-plus {
+        font-size: 13pt;
+        font-weight: 300;
+        line-height: 1;
+        margin-top: -0.6mm; /* optical centre of the glyph */
+        color: #9aa0a6;
+      }
+      .cv-stage {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 70mm;
+        bottom: 0;
+        clip-path: polygon(0 24mm, 100% 0, 100% 100%, 0 100%);
+        background:
+          radial-gradient(circle at 28% 48%, rgba(47, 174, 79, 0.5), transparent 42%),
+          radial-gradient(circle at 76% 58%, rgba(69, 179, 198, 0.45), transparent 44%),
+          linear-gradient(165deg, #10301f 0%, #0b1a1d 100%);
+      }
+      .cv-rings {
+        position: absolute;
+        left: 0;
+        top: 70mm;
+        width: 148mm;
+        height: 140mm;
+        clip-path: polygon(0 24mm, 100% 0, 100% 100%, 0 100%);
+      }
+      .cv-ph {
+        position: absolute;
+        text-align: center;
+      }
+      .cv-ph .phone {
+        border-color: #0a0a0a;
+        box-shadow:
+          0 0 0 0.35mm rgba(255, 255, 255, 0.22),
+          0 5mm 12mm rgba(0, 0, 0, 0.5);
+      }
+      .cv-ph.c {
+        left: 50mm;
+        top: 70mm;
+        z-index: 2;
+      }
+      .cv-ph.c .phone {
+        width: 48mm;
+      }
+      .cv-ph.l,
+      .cv-ph.r {
+        top: 89mm;
+        z-index: 1;
+      }
+      .cv-ph.l {
+        left: 17mm;
+        transform: rotate(-7deg);
+      }
+      .cv-ph.r {
+        right: 17mm;
+        transform: rotate(7deg);
+      }
+      .cv-ph.l .phone,
+      .cv-ph.r .phone {
+        width: 37mm;
+      }
+      .cv-chips {
+        position: absolute;
+        left: 8mm;
+        right: 8mm;
+        top: 179mm;
+        display: flex;
+        justify-content: space-between;
+        z-index: 3;
+      }
+      .cv-chips span {
+        width: 42mm;
+        text-align: center;
+        color: #fff;
+        font-family: "Times New Roman", Times, serif;
+        font-size: 10.5pt;
+        font-weight: 700;
+        line-height: 1.25;
+        letter-spacing: 0.08em;
+      }
+      .cv-chips span::before {
+        content: "";
+        display: block;
+        width: 1.8mm;
+        height: 1.8mm;
+        border-radius: 50%;
+        margin: 0 auto 1.6mm;
+        background: var(--green);
+      }
+      .cv-chips span.f::before {
+        background: #f26b3a;
+      }
+      .cv-chips span.s::before {
+        background: #4f8ff0;
+      }
+      .cv-strip {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 12mm;
+        background: rgba(0, 0, 0, 0.35);
+        border-top: 0.25mm solid rgba(255, 255, 255, 0.12);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 4mm;
+        color: #b9c6be;
+        font-size: 7pt;
+        z-index: 3;
+      }
+      .cv-strip em {
+        font-style: normal;
+        font-weight: 800;
+        color: #fff;
+      }
+      .cv-strip i {
+        width: 1mm;
+        height: 1mm;
+        border-radius: 50%;
+        background: var(--green);
+      }
+
+      /* three jobs */
+      .job {
+        border-radius: 3mm;
+        padding: 3mm;
+        margin-bottom: 3mm;
+      }
+      .job h2 {
+        display: flex;
+        align-items: center;
+        gap: 2.5mm;
+        margin-bottom: 2mm;
+      }
+      .job h2 img {
+        width: 9mm;
+        height: 9mm;
+        border-radius: 2mm;
+        background: #fff;
+      }
+      .flow {
+        display: flex;
+        align-items: stretch;
+        gap: 1.2mm;
+      }
+      .flow div {
+        flex: 1;
+        background: #fff;
+        border-radius: 2mm;
+        padding: 1.8mm 2mm;
+        font-size: 7.8pt;
+        line-height: 1.25;
+      }
+      .flow div b {
+        display: block;
+        font-size: 8.2pt;
+      }
+      .flow i {
+        align-self: center;
+        font-style: normal;
+        color: var(--mute);
+        font-size: 9pt;
+      }
+      .job.e {
+        background: #eef8f0;
+      }
+      .job.e h2 {
+        color: var(--green-dark);
+      }
+      .job.s {
+        background: #edf3fb;
+      }
+      .job.s h2 {
+        color: #2763b8;
+      }
+      .job.f {
+        background: #fdf1ea;
+      }
+      .job.f h2 {
+        color: #c4501d;
+      }
+      .job .note {
+        font-size: 7.8pt;
+        margin-top: 1.8mm;
+        color: var(--ink);
+      }
+
+      /* contents */
+      .toc {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      .toc li {
+        display: flex;
+        align-items: baseline;
+        gap: 2mm;
+        padding: 1.7mm 0;
+        border-bottom: 0.25mm dotted #c5c9cc;
+      }
+      .toc li span:first-child {
+        flex: 1;
+      }
+      .toc li span:last-child {
+        font-weight: 700;
+        color: var(--green-dark);
+      }
+
+      .facts {
+        display: flex;
+        gap: 2.5mm;
+        margin-top: 5mm;
+      }
+      .facts div {
+        flex: 1;
+        background: var(--soft);
+        border-radius: 2.5mm;
+        padding: 2.6mm;
+        font-size: 7.6pt;
+        color: var(--mute);
+      }
+      .facts div b {
+        display: block;
+        color: var(--ink);
+        font-size: 9.4pt;
+      }
+      .facts div b em {
+        font-style: normal;
+        color: var(--green);
+      }
+
+      .need {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 3mm;
+      }
+      .need div {
+        border: 0.3mm solid var(--line);
+        border-radius: 3mm;
+        padding: 3mm;
+        display: flex;
+        gap: 2.5mm;
+        align-items: flex-start;
+        font-size: 8.6pt;
+      }
+      .need div .ico {
+        width: 8mm;
+        height: 8mm;
+        color: var(--green-dark);
+        stroke-width: 1.3;
+      }
+      .need div b {
+        display: block;
+        font-size: 9.2pt;
+      }
+
+      /* digital-manual chrome: running header + thumb-index tab per section */
+      .head {
+        position: absolute;
+        top: 5.5mm;
+        left: 12mm;
+        right: 14mm;
+        display: flex;
+        justify-content: space-between;
+        font-size: 6.6pt;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: #9aa0a6;
+      }
+      .head b {
+        color: var(--ink);
+        letter-spacing: 0.02em;
+        text-transform: none;
+        font-size: 7.2pt;
+      }
+      .tab {
+        position: absolute;
+        right: 0;
+        width: 6.5mm;
+        height: 30mm;
+        border-radius: 2.5mm 0 0 2.5mm;
+        background: #e6f4ea;
+        color: var(--green-dark);
+        writing-mode: vertical-rl;
+        transform: rotate(180deg);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 6.4pt;
+        font-weight: 800;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+      .tab.on {
+        background: linear-gradient(180deg, var(--green), var(--teal));
+        color: #fff;
+      }
+      .backband {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 40mm;
+        background: linear-gradient(90deg, var(--green), var(--teal));
+        display: flex;
+        align-items: center;
+        gap: 4mm;
+        padding: 0 12mm;
+        color: #fff;
+      }
+      .backband img {
+        width: 15mm;
+        height: 15mm;
+        border-radius: 3mm;
+        background: #fff;
+        box-shadow: 0 1.5mm 4mm rgba(0, 0, 0, 0.15);
+      }
+      .backband b {
+        font-size: 15pt;
+        display: block;
+      }
+
+      .meter {
+        display: flex;
+        height: 2.4mm;
+        border-radius: 1.2mm;
+        overflow: hidden;
+        margin: 1.5mm 0 0.8mm;
+      }
+      .meter span {
+        display: block;
+      }
+      .scale {
+        display: flex;
+        justify-content: space-between;
+        font-size: 6.8pt;
+        color: var(--mute);
+      }
+    </style>
+  </head>
+  <body>
+    <!-- shared line-art icons -->
+    <svg width="0" height="0" style="position: absolute">
+      <defs>
+        <symbol id="i-bulb" viewBox="0 0 24 24">
+          <path
+            d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2V16h5v-.1c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"
+          />
+        </symbol>
+        <symbol id="i-warn" viewBox="0 0 24 24">
+          <path d="M12 3 2 20h20L12 3z" />
+          <path d="M12 10v4M12 17.2v.1" />
+        </symbol>
+        <symbol id="i-phone" viewBox="0 0 24 24">
+          <rect x="6" y="2" width="12" height="20" rx="2.5" />
+          <path d="M10.5 18.5h3" />
+        </symbol>
+        <symbol id="i-plug" viewBox="0 0 24 24">
+          <path d="M9 2v5M15 2v5M6 7h12v4a6 6 0 0 1-12 0V7zM12 17v5" />
+        </symbol>
+        <symbol id="i-wifi" viewBox="0 0 24 24">
+          <path
+            d="M2.5 9a14 14 0 0 1 19 0M5.5 12.5a9.5 9.5 0 0 1 13 0M8.6 16a5 5 0 0 1 6.8 0"
+          />
+          <circle cx="12" cy="19.5" r=".9" />
+        </symbol>
+        <symbol id="i-wall" viewBox="0 0 24 24">
+          <path d="M3 3h18v18H3zM3 9h18M3 15h18M9 3v6M15 9v6M9 15v6" />
+        </symbol>
+        <symbol id="i-module" viewBox="0 0 24 24">
+          <rect x="3" y="6" width="18" height="12" rx="2.5" />
+          <path d="M7 12h4M17 12h.1M21 10h2v4h-2" />
+        </symbol>
+        <symbol id="i-shield" viewBox="0 0 24 24">
+          <path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3z" />
+          <path d="m8.5 12 2.5 2.5 4.5-5" />
+        </symbol>
+      </defs>
+    </svg>
+
+    <!-- 1 · COVER -->
+    <!-- data-flatten: shadows, filters and clip-paths here are drawn as soft-mask layers that
+         many phone PDF viewers show as grey boxes, so the PDF embeds this page as one image -->
+    <section class="page cover" data-flatten="assets/flat/page01.png">
+      <div class="cv-version">English · Version 1.0</div>
+      <div class="cv-top">
+        <img class="cv-logo" src="assets/logo.png" alt="" />
+        <span class="cv-plus">+</span>
+        <img class="cv-module" src="assets/cover-phone-cut.png" alt="reWatt module on the back of a phone" />
+      </div>
+      <img class="cv-word" src="assets/wordmark.png" alt="reWatt" />
+      <div class="cv-title">User Guide</div>
+
+      <div class="cv-stage"></div>
+      <!-- faint radar rings behind the hero phone -->
+      <svg class="cv-rings" viewBox="0 0 148 140" fill="none" stroke="rgba(255,255,255,0.09)" stroke-width="0.35">
+        <circle cx="74" cy="56" r="34" />
+        <circle cx="74" cy="56" r="48" />
+        <circle cx="74" cy="56" r="62" />
+        <circle cx="74" cy="56" r="76" />
+      </svg>
+
+      <div class="cv-ph l"><div class="phone"><img src="assets/fire.jpg" alt="FIRE screen" /></div></div>
+      <div class="cv-ph r"><div class="phone"><img src="assets/security.jpg" alt="SECURITY screen" /></div></div>
+      <div class="cv-ph c"><div class="phone"><img src="assets/energy.jpg" alt="ENERGY screen" /></div></div>
+
+      <div class="cv-chips">
+        <span class="f">FIRE<br />ALARM</span>
+        <span class="e">AI ENERGY<br />OPTIMISATION</span>
+        <span class="s">SECURITY<br />CAMERA</span>
+      </div>
+
+      <div class="cv-strip">
+        <span><em>Android 6.0+</em> any old phone</span>
+        <i></i>
+        <span><em>0</em> rewiring</span>
+        <i></i>
+        <span><em>100%</em> on-device AI</span>
+      </div>
+    </section>
+
+    <!-- 2 · WELCOME + CONTENTS -->
+    <section class="page">
+      <div class="eyebrow">Welcome</div>
+      <h1>Your old phone,<br />now a smart room sensor.</h1>
+      <div class="rule"></div>
+      <p>reWatt turns an old Android phone into three helpers in one.</p>
+      <p>
+        Clip the reWatt module onto the phone. Mount it on the wall. That's it.
+      </p>
+      <div class="facts">
+        <div>
+          <b>Android <em>6.0+</em></b
+          >any old phone
+        </div>
+        <div>
+          <b><em>0</em> rewiring</b>magnetic or adhesive
+        </div>
+        <div>
+          <b><em>100%</em> on-device AI</b>nothing uploaded
+        </div>
+      </div>
+
+      <h2 style="margin-top: 8mm">Contents</h2>
+      <ul class="toc"><!-- filled from data-toc at load --></ul>
+      <div class="head"><b>reWatt User Guide</b><span>01 · Intro</span></div>
+      <div class="tab on" style="top: 22mm">Intro</div>
+      <div class="tab" style="top: 56mm">Setup</div>
+      <div class="tab" style="top: 90mm">Using reWatt</div>
+      <div class="tab" style="top: 124mm">Settings & more</div>
+      <div class="foot">
+        <span><b>reWatt</b> · User Guide</span><span class="no">2</span>
+      </div>
+    </section>
+
+    <!-- 3 · WHAT YOU NEED -->
+    <section class="page" data-toc="What you need">
+      <div class="eyebrow">Before you start</div>
+      <h1>What you need</h1>
+      <div class="rule"></div>
+      <div class="need">
+        <div>
+          <svg class="ico"><use href="#i-module" /></svg
+          ><span><b>reWatt module</b>With its adapter and splitter.</span>
+        </div>
+        <div>
+          <svg class="ico"><use href="#i-phone" /></svg
+          ><span
+            ><b>An old Android phone</b>Android 6.0 or newer. The camera must
+            work.</span
+          >
+        </div>
+        <div>
+          <svg class="ico"><use href="#i-plug" /></svg
+          ><span><b>Phone charger</b>A USB-C charger and cable.</span>
+        </div>
+        <div>
+          <svg class="ico"><use href="#i-wifi" /></svg
+          ><span><b>Wi-Fi</b>For setup and MQTT.</span>
+        </div>
+        <div style="grid-column: span 2">
+          <svg class="ico"><use href="#i-wall" /></svg
+          ><span
+            ><b>A wall near a power socket</b>Any wall works with the adhesive
+            mount. A metal surface works with the magnet.</span
+          >
+        </div>
+      </div>
+      <div style="margin-top: 7mm">
+        <img src="assets/cover-phone.png" alt="" style="width: 100%" />
+        <div class="cap">
+          The module clips onto the back of any old phone. No rewiring.
+        </div>
+      </div>
+      <div class="head"><b>reWatt User Guide</b><span>01 · Intro</span></div>
+      <div class="tab on" style="top: 22mm">Intro</div>
+      <div class="tab" style="top: 56mm">Setup</div>
+      <div class="tab" style="top: 90mm">Using reWatt</div>
+      <div class="tab" style="top: 124mm">Settings & more</div>
+      <div class="foot">
+        <span><b>reWatt</b> · User Guide</span><span class="no">3</span>
+      </div>
+    </section>
+
+    <!-- 4 · PREPARE PHONE + INSTALL -->
+    <section class="page" data-toc="Prepare your old phone &amp; install the app">
+      <div class="eyebrow">Step 1</div>
+      <h1>Prepare your old phone</h1>
+      <div class="rule"></div>
+      <ol class="steps tight">
+        <li><b>Charge it.</b>Charge the phone fully before you start.</li>
+        <li>
+          <b>Clear it.</b>Back up your old photos. Then reset the phone or
+          delete them.
+        </li>
+        <li>
+          <b>Connect to Wi-Fi.</b>Use the Wi-Fi of the room it will watch.
+        </li>
+        <li><b>Update it.</b>Install any Android and app updates.</li>
+        <li>
+          <b>Allow the install.</b>Settings → Apps → Special access →
+          <i>Install unknown apps</i>. Allow your browser or file app.
+        </li>
+      </ol>
+
+      <div class="eyebrow" style="margin-top: 6mm">Step 2</div>
+      <h1>Install the app</h1>
+      <div class="rule"></div>
+      <ol class="steps tight">
+        <li>
+          <b>Download.</b>Get the reWatt app file (<i>.apk</i>) from the link
+          that came with your kit.
+        </li>
+        <li><b>Install.</b>Tap the file, then tap <i>Install</i>.</li>
+        <li>
+          <b>Open.</b>Tap <i>Open</i>. The Quick Setup Guide starts by itself.
+        </li>
+      </ol>
+      <div class="tip" style="margin-top: 3mm">
+        <svg class="ico"><use href="#i-bulb" /></svg>
+        <div>
+          <b>Tip</b>Android may warn about unknown apps. This is normal for apps
+          not from the Play Store.
+        </div>
+      </div>
+      <div class="head"><b>reWatt User Guide</b><span>02 · Setup</span></div>
+      <div class="tab" style="top: 22mm">Intro</div>
+      <div class="tab on" style="top: 56mm">Setup</div>
+      <div class="tab" style="top: 90mm">Using reWatt</div>
+      <div class="tab" style="top: 124mm">Settings & more</div>
+      <div class="foot">
+        <span><b>reWatt</b> · User Guide</span><span class="no">4</span>
+      </div>
+    </section>
+
+    <!-- 5 · QUICK SETUP 1–2 -->
+    <section class="page" data-toc="Quick Setup Guide">
+      <div class="eyebrow">Step 3 · Quick Setup Guide</div>
+      <h1>Set up the app</h1>
+      <div class="rule"></div>
+      <p class="lead">
+        The guide has 7 short pages. Tap <b>Next</b> to move on.
+      </p>
+      <div class="row">
+        <div class="col">
+          <ol class="steps">
+            <li>
+              <b>Allow Camera &amp; Location</b>The camera sees who is in the
+              room. Location gets the outdoor weather. Tap <i>Allow</i> on both.
+            </li>
+          </ol>
+          <div class="phone" style="width: 50mm; margin: 2mm auto 0">
+            <img src="assets/setup-1-camera.jpg" alt="" />
+          </div>
+        </div>
+        <div class="col">
+          <ol class="steps" start="2" style="counter-reset: s 1">
+            <li>
+              <b>Turn off Battery Saver</b>Otherwise the phone may pause reWatt.
+              Set it to <i>Off</i> for reWatt.
+            </li>
+          </ol>
+          <div class="phone" style="width: 50mm; margin: 2mm auto 0">
+            <img src="assets/setup-2-battery.jpg" alt="" />
+          </div>
+        </div>
+      </div>
+      <div class="head"><b>reWatt User Guide</b><span>02 · Setup</span></div>
+      <div class="tab" style="top: 22mm">Intro</div>
+      <div class="tab on" style="top: 56mm">Setup</div>
+      <div class="tab" style="top: 90mm">Using reWatt</div>
+      <div class="tab" style="top: 124mm">Settings & more</div>
+      <div class="foot">
+        <span><b>reWatt</b> · User Guide</span><span class="no">5</span>
+      </div>
+    </section>
+
+    <!-- 6 · QUICK SETUP 3–4 -->
+    <section class="page">
+      <div class="eyebrow">Step 3 · Quick Setup Guide</div>
+      <div class="row" style="margin-top: 2mm">
+        <div class="col">
+          <ol class="steps" style="counter-reset: s 2">
+            <li>
+              <b>Security permissions</b>Allow each item until all say
+              <i>Allowed</i>. The alarm needs them to ring and wake the screen.
+            </li>
+          </ol>
+          <div class="phone" style="width: 44mm; margin: 2mm auto 0">
+            <img src="assets/setup-3-security.jpg" alt="" />
+          </div>
+          <p class="small" style="margin-top: 2mm">
+            Some brands (Xiaomi, OPPO, vivo, Samsung…) need extra settings. The
+            page lists them.
+          </p>
+        </div>
+        <div class="col">
+          <ol class="steps" style="counter-reset: s 3">
+            <li>
+              <b>Mount the phone</b>Attach it to a wall or metal surface. Point
+              the camera at the centre of the room.
+            </li>
+          </ol>
+          <ul class="dots" style="margin-top: 1mm">
+            <li>Shoulder height or higher.</li>
+            <li>Camera faces the seating area.</li>
+            <li>Keep the lens clear. No tape or cover.</li>
+            <li>Keep the charger plugged in.</li>
+          </ul>
+          <svg
+            viewBox="0 0 120 130"
+            style="width: 44mm; display: block; margin: 4mm auto 0"
+            fill="none"
+            stroke="#1b1b1b"
+            stroke-width="1.4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M10 6v118" stroke-width="2" />
+            <path d="M10 124h104" stroke="#c5c9cc" />
+            <path
+              d="M4 14 10 8M4 28l6-6M4 42l6-6M4 56l6-6M4 70l6-6M4 84l6-6M4 98l6-6M4 112l6-6"
+              stroke="#9aa0a6"
+              stroke-width="1"
+            />
+            <rect x="11" y="30" width="7" height="40" rx="2" fill="#f3f6f4" />
+            <rect x="18" y="26" width="9" height="48" rx="2.5" fill="#fff" />
+            <circle cx="27" cy="34" r="1.6" fill="#1b1b1b" />
+            <path
+              d="M29 34 108 14M29 34 108 70"
+              stroke="#2fae4f"
+              stroke-dasharray="3 3"
+            />
+            <path d="M94 104c0-7 5-11 10-11s10 4 10 11" />
+            <circle cx="104" cy="84" r="5" />
+            <path d="M64 108c0-6 4-9 8-9s8 3 8 9" />
+            <circle cx="72" cy="92" r="4" />
+          </svg>
+          <div class="cap">
+            Mount at shoulder height, camera facing the room.
+          </div>
+        </div>
+      </div>
+      <div class="head"><b>reWatt User Guide</b><span>02 · Setup</span></div>
+      <div class="tab" style="top: 22mm">Intro</div>
+      <div class="tab on" style="top: 56mm">Setup</div>
+      <div class="tab" style="top: 90mm">Using reWatt</div>
+      <div class="tab" style="top: 124mm">Settings & more</div>
+      <div class="foot">
+        <span><b>reWatt</b> · User Guide</span><span class="no">6</span>
+      </div>
+    </section>
+
+    <!-- 7 · QUICK SETUP 5–7 -->
+    <section class="page">
+      <div class="eyebrow">Step 3 · Quick Setup Guide</div>
+      <div class="row" style="margin-top: 2mm">
+        <div class="col">
+          <ol class="steps" style="counter-reset: s 4">
+            <li>
+              <b>Check the view</b>The whole room should be visible. Avoid
+              bright lights. Move the mount if needed.
+            </li>
+          </ol>
+          <div class="phone" style="width: 44mm; margin: 2mm auto 0">
+            <img src="assets/setup-5-view.jpg" alt="" />
+          </div>
+        </div>
+        <div class="col">
+          <ol class="steps" style="counter-reset: s 5">
+            <li>
+              <b>Name your space</b>Type a name, e.g. <i>Room1</i>,
+              <i>Living room</i> or <i>Community hall</i>.
+            </li>
+          </ol>
+          <div class="phone" style="width: 44mm; margin: 2mm auto 0">
+            <img src="assets/setup-6-name.jpg" alt="" />
+          </div>
+        </div>
+      </div>
+      <ol class="steps" style="counter-reset: s 6; margin-top: 5mm">
+        <li>
+          <b>You're all set!</b>Tap <i>Done</i>. reWatt now watches the room for
+          you.
+        </li>
+      </ol>
+      <div class="tip">
+        <svg class="ico"><use href="#i-bulb" /></svg>
+        <div><b>Open it again</b>Settings → <i>Quick Setup Guide</i>.</div>
+      </div>
+      <div class="head"><b>reWatt User Guide</b><span>02 · Setup</span></div>
+      <div class="tab" style="top: 22mm">Intro</div>
+      <div class="tab on" style="top: 56mm">Setup</div>
+      <div class="tab" style="top: 90mm">Using reWatt</div>
+      <div class="tab" style="top: 124mm">Settings & more</div>
+      <div class="foot">
+        <span><b>reWatt</b> · User Guide</span><span class="no">7</span>
+      </div>
+    </section>
+
+    <!-- 8 · CONNECT + MOUNT MODULE -->
+    <section class="page" data-toc="Connect and mount the module">
+      <div class="eyebrow">Step 4</div>
+      <h1>Connect the module</h1>
+      <div class="rule"></div>
+      <div class="row" style="gap: 6mm; align-items: center; margin-bottom: 4mm">
+        <!-- close-up of the phone's bottom edge in the wall mount; pins are % of the photo -->
+        <div
+          style="position: relative; width: 50mm; flex: none; border-radius: 3mm; overflow: hidden; border: 0.3mm solid var(--line)"
+        >
+          <img src="assets/ports.jpg" alt="" style="display: block; width: 100%" />
+          <span class="ltr pin" style="left: 58%; top: 18.5%">A</span>
+          <span class="ltr pin" style="left: 35.6%; top: 51.5%">B</span>
+          <span class="ltr pin" style="left: 70.5%; top: 44.5%">C</span>
+          <span class="ltr pin" style="left: 64%; top: 66%">D</span>
+          <span class="ltr pin" style="left: 76%; top: 90%">E</span>
+        </div>
+        <ul class="legend col">
+          <li>
+            <span class="ltr">A</span>
+            <div><b>reWatt module</b><span>Sits behind the phone.</span></div>
+          </li>
+          <li>
+            <span class="ltr">B</span>
+            <div>
+              <b>Phone's charging port</b><span>The 180° adapter plugs in here.</span>
+            </div>
+          </li>
+          <li>
+            <span class="ltr">C</span>
+            <div>
+              <b>Module port</b><span>The adapter's other end goes into the module.</span>
+            </div>
+          </li>
+          <li>
+            <span class="ltr">D</span>
+            <div><b>Charging port</b><span>Plug your phone charger in here.</span></div>
+          </li>
+          <li>
+            <span class="ltr">E</span>
+            <div><b>Wall mount</b><span>Holds the phone and module.</span></div>
+          </li>
+        </ul>
+      </div>
+      <ol class="steps tight">
+        <li>
+          <b>Clip it on.</b>Place the module on the back of the phone. Use the
+          magnet or adhesive pad.
+        </li>
+        <li>
+          <b>Plug into the phone.</b>Push the <i>Type-C 180° adapter</i> into
+          the phone's charging port (B) and the module port (C).
+        </li>
+        <li>
+          <b>Plug in power.</b>Connect your phone charger to the charging port
+          (D).
+        </li>
+        <li>
+          <b>Allow it.</b>If Android asks to open reWatt for the USB device, tap
+          <i>OK</i>. Tick <i>Always</i> if shown.
+        </li>
+        <li>
+          <b>Check it.</b>The badge at the top right changes from
+          <i>OFFLINE</i> to
+          <b style="display: inline; color: var(--green-dark)">ONLINE</b>.
+        </li>
+      </ol>
+      <div class="warn" style="margin-top: 2mm">
+        <svg class="ico"><use href="#i-warn" /></svg>
+        <div>
+          <b>Important</b>Keep the charger connected at all times. The phone
+          runs 24/7.
+        </div>
+      </div>
+      <div class="head"><b>reWatt User Guide</b><span>02 · Setup</span></div>
+      <div class="tab" style="top: 22mm">Intro</div>
+      <div class="tab on" style="top: 56mm">Setup</div>
+      <div class="tab" style="top: 90mm">Using reWatt</div>
+      <div class="tab" style="top: 124mm">Settings & more</div>
+      <div class="foot">
+        <span><b>reWatt</b> · User Guide</span><span class="no">8</span>
+      </div>
+    </section>
+
+    <!-- 9 · ENERGY SCREEN -->
+    <section class="page" data-toc="ENERGY screen &amp; your readings">
+      <div class="eyebrow">Using reWatt</div>
+      <h1>The ENERGY screen</h1>
+      <div class="rule"></div>
+      <div class="row" style="gap: 6mm">
+        <div class="phone" style="width: 52mm">
+          <img src="assets/energy.jpg" alt="" />
+          <span class="ltr pin" style="left: 68%; top: 6.2%">A</span>
+          <span class="ltr pin" style="left: 52%; top: 17%">B</span>
+          <span class="ltr pin" style="left: 9%; top: 31%">C</span>
+          <span class="ltr pin" style="left: 41%; top: 31%">D</span>
+          <span class="ltr pin" style="left: 73%; top: 31%">E</span>
+          <span class="ltr pin" style="left: 94%; top: 36%">F</span>
+          <span class="ltr pin" style="left: 14%; top: 57%">G</span>
+          <span class="ltr pin" style="left: 12%; top: 93%">H</span>
+        </div>
+        <ul class="legend col">
+          <li>
+            <span class="ltr">A</span>
+            <div>
+              <b>ONLINE / OFFLINE</b><span>Is the module connected?</span>
+            </div>
+          </li>
+          <li>
+            <span class="ltr">B</span>
+            <div>
+              <b>Room card</b
+              ><span>Room name, security status and battery.</span>
+            </div>
+          </li>
+          <li>
+            <span class="ltr">C</span>
+            <div><b>Temperature</b><span>Room temperature in °C.</span></div>
+          </li>
+          <li>
+            <span class="ltr">D</span>
+            <div><b>Humidity</b><span>Moisture in the air, in %.</span></div>
+          </li>
+          <li>
+            <span class="ltr">E</span>
+            <div>
+              <b>Occupancy</b
+              ><span>People in the room. <i>EMPTY</i> at 0.</span>
+            </div>
+          </li>
+          <li>
+            <span class="ltr">F</span>
+            <div>
+              <b>Lights · Fan · AC</b><span>Green = on. Red = off.</span>
+            </div>
+          </li>
+          <li>
+            <span class="ltr">G</span>
+            <div>
+              <b>Live view</b><span>What the camera sees right now.</span>
+            </div>
+          </li>
+          <li>
+            <span class="ltr">H</span>
+            <div>
+              <b>Menu</b><span>ENERGY · FIRE · SECURITY · SETTINGS</span>
+            </div>
+          </li>
+        </ul>
+      </div>
+      <div class="tip" style="margin-top: 5mm">
+        <svg class="ico"><use href="#i-bulb" /></svg>
+        <div><b>Tip</b>Turn the phone sideways for a bigger live view.</div>
+      </div>
+      <div class="head">
+        <b>reWatt User Guide</b><span>03 · Using reWatt</span>
+      </div>
+      <div class="tab" style="top: 22mm">Intro</div>
+      <div class="tab" style="top: 56mm">Setup</div>
+      <div class="tab on" style="top: 90mm">Using reWatt</div>
+      <div class="tab" style="top: 124mm">Settings & more</div>
+      <div class="foot">
+        <span><b>reWatt</b> · User Guide</span><span class="no">9</span>
+      </div>
+    </section>
+
+    <!-- 10 · READINGS EXPLAINED -->
+    <section class="page">
+      <div class="eyebrow">Using reWatt</div>
+      <h1>Your readings explained</h1>
+      <div class="rule"></div>
+      <table class="t">
+        <tr>
+          <th>Reading</th>
+          <th>What it means</th>
+        </tr>
+        <tr>
+          <td>Temperature</td>
+          <td>How warm the room is, in °C. Measured by the SHT31.</td>
+        </tr>
+        <tr>
+          <td>Humidity</td>
+          <td>How damp the air is, in %. About 40–60% feels comfortable.</td>
+        </tr>
+        <tr>
+          <td>Occupancy</td>
+          <td>
+            How many people the camera counts. The radar wakes the camera when
+            someone is there.
+          </td>
+        </tr>
+        <tr>
+          <td>Lights · Fan · AC</td>
+          <td>Shows if each appliance is on (green) or off (red).</td>
+        </tr>
+        <tr>
+          <td>VOC Index</td>
+          <td>
+            Gases from overheating wires or a gas leak. Normal is about
+            <b>100</b>.
+          </td>
+        </tr>
+        <tr>
+          <td>NOx Index</td>
+          <td>Gases from something burning. Normal is about <b>1</b>.</td>
+        </tr>
+      </table>
+
+      <h2 style="margin-top: 6mm">How reWatt saves energy</h2>
+      <ul class="dots">
+        <li>
+          People in the room → reWatt picks the right AC setting for the
+          headcount.
+        </li>
+        <li>
+          More people in the room → reWatt lowers the AC temperature to keep
+          everyone cool.
+        </li>
+        <li>
+          No one for <b>5 minutes</b> → the room's lights, fan and AC switch
+          off.
+        </li>
+        <li>Empty room → camera and AI stay off to save power.</li>
+      </ul>
+
+      <div class="tip" style="margin-top: 5mm">
+        <svg class="ico"><use href="#i-wifi" /></svg>
+        <div>
+          <b>Good to know</b>You can also see these readings on another device.
+          See <i>Connect to MQTT</i>, page <span data-ref="Connect to MQTT">13</span>.
+        </div>
+      </div>
+      <div class="head">
+        <b>reWatt User Guide</b><span>03 · Using reWatt</span>
+      </div>
+      <div class="tab" style="top: 22mm">Intro</div>
+      <div class="tab" style="top: 56mm">Setup</div>
+      <div class="tab on" style="top: 90mm">Using reWatt</div>
+      <div class="tab" style="top: 124mm">Settings & more</div>
+      <div class="foot">
+        <span><b>reWatt</b> · User Guide</span><span class="no">10</span>
+      </div>
+    </section>
+
+    <!-- 11 · FIRE -->
+    <section class="page" data-toc="FIRE screen">
+      <div class="eyebrow">Using reWatt</div>
+      <h1>The FIRE screen</h1>
+      <div class="rule"></div>
+      <div class="row" style="gap: 6mm; justify-content: center">
+        <div>
+          <div class="phone" style="width: 46mm">
+            <img src="assets/fire.jpg" alt="" />
+            <span class="ltr pin" style="left: 85%; top: 22%">A</span>
+            <span class="ltr pin" style="left: 26%; top: 43%">B</span>
+            <span class="ltr pin" style="left: 73%; top: 43%">C</span>
+          </div>
+          <div class="cap">Normal</div>
+        </div>
+        <div>
+          <div class="phone" style="width: 46mm">
+            <img src="assets/fire-alert.jpg" alt="" />
+            <span class="ltr pin" style="left: 50%; top: 15%">D</span>
+          </div>
+          <div class="cap">Fire alert</div>
+        </div>
+      </div>
+      <ul class="legend" style="margin-top: 3mm; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: repeat(2, auto); grid-auto-flow: column; column-gap: 5mm">
+        <li>
+          <span class="ltr">A</span>
+          <div><b>Status</b><span>NORMAL or FIRE ALERT.</span></div>
+        </li>
+        <li>
+          <span class="ltr">B</span>
+          <div>
+            <b>VOC Index</b><span>Earliest warning. Normal ≈ 100.</span>
+          </div>
+        </li>
+        <li>
+          <span class="ltr">C</span>
+          <div>
+            <b>NOx Index</b><span>Something is burning. Normal ≈ 1.</span>
+          </div>
+        </li>
+        <li>
+          <span class="ltr">D</span>
+          <div><b>Alert bar</b><span>Time, readings and DISMISS.</span></div>
+        </li>
+      </ul>
+      <div style="margin-top: 1mm">
+        <b style="font-size: 8.6pt">When does the alarm ring?</b>
+        <div class="meter">
+          <span style="flex: 130; background: var(--green)"></span
+          ><span style="flex: 20; background: var(--amber)"></span
+          ><span style="flex: 50; background: var(--red)"></span>
+        </div>
+        <div class="scale">
+          <span>Normal air</span
+          ><span>VOC 130+ or NOx 5+ for 2 seconds → ALARM</span>
+        </div>
+      </div>
+      <div class="warn" style="margin-top: 4mm">
+        <svg class="ico"><use href="#i-warn" /></svg>
+        <div>
+          <b>If the alarm rings</b>Get everyone out. Call 994 (Bomba). Only tap
+          DISMISS when you are safe.
+        </div>
+      </div>
+      <p class="small" style="margin-top: 2.5mm">
+        The fire alarm is always on, even when security is off. Test it in
+        Settings → <i>Test fire alarm</i>.
+      </p>
+      <div class="head">
+        <b>reWatt User Guide</b><span>03 · Using reWatt</span>
+      </div>
+      <div class="tab" style="top: 22mm">Intro</div>
+      <div class="tab" style="top: 56mm">Setup</div>
+      <div class="tab on" style="top: 90mm">Using reWatt</div>
+      <div class="tab" style="top: 124mm">Settings & more</div>
+      <div class="foot">
+        <span><b>reWatt</b> · User Guide</span><span class="no">11</span>
+      </div>
+    </section>
+
+    <!-- 12 · SECURITY -->
+    <section class="page" data-toc="SECURITY screen">
+      <div class="eyebrow">Using reWatt</div>
+      <h1>The SECURITY screen</h1>
+      <div class="rule"></div>
+      <div class="row" style="gap: 4mm; justify-content: center">
+        <div>
+          <div class="phone" style="width: 38mm">
+            <img src="assets/settings-security.jpg" alt="" />
+          </div>
+          <div class="cap">Settings → FAMILY faces</div>
+        </div>
+        <div>
+          <div class="phone" style="width: 38mm">
+            <img src="assets/security.jpg" alt="" />
+          </div>
+          <div class="cap">Armed: a stranger is seen</div>
+        </div>
+        <div>
+          <div class="phone" style="width: 38mm">
+            <img src="assets/security-alert.jpg" alt="" />
+          </div>
+          <div class="cap">Siren + intruder alert</div>
+        </div>
+      </div>
+      <div class="row" style="margin-top: 3mm">
+        <ol class="steps tight col">
+          <li>
+            <b>Add family</b>Settings → <i>FAMILY faces</i>. Add a few photos
+            of each person.
+          </li>
+          <li>
+            <b>Arm it</b>Open SECURITY. Turn on <i>ARMED</i> when you leave or
+            at night.
+          </li>
+          <li><b>Family?</b>reWatt stays silent.</li>
+        </ol>
+        <ol class="steps tight col" style="counter-reset: s 3">
+          <li>
+            <b>Stranger?</b>It says <i>"You are being recorded"</i>. Then the
+            siren, flashing light and alert start.
+          </li>
+          <li><b>Stop it</b>Tap DISMISS.</li>
+        </ol>
+      </div>
+      <div class="tip" style="margin-top: 1mm">
+        <svg class="ico"><use href="#i-shield" /></svg>
+        <div>
+          <b>Private by design</b>Faces are checked on the phone. Nothing is
+          uploaded. Turn off ARMED to add or change faces. Past alerts are
+          listed below the camera.
+        </div>
+      </div>
+      <div class="head">
+        <b>reWatt User Guide</b><span>03 · Using reWatt</span>
+      </div>
+      <div class="tab" style="top: 22mm">Intro</div>
+      <div class="tab" style="top: 56mm">Setup</div>
+      <div class="tab on" style="top: 90mm">Using reWatt</div>
+      <div class="tab" style="top: 124mm">Settings & more</div>
+      <div class="foot">
+        <span><b>reWatt</b> · User Guide</span><span class="no">12</span>
+      </div>
+    </section>
+
+    <!-- 13 · MQTT -->
+    <section class="page" data-toc="Connect to MQTT">
+      <div class="eyebrow">Settings</div>
+      <h1>Connect to MQTT</h1>
+      <div class="rule"></div>
+      <p class="lead">
+        MQTT sends your readings and alerts to your own server.
+      </p>
+      <div class="row" style="gap: 6mm">
+        <div class="phone" style="width: 48mm">
+          <img src="assets/settings-mqtt.jpg" alt="" />
+          <span class="ltr pin" style="left: 88%; top: 35%">A</span>
+          <span class="ltr pin" style="left: 37%; top: 46.5%">B</span>
+          <span class="ltr pin" style="left: 88%; top: 46.5%">C</span>
+          <span class="ltr pin" style="left: 88%; top: 58%">D</span>
+          <span class="ltr pin" style="left: 70%; top: 70%">E</span>
+          <span class="ltr pin" style="left: 88%; top: 80.5%">F</span>
+        </div>
+        <ul class="legend col">
+          <li>
+            <span class="ltr">A</span>
+            <div><b>Broker host</b><span>Your MQTT server address.</span></div>
+          </li>
+          <li>
+            <span class="ltr">B</span>
+            <div>
+              <b>Port</b><span>Use <b>8883</b> (secure).</span>
+            </div>
+          </li>
+          <li>
+            <span class="ltr">C</span>
+            <div>
+              <b>Room ID</b><span>A short room name, e.g. <i>Room1</i>.</span>
+            </div>
+          </li>
+          <li>
+            <span class="ltr">D</span>
+            <div><b>Username</b><span>From your MQTT server.</span></div>
+          </li>
+          <li>
+            <span class="ltr">E</span>
+            <div><b>Password</b><span>Tap the eye to check it.</span></div>
+          </li>
+          <li>
+            <span class="ltr">F</span>
+            <div>
+              <b>Save &amp; Connect</b><span>Tap to save and connect.</span>
+            </div>
+          </li>
+        </ul>
+      </div>
+      <ol class="steps tight" style="margin-top: 5mm">
+        <li>
+          Open <b style="display: inline">SETTINGS</b> →
+          <i>MQTT Configuration</i>.
+        </li>
+        <li>Fill in A to E.</li>
+        <li>Tap <i>Save &amp; Connect</i>.</li>
+      </ol>
+      <p class="small">Readings can then be viewed on another device.</p>
+      <div class="head">
+        <b>reWatt User Guide</b><span>04 · Settings & more</span>
+      </div>
+      <div class="tab" style="top: 22mm">Intro</div>
+      <div class="tab" style="top: 56mm">Setup</div>
+      <div class="tab" style="top: 90mm">Using reWatt</div>
+      <div class="tab on" style="top: 124mm">Settings & more</div>
+      <div class="foot">
+        <span><b>reWatt</b> · User Guide</span><span class="no">13</span>
+      </div>
+    </section>
+
+    <!-- 14 · THREE JOBS -->
+    <section class="page" data-toc="How it works">
+      <div class="eyebrow">How it works</div>
+      <h1>One radar wakes everything.<br />Three jobs, one phone.</h1>
+      <div class="rule"></div>
+      <p class="lead">
+        A radar senses people, even when they sit still. The camera only wakes
+        up when someone is there.
+      </p>
+
+      <div class="job e">
+        <h2><img src="assets/icon-energy.png" alt="" />Energy optimisation</h2>
+        <div class="flow">
+          <div><b>Presence</b>Someone is in the room</div>
+          <i>›</i>
+          <div><b>Headcount</b>Counts people</div>
+          <i>›</i>
+          <div><b>Temp &amp; humidity</b>Checks the air</div>
+          <i>›</i>
+          <div><b>Right AC setting</b>Off at 0 people</div>
+        </div>
+        <div class="note">
+          <b>No one for 5 minutes</b> → the room's appliances switch off.
+        </div>
+      </div>
+
+      <div class="job s">
+        <h2><img src="assets/icon-camera.png" alt="" />Security camera</h2>
+        <div class="flow">
+          <div><b>Presence</b>Someone is in the room</div>
+          <i>›</i>
+          <div><b>Person seen</b>No face → it records</div>
+          <i>›</i>
+          <div><b>Face check</b>On the phone</div>
+          <i>›</i>
+          <div><b>Family?</b>✓ Stays silent<br />✗ Flashing light + alert</div>
+        </div>
+      </div>
+
+      <div class="job f">
+        <h2>
+          <img src="assets/icon-fire.png" alt="" />Fire alarm
+          <span class="small" style="font-weight: 600; color: #c4501d"
+            >· always on</span
+          >
+        </h2>
+        <div class="flow">
+          <div><b>Gas sensing</b>24/7</div>
+          <i>›</i>
+          <div><b>VOC spike</b>Early warning</div>
+          <i>›</i>
+          <div><b>NOx rise</b>Something is burning</div>
+          <i>›</i>
+          <div><b>Loud siren</b>+ alert</div>
+        </div>
+      </div>
+      <div class="head"><b>reWatt User Guide</b><span>04 · Settings & more</span></div>
+      <div class="tab" style="top: 22mm">Intro</div>
+      <div class="tab" style="top: 56mm">Setup</div>
+      <div class="tab" style="top: 90mm">Using reWatt</div>
+      <div class="tab on" style="top: 124mm">Settings & more</div>
+      <div class="foot">
+        <span><b>reWatt</b> · User Guide</span><span class="no">14</span>
+      </div>
+    </section>
+
+    <!-- 15 · MODULE COMPONENTS -->
+    <section class="page" data-toc="Module components">
+      <div class="eyebrow">What's inside</div>
+      <h1>Module components</h1>
+      <div class="rule"></div>
+      <div>
+        <!-- module photo with leader lines: coordinates in source-image pixels (210 × 291) -->
+        <svg
+          viewBox="-36 -6 278 302"
+          style="width: 104mm; display: block; margin: 0 auto"
+          font-family="Times New Roman, Times, serif"
+          font-size="9"
+        >
+          <image
+            href="assets/module-open-clean.png"
+            x="0"
+            y="0"
+            width="210"
+            height="291"
+          />
+          <!-- leader lines: letter → (bend) → part; white halo keeps them readable over the boards -->
+          <g fill="none" stroke-linejoin="round" stroke-linecap="round">
+            <g stroke="#fff" stroke-width="3" opacity="0.9">
+              <polyline points="-14,16.7 94.3,16.7" />
+              <polyline points="-14,71.7 103.3,71.7" />
+              <polyline points="-14,150 34,150 110,188.3" />
+              <polyline points="-14,202.7 82,202.7" />
+              <polyline points="-14,255 50,255 114.3,226" />
+              <polyline points="224,250 196,250 154.3,217.3" />
+            </g>
+            <g stroke="#1b1b1b" stroke-width="1.1">
+              <polyline points="-14,16.7 94.3,16.7" />
+              <polyline points="-14,71.7 103.3,71.7" />
+              <polyline points="-14,150 34,150 110,188.3" />
+              <polyline points="-14,202.7 82,202.7" />
+              <polyline points="-14,255 50,255 114.3,226" />
+              <polyline points="224,250 196,250 154.3,217.3" />
+            </g>
+          </g>
+          <g fill="#fff" stroke="#1b1b1b" stroke-width="1.2">
+            <circle cx="94.3" cy="16.7" r="3" />
+            <circle cx="103.3" cy="71.7" r="3" />
+            <circle cx="110" cy="188.3" r="3" />
+            <circle cx="82" cy="202.7" r="3" />
+            <circle cx="154.3" cy="217.3" r="3" />
+            <circle cx="114.3" cy="226" r="3" />
+          </g>
+          <g font-weight="800" font-size="8.5" text-anchor="middle" fill="#fff">
+            <circle cx="-22" cy="16.7" r="8" fill="#2fae4f" />
+            <text x="-22" y="19.7">A</text>
+            <circle cx="-22" cy="71.7" r="8" fill="#2fae4f" />
+            <text x="-22" y="74.7">B</text>
+            <circle cx="-22" cy="150" r="8" fill="#2fae4f" />
+            <text x="-22" y="153">C</text>
+            <circle cx="-22" cy="202.7" r="8" fill="#2fae4f" />
+            <text x="-22" y="205.7">D</text>
+            <circle cx="-22" cy="255" r="8" fill="#2fae4f" />
+            <text x="-22" y="258">E</text>
+            <circle cx="232" cy="250" r="8" fill="#2fae4f" />
+            <text x="232" y="253">F</text>
+          </g>
+        </svg>
+      </div>
+
+      <ul class="legend" style="margin-top: 4mm; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: repeat(3, auto); grid-auto-flow: column; column-gap: 5mm">
+        <li>
+          <span class="ltr">A</span>
+          <div>
+            <b>Type-C 180° adapter</b
+            ><span>Plugs the module into the phone.</span>
+          </div>
+        </li>
+        <li>
+          <span class="ltr">B</span>
+          <div>
+            <b>Type-C 1-to-2 splitter</b
+            ><span>Charge + USB. Charges the phone and talks to it.</span>
+          </div>
+        </li>
+        <li>
+          <span class="ltr">C</span>
+          <div>
+            <b>SGP41 · gas sensor</b
+            ><span>Senses VOC and NOx gases, 24/7.</span>
+          </div>
+        </li>
+        <li>
+          <span class="ltr">D</span>
+          <div>
+            <b>LD2412 · mmWave radar</b
+            ><span>Senses people, even sitting still.</span>
+          </div>
+        </li>
+        <li>
+          <span class="ltr">E</span>
+          <div>
+            <b>SHT31 · climate sensor</b
+            ><span>Measures temperature and humidity.</span>
+          </div>
+        </li>
+        <li>
+          <span class="ltr">F</span>
+          <div>
+            <b>ESP32-C6 · controller</b
+            ><span>All three sensors connect to it.</span>
+          </div>
+        </li>
+      </ul>
+      <div class="head"><b>reWatt User Guide</b><span>04 · Settings & more</span></div>
+      <div class="tab" style="top: 22mm">Intro</div>
+      <div class="tab" style="top: 56mm">Setup</div>
+      <div class="tab" style="top: 90mm">Using reWatt</div>
+      <div class="tab on" style="top: 124mm">Settings & more</div>
+      <div class="foot">
+        <span><b>reWatt</b> · User Guide</span><span class="no">15</span>
+      </div>
+    </section>
+
+    <!-- 16 · HELP & CARE -->
+    <section class="page" data-toc="Help &amp; care" data-flatten="assets/flat/page16.png">
+      <div class="eyebrow">Help</div>
+      <h1>Quick fixes</h1>
+      <div class="rule"></div>
+      <table class="t">
+        <tr>
+          <th>Problem</th>
+          <th>Try this</th>
+        </tr>
+        <tr>
+          <td>OFFLINE</td>
+          <td>Check the adapter is pushed in. Unplug and plug it back in.</td>
+        </tr>
+        <tr>
+          <td>No live view</td>
+          <td>Allow the camera permission. Clean the lens.</td>
+        </tr>
+        <tr>
+          <td>App stops at night</td>
+          <td>Turn off Battery Saver for reWatt (setup page 2).</td>
+        </tr>
+        <tr>
+          <td>Alarm is silent</td>
+          <td>Allow all security permissions (setup page 3).</td>
+        </tr>
+        <tr>
+          <td>Wrong headcount</td>
+          <td>Move the phone so the whole room is in view.</td>
+        </tr>
+        <tr>
+          <td>Family member alerted</td>
+          <td>Add more photos of that person in FAMILY faces.</td>
+        </tr>
+      </table>
+
+      <h2 style="margin-top: 6mm">Care &amp; safety</h2>
+      <ul class="dots">
+        <li>Use indoors only. Keep it dry.</li>
+        <li>Do not cover the module's vents or the camera.</li>
+        <li>Use a good-quality charger and cable.</li>
+        <li>Do not open the module or bend its parts.</li>
+        <li>
+          reWatt helps you stay safe. It does not replace a certified smoke
+          detector.
+        </li>
+      </ul>
+
+      <div class="head">
+        <b>reWatt User Guide</b><span>04 · Settings & more</span>
+      </div>
+      <div class="tab" style="top: 22mm">Intro</div>
+      <div class="tab" style="top: 56mm">Setup</div>
+      <div class="tab" style="top: 90mm">Using reWatt</div>
+      <div class="tab on" style="top: 124mm">Settings & more</div>
+      <div class="backband">
+        <img src="assets/logo.png" alt="" />
+        <div><b>reWatt</b>Giving old phones a second life.</div>
+      </div>
+    </section>
+    <script>
+      // Contents, footer page numbers and "see page N" references are derived
+      // from the page order, so moving or adding a page keeps them correct.
+      (function () {
+        var pages = Array.prototype.slice.call(document.querySelectorAll("section.page"));
+        var toc = document.querySelector("ul.toc");
+        var at = {};
+        pages.forEach(function (page, i) {
+          var no = page.querySelector(".foot .no");
+          if (no) no.textContent = i + 1;
+          var title = page.getAttribute("data-toc");
+          if (!title) return;
+          at[title] = i + 1;
+          var li = document.createElement("li");
+          li.innerHTML = "<span>" + title + "</span><span>" + (i + 1) + "</span>";
+          toc.appendChild(li);
+        });
+        document.querySelectorAll("[data-ref]").forEach(function (ref) {
+          var target = at[ref.getAttribute("data-ref")];
+          if (target) ref.textContent = target;
+        });
+
+        // Build modes set by build-pdf.ps1 through the URL hash.
+        var only = /^#only=(\d+)$/.exec(location.hash);
+        if (only) {
+          document.documentElement.classList.add("only");
+          pages[Number(only[1]) - 1].classList.add("show");
+        } else if (location.hash === "#flat") {
+          pages.forEach(function (page) {
+            var src = page.getAttribute("data-flatten");
+            if (src) page.innerHTML = '<img class="flat" src="' + src + '" alt="" />';
+          });
+        }
+      })();
+    </script>
+  </body>
+</html>
