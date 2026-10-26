@@ -4,7 +4,7 @@
   <img src="docs/user-manual/assets/wordmark-transparent.png" alt="reWatt" width="280">
 </p>
 
-<h1 align="center">Giving old phones a second life</h1>
+<h1 align="center">reWatt v2 — Giving old phones a second life</h1>
 
 <p align="center">
   Turn an unused Android phone into a room sensor with on-device people counting,<br>
@@ -14,11 +14,23 @@
 <p align="center">
   <a href="#quick-start">Build the app</a> ·
   <a href="https://junonnnnn.github.io/reWatt-deck/">Pitch deck</a> ·
-  <a href="https://www.youtube.com/watch?v=paHZ6IuO2EI">Watch on YouTube</a> ·
+  <a href="https://youtu.be/paHZ6IuO2EI">Presentation video</a> ·
   <a href="docs/user-manual/reWatt-User-Manual.pdf">User manual</a> ·
   <a href="#the-rewatt-module">Hardware</a> ·
   <a href="#mqtt-integration">MQTT integration</a>
 </p>
+
+## Choose a version
+
+| Branch | Purpose |
+| --- | --- |
+| **`rewatt_v2` (this branch)** | Energy monitoring, gas alerts, security camera, and MQTT in one Android sensor node. |
+| **[`main`](https://github.com/Chee613/reWatt/tree/main)** | Original campus energy-monitoring app with Sensor and Admin modes, Firebase sync, forecasts, and facility alerts. |
+
+This branch imports the source, commit history, manual, and assets from
+[tjh3281/rewatt-node at `2a6025c`](https://github.com/tjh3281/rewatt-node/tree/2a6025cc59a313e19ce754210dcd77cc6daff6a9).
+The upstream code is preserved; this repository's README adds version navigation
+and clone instructions for `Chee613/reWatt`.
 
 Built for the **Sime Darby Property University Hackathon 2026 · Planet / People Track**.
 reWatt reuses a phone's camera, processor, and connectivity, pairing them with an
@@ -26,7 +38,7 @@ ESP32-C6 sensor module to make room monitoring more accessible and reduce e-wast
 
 | **RM149** | **Android 6.0+** | **0 rewiring** | **100% on-device AI** |
 | --- | --- | --- | --- |
-| per module | any old phone | magnetic or adhesive mount | nothing uploaded |
+| per module | any old phone | magnetic or adhesive mount | inference runs locally |
 
 Product overview from the [pitch deck](https://junonnnnn.github.io/reWatt-deck/#2).
 People counting and face recognition run on the phone. **Optional MQTT can send
@@ -96,8 +108,8 @@ The Android 6.0+ product requirement and this build setting currently differ;
 Android 6/7 installation support has not been verified.
 
 ```sh
-git clone https://github.com/tjh3281/rewatt-node.git
-cd rewatt-node
+git clone --branch rewatt_v2 --single-branch https://github.com/Chee613/reWatt.git
+cd reWatt
 ```
 
 Open the repository in Android Studio, let Gradle sync, and select the app module.
