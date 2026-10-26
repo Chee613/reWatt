@@ -6,18 +6,7 @@
 
 > Saving energy while eliminating e-waste.
 
-[Build the app](#getting-started) · [Hardware](#the-rewatt-module-rm39) · [App modes](#app-modes) · [reWatt v2](https://github.com/Chee613/reWatt/tree/rewatt_v2)
-
-## Choose a version
-
-| Branch | Purpose | Start here |
-| --- | --- | --- |
-| **`main`** | Original campus energy-monitoring app with Sensor and Admin modes, Firebase sync, forecasts, and facility alerts. | [Setup](#getting-started) |
-| **[`rewatt_v2`](https://github.com/Chee613/reWatt/tree/rewatt_v2)** | Android sensor node with energy monitoring, gas alerts, security camera, and configurable MQTT, imported from [tjh3281/rewatt-node](https://github.com/tjh3281/rewatt-node). | [v2 README](https://github.com/Chee613/reWatt/blob/rewatt_v2/README.md) |
-
-The [v2 slide deck](https://junonnnnn.github.io/reWatt-deck/) and
-[presentation video](https://youtu.be/paHZ6IuO2EI) describe the newer product.
-Hardware, pricing, and workflows below document the original `main` version.
+[Build the app](#getting-started) · [Hardware](#the-rewatt-module-rm39) · [App modes](#app-modes)
 
 ## Overview
 
@@ -116,7 +105,7 @@ reWatt solves the energy problem *and* the e-waste problem with the same device.
 
 ## The reWatt module (RM39)
 
-Original prototype bill of materials; these costs are separate from v2's product pricing.
+Prototype bill of materials.
 
 A small 3D-printed module clips onto an old phone over USB-C and adds the senses a camera lacks:
 
